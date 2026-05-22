@@ -29,8 +29,9 @@ import i18next from 'i18next'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { getStatus } from '@/lib/api'
+import { DEFAULT_LOGO } from '@/lib/constants'
 import '@/lib/dayjs'
-import { applyFaviconToDom } from '@/lib/dom-utils'
+import { applyFaviconToDom, preloadImageSource } from '@/lib/dom-utils'
 import { handleServerError } from '@/lib/handle-server-error'
 import { DirectionProvider } from './context/direction-provider'
 import { FontProvider } from './context/font-provider'
@@ -120,13 +121,19 @@ const rootElement = document.getElementById('root')!
       ) as HTMLMetaElement | null
       if (metaTitle) metaTitle.setAttribute('content', name)
     }
+    const applyLogo = (logo: unknown) => {
+      if (typeof logo !== 'string' || !logo.trim()) return
+      preloadImageSource(logo)
+        .then(() => applyFaviconToDom(logo))
+        .catch(() => applyFaviconToDom(DEFAULT_LOGO))
+    }
     // Cache-first
     try {
       const saved = localStorage.getItem('status')
       if (saved) {
         const s = JSON.parse(saved)
         if (s?.system_name) apply(s.system_name)
-        if (s?.logo) applyFaviconToDom(s.logo)
+        applyLogo(s?.logo)
       }
     } catch {
       /* empty */
@@ -142,7 +149,7 @@ const rootElement = document.getElementById('root')!
             /* empty */
           }
         }
-        if (s?.logo) applyFaviconToDom(s.logo as string)
+        applyLogo(s?.logo)
       })
       .catch(() => {
         /* empty */

@@ -25,7 +25,7 @@ import {
   DEFAULT_CURRENCY_CONFIG,
 } from '@/stores/system-config-store'
 import { DEFAULT_SYSTEM_NAME, DEFAULT_LOGO } from '@/lib/constants'
-import { applyFaviconToDom } from '@/lib/dom-utils'
+import { applyFaviconToDom, preloadImageSource } from '@/lib/dom-utils'
 
 interface UseSystemConfigOptions {
   /** Automatically fetch config from backend (use only in root component) */
@@ -112,23 +112,6 @@ async function fetchSystemConfig(): Promise<Partial<SystemConfig>> {
   return mapStatusDataToConfig(data.data)
 }
 
-// Preload image and return cleanup function
-function preloadImage(
-  src: string,
-  onLoad: () => void,
-  onError: () => void
-): () => void {
-  const img = new Image()
-  img.onload = onLoad
-  img.onerror = onError
-  img.src = src
-
-  return () => {
-    img.onload = null
-    img.onerror = null
-  }
-}
-
 /**
  * System configuration hook with auto-loading and logo preloading
  *
@@ -176,24 +159,32 @@ export function useSystemConfig(options: UseSystemConfigOptions = {}) {
     // Skip if logo is already loaded
     if (!logo || logo === loadedLogoUrl) return
 
-    // Preload new logo
-    return preloadImage(
-      logo,
-      () => {
+    let cancelled = false
+
+    preloadImageSource(logo)
+      .then(() => {
+        if (cancelled) return
         setLoadedLogoUrl(logo)
         applyFaviconToDom(logo)
-      },
-      () => {
+      })
+      .catch(() => {
+        if (cancelled) return
         if (logo !== DEFAULT_LOGO) {
           // eslint-disable-next-line no-console
           console.error('Failed to load logo:', logo)
+          setConfig({ logo: DEFAULT_LOGO })
+          setLoadedLogoUrl(DEFAULT_LOGO)
+          applyFaviconToDom(DEFAULT_LOGO)
+          return
         }
-        // Mark as loaded even on error to prevent infinite retry
         setLoadedLogoUrl(logo)
-      }
-    )
+      })
+
+    return () => {
+      cancelled = true
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.logo, loadedLogoUrl, setLoadedLogoUrl])
+  }, [config.logo, loadedLogoUrl, setConfig, setLoadedLogoUrl])
 
   return {
     ...config,

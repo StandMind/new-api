@@ -32,3 +32,14 @@ export function applyFaviconToDom(url: string) {
     // Ignore malformed URLs
   }
 }
+
+export function preloadImageSource(src: string): Promise<void> {
+  if (typeof Image === 'undefined' || !src) return Promise.reject()
+
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve()
+    img.onerror = () => reject(new Error(`Failed to load image: ${src}`))
+    img.src = src
+  })
+}
