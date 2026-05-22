@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { normalizeInterfaceLanguage } from '@/i18n/languages'
 import { FileWarning } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
@@ -37,10 +38,13 @@ export function PublicDocumentationPage({
   fallbackTitle,
   fallback,
 }: PublicDocumentationPageProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const documentationLocale = normalizeInterfaceLanguage(
+    i18n.resolvedLanguage || i18n.language
+  )
   const configQuery = useQuery({
-    queryKey: ['documentation-config'],
-    queryFn: getDocumentationConfig,
+    queryKey: ['documentation-config', documentationLocale],
+    queryFn: () => getDocumentationConfig(documentationLocale),
     staleTime: 5 * 60 * 1000,
   })
 
@@ -52,8 +56,9 @@ export function PublicDocumentationPage({
   }, [configQuery.data?.data?.pages, path])
 
   const pageQuery = useQuery({
-    queryKey: ['documentation-page', pageConfig?.slug],
-    queryFn: () => getDocumentationPage(pageConfig?.slug ?? ''),
+    queryKey: ['documentation-page', documentationLocale, pageConfig?.slug],
+    queryFn: () =>
+      getDocumentationPage(pageConfig?.slug ?? '', documentationLocale),
     enabled: Boolean(configQuery.data?.data?.enabled && pageConfig?.slug),
     staleTime: 5 * 60 * 1000,
   })

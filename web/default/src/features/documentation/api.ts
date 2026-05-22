@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { normalizeInterfaceLanguage } from '@/i18n/languages'
 import { api } from '@/lib/api'
 import type {
   DocumentationConfig,
@@ -23,19 +24,28 @@ import type {
   DocumentationResponse,
 } from './types'
 
-export async function getDocumentationConfig() {
+function documentationRequestConfig(lang?: string) {
+  const locale = normalizeInterfaceLanguage(lang)
+
+  return {
+    params: { lang: locale },
+    skipBusinessError: true,
+  } as Record<string, unknown>
+}
+
+export async function getDocumentationConfig(lang?: string) {
   const res = await api.get<DocumentationResponse<DocumentationConfig>>(
     '/api/docs/config',
-    { skipBusinessError: true } as Record<string, unknown>
+    documentationRequestConfig(lang)
   )
   return res.data
 }
 
-export async function getDocumentationPage(slug: string) {
+export async function getDocumentationPage(slug: string, lang?: string) {
   const normalizedSlug = slug.replace(/^\/+/, '')
   const res = await api.get<DocumentationResponse<DocumentationPageData>>(
     `/api/docs/page/${encodeURI(normalizedSlug)}`,
-    { skipBusinessError: true } as Record<string, unknown>
+    documentationRequestConfig(lang)
   )
   return res.data
 }
