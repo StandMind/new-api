@@ -140,6 +140,11 @@ export function getCommonHeaders(): Record<string, string> {
     'Content-Type': 'application/json',
   }
 
+  const language = i18next.resolvedLanguage || i18next.language
+  if (language) {
+    headers['Accept-Language'] = language
+  }
+
   const uid = getUserId()
   if (uid) {
     headers['New-Api-User'] = uid
@@ -154,6 +159,11 @@ export function getCommonHeaders(): Record<string, string> {
 
 // Attach user ID header for all requests
 api.interceptors.request.use((config) => {
+  const language = i18next.resolvedLanguage || i18next.language
+  if (language) {
+    ;(config.headers as Record<string, string>)['Accept-Language'] = language
+  }
+
   const uid = getUserId()
   if (uid) {
     // Custom header for user identification

@@ -1,0 +1,1459 @@
+{
+  "enabled": true,
+  "content_dir": "content/documentation/docs",
+  "default_locale": "en",
+  "default_slug": "intro",
+  "nav": [
+    {
+      "title": {
+        "zh": "开始接入",
+        "en": "Getting started",
+        "fr": "Démarrage",
+        "ru": "Начало работы",
+        "ja": "はじめに",
+        "vi": "Bắt đầu"
+      },
+      "children": [
+        {
+          "slug": "intro",
+          "file": "getting-started/intro.md",
+          "title": {
+            "zh": "引言",
+            "en": "Introduction",
+            "fr": "Introduction",
+            "ru": "Введение",
+            "ja": "概要",
+            "vi": "Giới thiệu"
+          }
+        },
+        {
+          "slug": "online-debug",
+          "file": "getting-started/online-debug.md",
+          "title": {
+            "zh": "在线调试说明",
+            "en": "Online testing",
+            "fr": "Test en ligne",
+            "ru": "Онлайн-тестирование",
+            "ja": "オンラインテスト",
+            "vi": "Kiểm thử trực tuyến"
+          }
+        },
+        {
+          "slug": "request-flow",
+          "file": "getting-started/request-flow.md",
+          "title": {
+            "zh": "发出请求",
+            "en": "Sending requests",
+            "fr": "Envoyer des requêtes",
+            "ru": "Отправка запросов",
+            "ja": "リクエスト送信",
+            "vi": "Gửi yêu cầu"
+          }
+        },
+        {
+          "slug": "protocols",
+          "file": "getting-started/protocols.md",
+          "title": {
+            "zh": "调用格式与模型兼容性",
+            "en": "API formats and model compatibility",
+            "fr": "Formats API et compatibilité",
+            "ru": "Форматы API и совместимость",
+            "ja": "API 形式とモデル互換性",
+            "vi": "Định dạng API và tương thích mô hình"
+          }
+        },
+        {
+          "slug": "quick-start",
+          "file": "getting-started/quick-start.md",
+          "title": {
+            "zh": "API 快速开始指南",
+            "en": "API quick start",
+            "fr": "Démarrage rapide API",
+            "ru": "Быстрый старт API",
+            "ja": "API クイックスタート",
+            "vi": "Bắt đầu nhanh API"
+          }
+        },
+        {
+          "slug": "base-url",
+          "file": "getting-started/base-url.md",
+          "title": {
+            "zh": "接口调用地址",
+            "en": "API endpoints",
+            "fr": "Endpoints API",
+            "ru": "API endpoints",
+            "ja": "API エンドポイント",
+            "vi": "Endpoint API"
+          }
+        }
+      ]
+    },
+    {
+      "title": {
+        "zh": "账号与路由",
+        "en": "Account and routing",
+        "fr": "Compte et routage",
+        "ru": "Аккаунт и маршрутизация",
+        "ja": "アカウントとルーティング",
+        "vi": "Tài khoản và định tuyến"
+      },
+      "children": [
+        {
+          "slug": "tokens",
+          "file": "account-routing/tokens.md",
+          "title": {
+            "zh": "令牌、API Key 与安全",
+            "en": "API keys and security",
+            "fr": "Clés API et sécurité",
+            "ru": "API-ключи и безопасность",
+            "ja": "API キーとセキュリティ",
+            "vi": "API key và bảo mật"
+          }
+        },
+        {
+          "slug": "groups",
+          "file": "account-routing/groups.md",
+          "title": {
+            "zh": "分组、渠道与价格差异",
+            "en": "Routing groups and price differences",
+            "fr": "Groupes et différences de prix",
+            "ru": "Группы и различия цен",
+            "ja": "グループと価格差",
+            "vi": "Nhóm định tuyến và chênh lệch giá"
+          }
+        },
+        {
+          "slug": "token-group",
+          "file": "account-routing/token-group.md",
+          "title": {
+            "zh": "如何新建指定分组的令牌",
+            "en": "Creating a key for a routing group",
+            "fr": "Créer une clé pour un groupe",
+            "ru": "Ключ для группы маршрутизации",
+            "ja": "グループ用キーの作成",
+            "vi": "Tạo key cho nhóm định tuyến"
+          }
+        },
+        {
+          "slug": "models",
+          "file": "account-routing/models.md",
+          "title": {
+            "zh": "模型列表与模型名称",
+            "en": "Models and model names",
+            "fr": "Modèles et noms de modèles",
+            "ru": "Список и имена моделей",
+            "ja": "モデル一覧とモデル名",
+            "vi": "Danh sách và tên mô hình"
+          }
+        }
+      ]
+    },
+    {
+      "title": {
+        "zh": "OpenAI 兼容接口",
+        "en": "OpenAI-compatible APIs",
+        "fr": "API compatibles OpenAI",
+        "ru": "OpenAI-совместимые API",
+        "ja": "OpenAI 互換 API",
+        "vi": "API tương thích OpenAI"
+      },
+      "children": [
+        {
+          "slug": "chat-non-stream",
+          "file": "openai-compatible/chat-non-stream.md",
+          "title": {
+            "zh": "创建聊天补全（非流式）",
+            "en": "Create chat completion, non-streaming",
+            "fr": "Chat completion non streaming",
+            "ru": "Chat completion без потока",
+            "ja": "チャット補完（非ストリーム）",
+            "vi": "Tạo chat completion không stream"
+          }
+        },
+        {
+          "slug": "chat-stream",
+          "file": "openai-compatible/chat-stream.md",
+          "title": {
+            "zh": "创建聊天补全（流式）",
+            "en": "Create chat completion, streaming",
+            "fr": "Chat completion streaming",
+            "ru": "Chat completion с потоком",
+            "ja": "チャット補完（ストリーム）",
+            "vi": "Tạo chat completion dạng stream"
+          }
+        },
+        {
+          "slug": "function-structured",
+          "file": "openai-compatible/function-structured.md",
+          "title": {
+            "zh": "函数调用与结构化输出",
+            "en": "Function calling and structured output",
+            "fr": "Function calling et sortie structurée",
+            "ru": "Вызов функций и структурированный вывод",
+            "ja": "関数呼び出しと構造化出力",
+            "vi": "Function calling và đầu ra có cấu trúc"
+          }
+        },
+        {
+          "slug": "completions",
+          "file": "openai-compatible/completions.md",
+          "title": {
+            "zh": "文本补全（Completions）",
+            "en": "Text completions",
+            "fr": "Complétions texte",
+            "ru": "Текстовые completions",
+            "ja": "テキスト補完",
+            "vi": "Text completions"
+          }
+        },
+        {
+          "slug": "embeddings",
+          "file": "openai-compatible/embeddings.md",
+          "title": {
+            "zh": "Embeddings 向量化",
+            "en": "Embeddings",
+            "fr": "Embeddings",
+            "ru": "Embeddings",
+            "ja": "Embeddings",
+            "vi": "Embeddings"
+          }
+        }
+      ]
+    },
+    {
+      "title": {
+        "zh": "原生与新版接口",
+        "en": "Native and newer APIs",
+        "fr": "API natives et récentes",
+        "ru": "Нативные и новые API",
+        "ja": "ネイティブ API と新形式",
+        "vi": "API native và mới hơn"
+      },
+      "children": [
+        {
+          "slug": "responses",
+          "file": "native-apis/responses.md",
+          "title": {
+            "zh": "Responses API 与 Chat API 对比",
+            "en": "Responses API vs Chat API",
+            "fr": "Responses API vs Chat API",
+            "ru": "Responses API и Chat API",
+            "ja": "Responses API と Chat API",
+            "vi": "Responses API so với Chat API"
+          }
+        },
+        {
+          "slug": "claude",
+          "file": "native-apis/claude.md",
+          "title": {
+            "zh": "Claude 原生文本格式",
+            "en": "Claude native text format",
+            "fr": "Format natif Claude",
+            "ru": "Нативный формат Claude",
+            "ja": "Claude ネイティブ形式",
+            "vi": "Định dạng native Claude"
+          }
+        },
+        {
+          "slug": "gemini",
+          "file": "native-apis/gemini.md",
+          "title": {
+            "zh": "Gemini 原生文本格式",
+            "en": "Gemini native text format",
+            "fr": "Format natif Gemini",
+            "ru": "Нативный формат Gemini",
+            "ja": "Gemini ネイティブ形式",
+            "vi": "Định dạng native Gemini"
+          }
+        },
+        {
+          "slug": "reasoning",
+          "file": "native-apis/reasoning.md",
+          "title": {
+            "zh": "AI 返回字段：思考相关",
+            "en": "Reasoning-related fields",
+            "fr": "Champs liés au raisonnement",
+            "ru": "Поля reasoning",
+            "ja": "推論関連フィールド",
+            "vi": "Trường liên quan đến suy luận"
+          }
+        }
+      ]
+    },
+    {
+      "title": {
+        "zh": "SDK 与客户端",
+        "en": "SDKs and clients",
+        "fr": "SDK et clients",
+        "ru": "SDK и клиенты",
+        "ja": "SDK とクライアント",
+        "vi": "SDK và client"
+      },
+      "children": [
+        {
+          "slug": "node-sdk",
+          "file": "sdk-clients/node-sdk.md",
+          "title": {
+            "zh": "Node.js SDK 配置",
+            "en": "Node.js SDK setup",
+            "fr": "Configuration SDK Node.js",
+            "ru": "Настройка Node.js SDK",
+            "ja": "Node.js SDK 設定",
+            "vi": "Cấu hình Node.js SDK"
+          }
+        },
+        {
+          "slug": "python-sdk",
+          "file": "sdk-clients/python-sdk.md",
+          "title": {
+            "zh": "Python SDK 配置",
+            "en": "Python SDK setup",
+            "fr": "Configuration SDK Python",
+            "ru": "Настройка Python SDK",
+            "ja": "Python SDK 設定",
+            "vi": "Cấu hình Python SDK"
+          }
+        },
+        {
+          "slug": "client-setup",
+          "file": "sdk-clients/client-setup.md",
+          "title": {
+            "zh": "常用插件/软件配置",
+            "en": "Common client setup",
+            "fr": "Configuration des clients",
+            "ru": "Настройка клиентов",
+            "ja": "一般的なクライアント設定",
+            "vi": "Cấu hình client phổ biến"
+          }
+        }
+      ]
+    },
+    {
+      "title": {
+        "zh": "计费与排障",
+        "en": "Billing and troubleshooting",
+        "fr": "Facturation et dépannage",
+        "ru": "Биллинг и диагностика",
+        "ja": "課金とトラブルシューティング",
+        "vi": "Thanh toán và xử lý lỗi"
+      },
+      "children": [
+        {
+          "slug": "balance",
+          "file": "billing-troubleshooting/balance.md",
+          "title": {
+            "zh": "API Key 额度查询与用量日志",
+            "en": "Balance and usage logs",
+            "fr": "Solde et journaux d'utilisation",
+            "ru": "Баланс и журналы использования",
+            "ja": "残高と利用ログ",
+            "vi": "Số dư và nhật ký sử dụng"
+          }
+        },
+        {
+          "slug": "errors",
+          "file": "billing-troubleshooting/errors.md",
+          "title": {
+            "zh": "HTTP 状态码及其含义",
+            "en": "HTTP status codes",
+            "fr": "Codes d'état HTTP",
+            "ru": "HTTP-коды состояния",
+            "ja": "HTTP ステータスコード",
+            "vi": "Mã trạng thái HTTP"
+          }
+        },
+        {
+          "slug": "support",
+          "file": "billing-troubleshooting/support.md",
+          "title": {
+            "zh": "联系客服与排障信息",
+            "en": "Support and troubleshooting details",
+            "fr": "Support et diagnostic",
+            "ru": "Поддержка и диагностика",
+            "ja": "サポートと診断情報",
+            "vi": "Hỗ trợ và thông tin xử lý lỗi"
+          }
+        }
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "path": "/terms",
+      "slug": "pages/terms",
+      "title": {
+        "en": "Terms of Service",
+        "zh": "服务条款",
+        "fr": "Conditions d'utilisation",
+        "ru": "Условия обслуживания",
+        "ja": "利用規約",
+        "vi": "Điều khoản Dịch vụ"
+      },
+      "description": {
+        "en": "Last updated: May 16, 2026. These terms govern your use of Aivrae, including the website, console, API gateway, prepaid credits, and related services.",
+        "zh": "最后更新：2026-05-16。本条款适用于你对 Aivrae 网站、控制台、API 网关、预付费额度和相关服务的使用。",
+        "fr": "Dernière mise à jour : 16 mai 2026. Ces conditions régissent votre utilisation du site, de la console, de la passerelle API, des crédits prépayés et des services associés d'Aivrae.",
+        "ru": "Последнее обновление: 16 мая 2026 г. Эти условия регулируют использование сайта, консоли, API-шлюза, предоплаченных кредитов и связанных сервисов Aivrae.",
+        "ja": "最終更新日：2026年5月16日。本規約は、Aivrae のウェブサイト、コンソール、API ゲートウェイ、プリペイドクレジットおよび関連サービスの利用に適用されます。",
+        "vi": "Cập nhật lần cuối: 16 tháng 5 năm 2026. Các điều khoản này điều chỉnh việc sử dụng website, bảng điều khiển, cổng API, tín dụng trả trước và dịch vụ liên quan của Aivrae."
+      }
+    },
+    {
+      "path": "/privacy-policy",
+      "slug": "pages/privacy-policy",
+      "title": {
+        "en": "Privacy Policy",
+        "zh": "隐私政策",
+        "fr": "Politique de confidentialité",
+        "ru": "Политика конфиденциальности",
+        "ja": "プライバシーポリシー",
+        "vi": "Chính sách Quyền riêng tư"
+      },
+      "description": {
+        "en": "Last updated: May 16, 2026. This policy explains how Aivrae collects, uses, and protects information when you use the website, console, and API gateway.",
+        "zh": "最后更新：2026-05-16。本政策说明 Aivrae 在你使用网站、控制台和 API 网关时如何收集、使用和保护信息。",
+        "fr": "Dernière mise à jour : 16 mai 2026. Cette politique explique comment Aivrae collecte, utilise et protège les informations lorsque vous utilisez le site, la console et la passerelle API.",
+        "ru": "Последнее обновление: 16 мая 2026 г. Политика объясняет, как Aivrae собирает, использует и защищает информацию при использовании сайта, консоли и API-шлюза.",
+        "ja": "最終更新日：2026年5月16日。本ポリシーは、ウェブサイト、コンソール、API ゲートウェイ利用時に Aivrae が情報を収集、利用、保護する方法を説明します。",
+        "vi": "Cập nhật lần cuối: 16 tháng 5 năm 2026. Chính sách này giải thích cách Aivrae thu thập, sử dụng và bảo vệ thông tin khi bạn dùng website, bảng điều khiển và cổng API."
+      }
+    },
+    {
+      "path": "/refund-policy",
+      "slug": "pages/refund-policy",
+      "title": {
+        "en": "Refund Policy",
+        "zh": "退款政策",
+        "fr": "Politique de remboursement",
+        "ru": "Политика возврата",
+        "ja": "返金ポリシー",
+        "vi": "Chính sách Hoàn tiền"
+      },
+      "description": {
+        "en": "Last updated: May 16, 2026. This policy describes how we review refund requests for Aivrae prepaid credits.",
+        "zh": "最后更新：2026-05-16。本政策说明我们如何审核 Aivrae 预付费额度的退款请求。",
+        "fr": "Dernière mise à jour : 16 mai 2026. Cette politique décrit l'examen des demandes de remboursement des crédits prépayés Aivrae.",
+        "ru": "Последнее обновление: 16 мая 2026 г. Политика описывает рассмотрение запросов на возврат предоплаченных кредитов Aivrae.",
+        "ja": "最終更新日：2026年5月16日。本ポリシーは Aivrae プリペイドクレジットの返金リクエストの審査方法を説明します。",
+        "vi": "Cập nhật lần cuối: 16 tháng 5 năm 2026. Chính sách này mô tả cách chúng tôi xem xét yêu cầu hoàn tiền cho tín dụng trả trước Aivrae."
+      }
+    },
+    {
+      "path": "/acceptable-use",
+      "slug": "pages/acceptable-use",
+      "title": {
+        "en": "Acceptable Use Policy",
+        "zh": "可接受使用政策",
+        "fr": "Politique d'utilisation acceptable",
+        "ru": "Политика допустимого использования",
+        "ja": "許容利用ポリシー",
+        "vi": "Chính sách Sử dụng Chấp nhận được"
+      },
+      "description": {
+        "en": "Last updated: May 16, 2026. This policy applies to all use of Aivrae, including API requests, accounts, credits, and integrations.",
+        "zh": "最后更新：2026-05-16。本政策适用于 Aivrae 的所有使用，包括 API 请求、账号、额度和集成。",
+        "fr": "Dernière mise à jour : 16 mai 2026. Cette politique s'applique à toute utilisation d'Aivrae, y compris les requêtes API, comptes, crédits et intégrations.",
+        "ru": "Последнее обновление: 16 мая 2026 г. Политика применяется ко всему использованию Aivrae, включая API-запросы, аккаунты, кредиты и интеграции.",
+        "ja": "最終更新日：2026年5月16日。本ポリシーは、API リクエスト、アカウント、クレジット、連携を含む Aivrae のすべての利用に適用されます。",
+        "vi": "Cập nhật lần cuối: 16 tháng 5 năm 2026. Chính sách này áp dụng cho mọi hoạt động sử dụng Aivrae, bao gồm yêu cầu API, tài khoản, tín dụng và tích hợp."
+      }
+    },
+    {
+      "path": "/contact",
+      "slug": "pages/contact",
+      "title": {
+        "en": "Contact Aivrae support.",
+        "zh": "联系 Aivrae 支持。",
+        "fr": "Contacter le support Aivrae.",
+        "ru": "Связаться с поддержкой Aivrae.",
+        "ja": "Aivrae サポートに連絡する。",
+        "vi": "Liên hệ hỗ trợ Aivrae."
+      },
+      "description": {
+        "en": "For account, billing, API access, quota, and compliance questions, contact Aivrae support by email.",
+        "zh": "账号、账单、API 访问、额度和合规相关问题可以通过邮件联系 Aivrae 支持。",
+        "fr": "Pour les questions de compte, facturation, accès API, quota et conformité, contactez le support Aivrae par e-mail.",
+        "ru": "По вопросам аккаунта, оплаты, API-доступа, квот и соответствия требованиям свяжитесь с поддержкой Aivrae по e-mail.",
+        "ja": "アカウント、請求、API アクセス、クォータ、コンプライアンスに関する質問はメールでお問い合わせください。",
+        "vi": "Đối với câu hỏi về tài khoản, thanh toán, truy cập API, hạn mức và tuân thủ, hãy liên hệ hỗ trợ Aivrae qua email."
+      }
+    }
+  ],
+  "debug_examples": {
+    "online-debug": {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "auth": "bearer",
+      "model": "gpt-4o-mini",
+      "body": {
+        "zh": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "用一句话介绍 Aivrae。"
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 256
+        },
+        "en": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Introduce Aivrae in one sentence."
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 256
+        },
+        "fr": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Présente Aivrae en une phrase."
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 256
+        },
+        "ru": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Опиши Aivrae одним предложением."
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 256
+        },
+        "ja": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Aivrae を一文で紹介してください。"
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 256
+        },
+        "vi": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Giới thiệu Aivrae trong một câu."
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 256
+        }
+      }
+    },
+    "request-flow": {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "auth": "bearer",
+      "model": "gpt-4o-mini",
+      "body": {
+        "zh": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "返回一个简短的 JSON 调试结果。"
+            }
+          ],
+          "temperature": 0.2,
+          "max_tokens": 256
+        },
+        "en": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Return a short JSON-style test result."
+            }
+          ],
+          "temperature": 0.2,
+          "max_tokens": 256
+        },
+        "fr": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Retourne un court résultat de test au format JSON."
+            }
+          ],
+          "temperature": 0.2,
+          "max_tokens": 256
+        },
+        "ru": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Верни короткий результат теста в стиле JSON."
+            }
+          ],
+          "temperature": 0.2,
+          "max_tokens": 256
+        },
+        "ja": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "短い JSON 形式のテスト結果を返してください。"
+            }
+          ],
+          "temperature": 0.2,
+          "max_tokens": 256
+        },
+        "vi": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Trả về một kết quả kiểm thử ngắn dạng JSON."
+            }
+          ],
+          "temperature": 0.2,
+          "max_tokens": 256
+        }
+      }
+    },
+    "quick-start": {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "auth": "bearer",
+      "model": "gpt-4o-mini",
+      "body": {
+        "zh": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "写一句简短的欢迎语。"
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 128
+        },
+        "en": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Write a short welcome message."
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 128
+        },
+        "fr": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Écris un court message de bienvenue."
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 128
+        },
+        "ru": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Напиши короткое приветственное сообщение."
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 128
+        },
+        "ja": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "短い歓迎メッセージを書いてください。"
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 128
+        },
+        "vi": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Viết một lời chào ngắn."
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 128
+        }
+      }
+    },
+    "base-url": {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "auth": "bearer",
+      "model": "gpt-4o-mini",
+      "body": {
+        "zh": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "确认当前 Base URL 调用可用。"
+            }
+          ],
+          "max_tokens": 128
+        },
+        "en": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Confirm this Base URL works."
+            }
+          ],
+          "max_tokens": 128
+        },
+        "fr": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Confirme que cette Base URL fonctionne."
+            }
+          ],
+          "max_tokens": 128
+        },
+        "ru": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Подтверди, что этот Base URL работает."
+            }
+          ],
+          "max_tokens": 128
+        },
+        "ja": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "この Base URL が動作することを確認してください。"
+            }
+          ],
+          "max_tokens": 128
+        },
+        "vi": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Xác nhận Base URL này hoạt động."
+            }
+          ],
+          "max_tokens": 128
+        }
+      }
+    },
+    "models": {
+      "method": "GET",
+      "path": "/v1/models",
+      "auth": "bearer"
+    },
+    "chat-non-stream": {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "auth": "bearer",
+      "model": "gpt-4o-mini",
+      "body": {
+        "zh": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "system",
+              "content": "你是一个回答简洁的助手。"
+            },
+            {
+              "role": "user",
+              "content": "写一句简短的欢迎语。"
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 512
+        },
+        "en": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant."
+            },
+            {
+              "role": "user",
+              "content": "Write a short welcome message."
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 512
+        },
+        "fr": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "system",
+              "content": "Tu es un assistant concis."
+            },
+            {
+              "role": "user",
+              "content": "Écris un court message de bienvenue."
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 512
+        },
+        "ru": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "system",
+              "content": "Ты отвечаешь кратко."
+            },
+            {
+              "role": "user",
+              "content": "Напиши короткое приветственное сообщение."
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 512
+        },
+        "ja": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "system",
+              "content": "あなたは簡潔に答えるアシスタントです。"
+            },
+            {
+              "role": "user",
+              "content": "短い歓迎メッセージを書いてください。"
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 512
+        },
+        "vi": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "system",
+              "content": "Bạn là trợ lý trả lời ngắn gọn."
+            },
+            {
+              "role": "user",
+              "content": "Viết một lời chào ngắn."
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 512
+        }
+      }
+    },
+    "chat-stream": {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "auth": "bearer",
+      "model": "gpt-4o-mini",
+      "body": {
+        "zh": {
+          "model": "gpt-4o-mini",
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          },
+          "messages": [
+            {
+              "role": "user",
+              "content": "给我三个产品名创意。"
+            }
+          ]
+        },
+        "en": {
+          "model": "gpt-4o-mini",
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          },
+          "messages": [
+            {
+              "role": "user",
+              "content": "Give me three product name ideas."
+            }
+          ]
+        },
+        "fr": {
+          "model": "gpt-4o-mini",
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          },
+          "messages": [
+            {
+              "role": "user",
+              "content": "Donne-moi trois idées de noms de produit."
+            }
+          ]
+        },
+        "ru": {
+          "model": "gpt-4o-mini",
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          },
+          "messages": [
+            {
+              "role": "user",
+              "content": "Предложи три идеи названия продукта."
+            }
+          ]
+        },
+        "ja": {
+          "model": "gpt-4o-mini",
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          },
+          "messages": [
+            {
+              "role": "user",
+              "content": "プロダクト名の案を3つ出してください。"
+            }
+          ]
+        },
+        "vi": {
+          "model": "gpt-4o-mini",
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          },
+          "messages": [
+            {
+              "role": "user",
+              "content": "Gợi ý ba tên sản phẩm."
+            }
+          ]
+        }
+      }
+    },
+    "function-structured": {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "auth": "bearer",
+      "model": "gpt-4o-mini",
+      "body": {
+        "zh": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "上海今天的天气怎么样？"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "description": "获取当前天气",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "city"
+                  ]
+                }
+              }
+            }
+          ],
+          "tool_choice": "auto"
+        },
+        "en": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "What is the weather in Shanghai?"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "description": "Get current weather",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "city"
+                  ]
+                }
+              }
+            }
+          ],
+          "tool_choice": "auto"
+        },
+        "fr": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Quel temps fait-il à Paris aujourd'hui ?"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "description": "Obtenir la météo actuelle",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "city"
+                  ]
+                }
+              }
+            }
+          ],
+          "tool_choice": "auto"
+        },
+        "ru": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Какая сегодня погода в Москве?"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "description": "Получить текущую погоду",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "city"
+                  ]
+                }
+              }
+            }
+          ],
+          "tool_choice": "auto"
+        },
+        "ja": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "東京の今日の天気は？"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "description": "現在の天気を取得",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "city"
+                  ]
+                }
+              }
+            }
+          ],
+          "tool_choice": "auto"
+        },
+        "vi": {
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Thời tiết ở Hà Nội hôm nay thế nào?"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "description": "Lấy thời tiết hiện tại",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "city"
+                  ]
+                }
+              }
+            }
+          ],
+          "tool_choice": "auto"
+        }
+      }
+    },
+    "completions": {
+      "method": "POST",
+      "path": "/v1/completions",
+      "auth": "bearer",
+      "model": "gpt-3.5-turbo-instruct",
+      "body": {
+        "zh": {
+          "model": "gpt-3.5-turbo-instruct",
+          "prompt": "为 API 中转站写一句简短标语。",
+          "max_tokens": 80
+        },
+        "en": {
+          "model": "gpt-3.5-turbo-instruct",
+          "prompt": "Write a short tagline for an API gateway.",
+          "max_tokens": 80
+        },
+        "fr": {
+          "model": "gpt-3.5-turbo-instruct",
+          "prompt": "Écris un court slogan pour une passerelle API.",
+          "max_tokens": 80
+        },
+        "ru": {
+          "model": "gpt-3.5-turbo-instruct",
+          "prompt": "Напиши короткий слоган для API-шлюза.",
+          "max_tokens": 80
+        },
+        "ja": {
+          "model": "gpt-3.5-turbo-instruct",
+          "prompt": "API ゲートウェイ向けの短いキャッチコピーを書いてください。",
+          "max_tokens": 80
+        },
+        "vi": {
+          "model": "gpt-3.5-turbo-instruct",
+          "prompt": "Viết một khẩu hiệu ngắn cho cổng API.",
+          "max_tokens": 80
+        }
+      }
+    },
+    "embeddings": {
+      "method": "POST",
+      "path": "/v1/embeddings",
+      "auth": "bearer",
+      "model": "text-embedding-3-small",
+      "body": {
+        "zh": {
+          "model": "text-embedding-3-small",
+          "input": "需要向量化的文本"
+        },
+        "en": {
+          "model": "text-embedding-3-small",
+          "input": "Text to embed"
+        },
+        "fr": {
+          "model": "text-embedding-3-small",
+          "input": "Texte à vectoriser"
+        },
+        "ru": {
+          "model": "text-embedding-3-small",
+          "input": "Текст для векторизации"
+        },
+        "ja": {
+          "model": "text-embedding-3-small",
+          "input": "ベクトル化するテキスト"
+        },
+        "vi": {
+          "model": "text-embedding-3-small",
+          "input": "Văn bản cần vector hóa"
+        }
+      }
+    },
+    "responses": {
+      "method": "POST",
+      "path": "/v1/responses",
+      "auth": "bearer",
+      "model": "gpt-4o-mini",
+      "body": {
+        "zh": {
+          "model": "gpt-4o-mini",
+          "input": [
+            {
+              "role": "user",
+              "content": "总结 API 网关的三个好处。"
+            }
+          ]
+        },
+        "en": {
+          "model": "gpt-4o-mini",
+          "input": [
+            {
+              "role": "user",
+              "content": "Summarize three benefits of API gateways."
+            }
+          ]
+        },
+        "fr": {
+          "model": "gpt-4o-mini",
+          "input": [
+            {
+              "role": "user",
+              "content": "Résume trois avantages des passerelles API."
+            }
+          ]
+        },
+        "ru": {
+          "model": "gpt-4o-mini",
+          "input": [
+            {
+              "role": "user",
+              "content": "Кратко опиши три преимущества API-шлюзов."
+            }
+          ]
+        },
+        "ja": {
+          "model": "gpt-4o-mini",
+          "input": [
+            {
+              "role": "user",
+              "content": "API ゲートウェイの利点を3つ要約してください。"
+            }
+          ]
+        },
+        "vi": {
+          "model": "gpt-4o-mini",
+          "input": [
+            {
+              "role": "user",
+              "content": "Tóm tắt ba lợi ích của cổng API."
+            }
+          ]
+        }
+      }
+    },
+    "claude": {
+      "method": "POST",
+      "path": "/v1/messages",
+      "auth": "anthropic",
+      "model": "claude-3-5-sonnet-20241022",
+      "headers": {
+        "anthropic-version": "2023-06-01"
+      },
+      "body": {
+        "zh": {
+          "model": "claude-3-5-sonnet-20241022",
+          "max_tokens": 512,
+          "messages": [
+            {
+              "role": "user",
+              "content": "写一段简短的项目介绍。"
+            }
+          ]
+        },
+        "en": {
+          "model": "claude-3-5-sonnet-20241022",
+          "max_tokens": 512,
+          "messages": [
+            {
+              "role": "user",
+              "content": "Write a concise project summary."
+            }
+          ]
+        },
+        "fr": {
+          "model": "claude-3-5-sonnet-20241022",
+          "max_tokens": 512,
+          "messages": [
+            {
+              "role": "user",
+              "content": "Rédige une présentation concise du projet."
+            }
+          ]
+        },
+        "ru": {
+          "model": "claude-3-5-sonnet-20241022",
+          "max_tokens": 512,
+          "messages": [
+            {
+              "role": "user",
+              "content": "Напиши краткое описание проекта."
+            }
+          ]
+        },
+        "ja": {
+          "model": "claude-3-5-sonnet-20241022",
+          "max_tokens": 512,
+          "messages": [
+            {
+              "role": "user",
+              "content": "プロジェクトの概要を簡潔に書いてください。"
+            }
+          ]
+        },
+        "vi": {
+          "model": "claude-3-5-sonnet-20241022",
+          "max_tokens": 512,
+          "messages": [
+            {
+              "role": "user",
+              "content": "Viết một phần giới thiệu dự án ngắn gọn."
+            }
+          ]
+        }
+      }
+    },
+    "gemini": {
+      "method": "POST",
+      "path": "/v1beta/models/gemini-2.5-flash:generateContent",
+      "path_template": "/v1beta/models/{model}:generateContent",
+      "auth": "bearer",
+      "model": "gemini-2.5-flash",
+      "body": {
+        "zh": {
+          "contents": [
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "用一句话介绍 Aivrae。"
+                }
+              ]
+            }
+          ],
+          "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 256
+          }
+        },
+        "en": {
+          "contents": [
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "Introduce Aivrae in one sentence."
+                }
+              ]
+            }
+          ],
+          "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 256
+          }
+        },
+        "fr": {
+          "contents": [
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "Présente Aivrae en une phrase."
+                }
+              ]
+            }
+          ],
+          "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 256
+          }
+        },
+        "ru": {
+          "contents": [
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "Опиши Aivrae одним предложением."
+                }
+              ]
+            }
+          ],
+          "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 256
+          }
+        },
+        "ja": {
+          "contents": [
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "Aivrae を一文で紹介してください。"
+                }
+              ]
+            }
+          ],
+          "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 256
+          }
+        },
+        "vi": {
+          "contents": [
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "Giới thiệu Aivrae trong một câu."
+                }
+              ]
+            }
+          ],
+          "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 256
+          }
+        }
+      }
+    }
+  }
+}

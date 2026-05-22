@@ -22,7 +22,9 @@ import { AnnouncementsSection } from './announcements-section'
 import { ApiInfoSection } from './api-info-section'
 import { ChatSettingsSection } from './chat-settings-section'
 import { DashboardSection } from './dashboard-section'
+import { DocumentationSection } from './documentation-section'
 import { DrawingSettingsSection } from './drawing-settings-section'
+import { EmailTemplatesSection } from './email-templates-section'
 import { FAQSection } from './faq-section'
 import { UptimeKumaSection } from './uptime-kuma-section'
 
@@ -85,6 +87,23 @@ const CONTENT_SECTIONS = [
         enabled={settings['console_setting.faq_enabled']}
         data={settings['console_setting.faq']}
       />
+    ),
+  },
+  {
+    id: 'email-templates',
+    titleKey: 'Email Templates',
+    descriptionKey:
+      'Configure localized verification and password reset email templates',
+    build: (settings: ContentSettings) => (
+      <EmailTemplatesSection defaultValue={settings.EmailTemplates} />
+    ),
+  },
+  {
+    id: 'documentation',
+    titleKey: 'Documentation',
+    descriptionKey: 'Configure Markdown documentation pages and navigation',
+    build: (settings: ContentSettings) => (
+      <DocumentationSection defaultValue={settings.DocumentationSettings} />
     ),
   },
   {

@@ -53,6 +53,11 @@ export function useUpdateOption() {
           queryClient.invalidateQueries({ queryKey: ['status'] })
         }
 
+        if (variables.key === 'DocumentationSettings') {
+          queryClient.invalidateQueries({ queryKey: ['documentation-config'] })
+          queryClient.invalidateQueries({ queryKey: ['documentation-page'] })
+        }
+
         toast.success(i18next.t('Setting updated successfully'))
       } else {
         toast.error(data.message || i18next.t('Failed to update setting'))

@@ -31,6 +31,18 @@ const defaultContentSettings: ContentSettings = {
   'console_setting.announcements': '[]',
   'console_setting.faq': '[]',
   'console_setting.uptime_kuma_groups': '[]',
+  EmailTemplates: `{
+  "default_locale": "en",
+  "support_email": "",
+  "templates": {}
+}`,
+  DocumentationSettings: `{
+  "enabled": false,
+  "content_dir": "data/docs",
+  "default_locale": "en",
+  "default_slug": "",
+  "nav": []
+}`,
   'console_setting.api_info_enabled': true,
   'console_setting.announcements_enabled': true,
   'console_setting.faq_enabled': true,
@@ -115,6 +127,8 @@ export function ContentSettings() {
     | 'announcements'
     | 'api-info'
     | 'faq'
+    | 'email-templates'
+    | 'documentation'
     | 'uptime-kuma'
     | 'chat'
     | 'drawing'

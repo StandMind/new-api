@@ -17,8 +17,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute } from '@tanstack/react-router'
+import { PublicDocumentationPage } from '@/features/documentation/public-page'
 import { PrivacyPolicy } from '@/features/legal'
 
 export const Route = createFileRoute('/privacy-policy')({
-  component: PrivacyPolicy,
+  component: PrivacyPolicyRoute,
 })
+
+function PrivacyPolicyRoute() {
+  return (
+    <PublicDocumentationPage
+      path='/privacy-policy'
+      fallbackTitle='Privacy Policy'
+      fallback={<PrivacyPolicy />}
+    />
+  )
+}

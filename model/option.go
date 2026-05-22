@@ -8,6 +8,8 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
+	documentationsetting "github.com/QuantumNous/new-api/setting/documentation"
+	emailtemplatesetting "github.com/QuantumNous/new-api/setting/emailtemplate"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -63,6 +65,8 @@ func InitOptionMap() {
 	common.OptionMap["SMTPToken"] = ""
 	common.OptionMap["SMTPSSLEnabled"] = strconv.FormatBool(common.SMTPSSLEnabled)
 	common.OptionMap["SMTPForceAuthLogin"] = strconv.FormatBool(common.SMTPForceAuthLogin)
+	common.OptionMap[emailtemplatesetting.OptionKey] = emailtemplatesetting.DefaultSettingsJSONString()
+	common.OptionMap[documentationsetting.OptionKey] = documentationsetting.DefaultSettingsJSONString()
 	common.OptionMap["Notice"] = ""
 	common.OptionMap["About"] = ""
 	common.OptionMap["HomePageContent"] = ""
