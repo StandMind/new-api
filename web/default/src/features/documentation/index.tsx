@@ -16,15 +16,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Link } from '@tanstack/react-router'
+import { useMemo, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
+import { Link } from '@tanstack/react-router'
 import { FileText, SearchX } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Markdown } from '@/components/ui/markdown'
+import { cn } from '@/lib/utils'
+import {
+  Markdown,
+  extractMarkdownHeadings,
+  type MarkdownHeading,
+} from '@/components/ui/markdown'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PublicLayout } from '@/components/layout'
-import { cn } from '@/lib/utils'
 import { getDocumentationConfig, getDocumentationPage } from './api'
 import { ApiDebugPanel } from './api-debug-panel'
 import type {
@@ -67,7 +71,7 @@ function EmptyState({ title, message }: EmptyStateProps) {
 function LoadingDocumentation() {
   return (
     <PublicLayout>
-      <div className='mx-auto grid max-w-7xl gap-8 py-8 lg:grid-cols-[16rem_minmax(0,1fr)]'>
+      <div className='mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[16rem_minmax(0,1fr)_14rem]'>
         <aside className='space-y-3'>
           <Skeleton className='h-6 w-28' />
           <Skeleton className='h-9 w-full' />
@@ -80,6 +84,11 @@ function LoadingDocumentation() {
           <Skeleton className='h-4 w-[90%]' />
           <Skeleton className='h-4 w-[70%]' />
         </main>
+        <aside className='hidden space-y-3 xl:block'>
+          <Skeleton className='h-4 w-24' />
+          <Skeleton className='h-4 w-full' />
+          <Skeleton className='h-4 w-[70%]' />
+        </aside>
       </div>
     </PublicLayout>
   )
@@ -149,6 +158,42 @@ function NavTree({
   )
 }
 
+function PageTableOfContents({ headings }: { headings: MarkdownHeading[] }) {
+  const { t } = useTranslation()
+  if (headings.length === 0) return null
+
+  return (
+    <aside className='hidden xl:block'>
+      <div className='sticky top-20 max-h-[calc(100svh-6rem)] overflow-y-auto'>
+        <p className='text-foreground mb-3 text-sm font-semibold'>
+          {t('On this page')}
+        </p>
+        <nav aria-label={t('On this page')}>
+          <ol className='space-y-2 border-l pl-4'>
+            {headings.map((heading) => (
+              <li
+                key={heading.id}
+                className={cn(
+                  'leading-tight',
+                  heading.depth === 3 && 'pl-3',
+                  heading.depth >= 4 && 'pl-6'
+                )}
+              >
+                <a
+                  href={`#${heading.id}`}
+                  className='text-muted-foreground hover:text-foreground block text-xs transition-colors'
+                >
+                  {heading.title}
+                </a>
+              </li>
+            ))}
+          </ol>
+        </nav>
+      </div>
+    </aside>
+  )
+}
+
 function DocumentationShell({
   config,
   page,
@@ -162,10 +207,14 @@ function DocumentationShell({
 }) {
   const { t } = useTranslation()
   const navItems = config?.nav ?? []
+  const headings = useMemo(
+    () => (page ? extractMarkdownHeadings(page.content) : []),
+    [page]
+  )
 
   return (
     <PublicLayout>
-      <div className='mx-auto grid max-w-7xl gap-8 py-8 lg:grid-cols-[16rem_minmax(0,1fr)]'>
+      <div className='mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[16rem_minmax(0,1fr)_14rem]'>
         <aside className='lg:sticky lg:top-20 lg:max-h-[calc(100svh-6rem)] lg:overflow-y-auto'>
           <div className='mb-4 flex items-center gap-2'>
             <FileText className='text-muted-foreground size-5' />
@@ -183,9 +232,9 @@ function DocumentationShell({
           )}
         </aside>
 
-        <main className='min-w-0'>
+        <main className='min-w-0 xl:max-w-4xl'>
           {page ? (
-            <article className='space-y-6'>
+            <article className='space-y-8'>
               <header className='border-b pb-5'>
                 <h2 className='text-3xl font-semibold tracking-tight'>
                   {page.title}
@@ -203,6 +252,7 @@ function DocumentationShell({
             children
           )}
         </main>
+        {page ? <PageTableOfContents headings={headings} /> : null}
       </div>
     </PublicLayout>
   )
@@ -261,7 +311,9 @@ export function Documentation({ slug }: DocumentationProps) {
       <DocumentationShell config={config} activeSlug=''>
         <EmptyState
           title={t('No documentation pages configured')}
-          message={t('Add a default slug or navigation item in system settings.')}
+          message={t(
+            'Add a default slug or navigation item in system settings.'
+          )}
         />
       </DocumentationShell>
     )
