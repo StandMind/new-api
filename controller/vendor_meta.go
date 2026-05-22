@@ -101,6 +101,13 @@ func UpdateVendorMeta(c *gin.Context) {
 		return
 	}
 
+	if v.DescriptionI18n == nil {
+		existing, err := model.GetVendorByID(v.Id)
+		if err == nil {
+			v.DescriptionI18n = existing.DescriptionI18n
+		}
+	}
+
 	if err := v.Update(); err != nil {
 		common.ApiError(c, err)
 		return

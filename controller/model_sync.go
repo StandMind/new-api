@@ -29,8 +29,12 @@ const (
 func normalizeLocale(locale string) (string, bool) {
 	l := strings.ToLower(strings.TrimSpace(locale))
 	switch l {
-	case "en", "zh-CN", "zh-TW", "ja":
+	case "en", "ja":
 		return l, true
+	case "zh", "zh-cn", "zh-hans":
+		return "zh-CN", true
+	case "zh-tw", "zh-hant":
+		return "zh-TW", true
 	default:
 		return "", false
 	}
@@ -180,10 +184,10 @@ func fetchJSON[T any](ctx context.Context, url string, out *upstreamEnvelope[T])
 				cacheMutex.Unlock()
 
 				// Try decode as envelope first
-				if err := json.Unmarshal(buf, out); err != nil {
+				if err := common.Unmarshal(buf, out); err != nil {
 					// Try decode as pure array
 					var arr []T
-					if err2 := json.Unmarshal(buf, &arr); err2 != nil {
+					if err2 := common.Unmarshal(buf, &arr); err2 != nil {
 						lastErr = err
 						return
 					}
@@ -205,9 +209,9 @@ func fetchJSON[T any](ctx context.Context, url string, out *upstreamEnvelope[T])
 					lastErr = errors.New("cache miss for 304 response")
 					return
 				}
-				if err := json.Unmarshal(buf, out); err != nil {
+				if err := common.Unmarshal(buf, out); err != nil {
 					var arr []T
-					if err2 := json.Unmarshal(buf, &arr); err2 != nil {
+					if err2 := common.Unmarshal(buf, &arr); err2 != nil {
 						lastErr = err
 						return
 					}
@@ -234,7 +238,7 @@ func fetchJSON[T any](ctx context.Context, url string, out *upstreamEnvelope[T])
 	return lastErr
 }
 
-func ensureVendorID(vendorName string, vendorByName map[string]upstreamVendor, vendorIDCache map[string]int, createdVendors *int) int {
+func ensureVendorID(vendorName string, vendorByName map[string]upstreamVendor, vendorIDCache map[string]int, createdVendors *int, locale string) int {
 	if vendorName == "" {
 		return 0
 	}
@@ -243,15 +247,27 @@ func ensureVendorID(vendorName string, vendorByName map[string]upstreamVendor, v
 	}
 	var existing model.Vendor
 	if err := model.DB.Where("name = ?", vendorName).First(&existing).Error; err == nil {
+		uv := vendorByName[vendorName]
+		if locale != "" && strings.TrimSpace(uv.Description) != "" {
+			oldDescription := existing.DescriptionI18n.Localize(locale, "")
+			existing.DescriptionI18n = existing.DescriptionI18n.With(locale, uv.Description)
+			if strings.TrimSpace(existing.DescriptionI18n.Localize(locale, "")) != strings.TrimSpace(oldDescription) {
+				if strings.TrimSpace(existing.Description) == "" {
+					existing.Description = uv.Description
+				}
+				_ = existing.Update()
+			}
+		}
 		vendorIDCache[vendorName] = existing.Id
 		return existing.Id
 	}
 	uv := vendorByName[vendorName]
 	v := &model.Vendor{
-		Name:        vendorName,
-		Description: uv.Description,
-		Icon:        coalesce(uv.Icon, ""),
-		Status:      chooseStatus(uv.Status, 1),
+		Name:            vendorName,
+		Description:     uv.Description,
+		DescriptionI18n: model.NewLocalizedText(locale, uv.Description),
+		Icon:            coalesce(uv.Icon, ""),
+		Status:          chooseStatus(uv.Status, 1),
 	}
 	if err := v.Insert(); err == nil {
 		*createdVendors++
@@ -351,6 +367,7 @@ func SyncUpstreamModels(c *gin.Context) {
 
 	// 本地缓存：vendorName -> id
 	vendorIDCache := make(map[string]int)
+	syncLocale := model.NormalizeLocalizedTextLocale(req.Locale)
 
 	for _, name := range missing {
 		up, ok := modelByName[name]
@@ -369,17 +386,18 @@ func SyncUpstreamModels(c *gin.Context) {
 		}
 
 		// 确保 vendor 存在
-		vendorID := ensureVendorID(up.VendorName, vendorByName, vendorIDCache, &createdVendors)
+		vendorID := ensureVendorID(up.VendorName, vendorByName, vendorIDCache, &createdVendors, syncLocale)
 
 		// 创建模型
 		mi := &model.Model{
-			ModelName:   name,
-			Description: up.Description,
-			Icon:        up.Icon,
-			Tags:        up.Tags,
-			VendorID:    vendorID,
-			Status:      chooseStatus(up.Status, 1),
-			NameRule:    up.NameRule,
+			ModelName:       name,
+			Description:     up.Description,
+			DescriptionI18n: model.NewLocalizedText(syncLocale, up.Description),
+			Icon:            up.Icon,
+			Tags:            up.Tags,
+			VendorID:        vendorID,
+			Status:          chooseStatus(up.Status, 1),
+			NameRule:        up.NameRule,
 		}
 		if err := mi.Insert(); err == nil {
 			createdModels++
@@ -408,13 +426,14 @@ func SyncUpstreamModels(c *gin.Context) {
 			}
 
 			// 映射 vendor
-			newVendorID := ensureVendorID(up.VendorName, vendorByName, vendorIDCache, &createdVendors)
+			newVendorID := ensureVendorID(up.VendorName, vendorByName, vendorIDCache, &createdVendors, syncLocale)
 
 			// 应用字段覆盖（事务）
 			_ = model.DB.Transaction(func(tx *gorm.DB) error {
 				needUpdate := false
 				if containsField(ow.Fields, "description") {
 					local.Description = up.Description
+					local.DescriptionI18n = local.DescriptionI18n.With(syncLocale, up.Description)
 					needUpdate = true
 				}
 				if containsField(ow.Fields, "icon") {
@@ -504,6 +523,7 @@ func SyncUpstreamPreview(c *gin.Context) {
 
 	locale := c.Query("locale")
 	modelsURL, vendorsURL := getUpstreamURLs(locale)
+	syncLocale := model.NormalizeLocalizedTextLocale(locale)
 
 	var vendorsEnv upstreamEnvelope[upstreamVendor]
 	var modelsEnv upstreamEnvelope[upstreamModel]
@@ -594,8 +614,12 @@ func SyncUpstreamPreview(c *gin.Context) {
 			continue
 		}
 		fields := make([]conflictField, 0, 6)
-		if strings.TrimSpace(local.Description) != strings.TrimSpace(up.Description) {
-			fields = append(fields, conflictField{Field: "description", Local: local.Description, Upstream: up.Description})
+		localDescription := local.Description
+		if syncLocale != "" {
+			localDescription = local.DescriptionI18n.Localize(syncLocale, local.Description)
+		}
+		if strings.TrimSpace(localDescription) != strings.TrimSpace(up.Description) {
+			fields = append(fields, conflictField{Field: "description", Local: localDescription, Upstream: up.Description})
 		}
 		if strings.TrimSpace(local.Icon) != strings.TrimSpace(up.Icon) {
 			fields = append(fields, conflictField{Field: "icon", Local: local.Icon, Upstream: up.Icon})

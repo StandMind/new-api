@@ -31,6 +31,7 @@ export const modelFormSchema = z.object({
   id: z.number().optional(),
   model_name: z.string().min(1, 'Model name is required'),
   description: z.string().default(''),
+  description_i18n: z.record(z.string(), z.string()),
   icon: z.string().default(''),
   tags: z.array(z.string()).default([]),
   vendor_id: z.number().optional(),
@@ -54,9 +55,10 @@ export type ModelFormValues = z.infer<typeof modelFormSchema>
 export const vendorFormSchema = z.object({
   id: z.number().optional(),
   name: z.string().min(1, 'Vendor name is required'),
-  description: z.string().default(''),
-  icon: z.string().default(''),
-  status: z.number().default(1),
+  description: z.string(),
+  description_i18n: z.record(z.string(), z.string()),
+  icon: z.string(),
+  status: z.number(),
 })
 
 export type VendorFormValues = z.infer<typeof vendorFormSchema>
@@ -73,6 +75,7 @@ export function transformModelToFormDefaults(model: Model): ModelFormValues {
     id: model.id,
     model_name: model.model_name,
     description: model.description || '',
+    description_i18n: model.description_i18n || {},
     icon: model.icon || '',
     tags: parseTagsFromUtils(model.tags),
     vendor_id: model.vendor_id,
@@ -95,6 +98,7 @@ export function transformFormDataToModelPayload(
     id: formData.id,
     model_name: formData.model_name,
     description: formData.description || '',
+    description_i18n: formData.description_i18n || {},
     icon: formData.icon || '',
     tags: formatTagsArray(formData.tags),
     vendor_id: formData.vendor_id,

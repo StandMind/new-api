@@ -4526,6 +4526,17 @@
     "Zero retention": "データ保持なし",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V 4",
-    "Zoom": "ズーム"
+    "Zoom": "ズーム",
+    "Default description": "既定の説明",
+    "Describe this model in {{language}}...": "{{language}}でこのモデルを説明...",
+    "Describe this vendor in {{language}}...": "{{language}}でこのプロバイダーを説明...",
+    "Fill only the languages that need custom descriptions.": "カスタム説明が必要な言語だけ入力してください。",
+    "French": "フランス語",
+    "Localized descriptions": "ローカライズされた説明",
+    "Russian": "ロシア語",
+    "Spanish": "スペイン語",
+    "Used when a matching localized description is not configured.": "一致するローカライズ説明が設定されていない場合に使用されます。",
+    "Vietnamese": "ベトナム語",
+    "{{language}} description": "{{language}}の説明"
   }
 }

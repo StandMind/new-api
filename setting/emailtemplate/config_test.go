@@ -8,6 +8,7 @@ func TestNormalizeLocale(t *testing.T) {
 		"en-US": "en",
 		"zh-CN": "zh",
 		"zh_TW": "zh",
+		"es-MX": "es",
 		"fr":    "fr",
 		"ru":    "ru",
 		"ja":    "ja",

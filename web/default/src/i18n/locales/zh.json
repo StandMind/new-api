@@ -4526,6 +4526,17 @@
     "Zero retention": "零数据保留",
     "Zhipu": "智谱",
     "Zhipu V4": "智谱 V4",
-    "Zoom": "缩放"
+    "Zoom": "缩放",
+    "Default description": "默认描述",
+    "Describe this model in {{language}}...": "用{{language}}描述这个模型...",
+    "Describe this vendor in {{language}}...": "用{{language}}描述这个供应商...",
+    "Fill only the languages that need custom descriptions.": "只填写需要自定义描述的语言。",
+    "French": "法语",
+    "Localized descriptions": "多语言描述",
+    "Russian": "俄语",
+    "Spanish": "西班牙语",
+    "Used when a matching localized description is not configured.": "未配置匹配的多语言描述时使用。",
+    "Vietnamese": "越南语",
+    "{{language}} description": "{{language}}描述"
   }
 }

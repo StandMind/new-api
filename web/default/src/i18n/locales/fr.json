@@ -4526,6 +4526,17 @@
     "Zero retention": "Aucune rétention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Default description": "Description par défaut",
+    "Describe this model in {{language}}...": "Décrivez ce modèle en {{language}}...",
+    "Describe this vendor in {{language}}...": "Décrivez ce fournisseur en {{language}}...",
+    "Fill only the languages that need custom descriptions.": "Renseignez uniquement les langues qui nécessitent des descriptions personnalisées.",
+    "French": "Français",
+    "Localized descriptions": "Descriptions localisées",
+    "Russian": "Russe",
+    "Spanish": "Espagnol",
+    "Used when a matching localized description is not configured.": "Utilisée lorsqu'aucune description localisée correspondante n'est configurée.",
+    "Vietnamese": "Vietnamien",
+    "{{language}} description": "Description en {{language}}"
   }
 }

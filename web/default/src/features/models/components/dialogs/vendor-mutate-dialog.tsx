@@ -42,10 +42,14 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { createVendor, updateVendor } from '../../api'
 import { vendorsQueryKeys, modelsQueryKeys } from '../../lib'
-import { vendorFormSchema, type Vendor } from '../../types'
+import {
+  vendorFormSchema,
+  type Vendor,
+  type VendorFormValues,
+} from '../../types'
+import { LocalizedDescriptionFields } from '../localized-description-fields'
 
 type VendorMutateDialogProps = {
   open: boolean
@@ -63,11 +67,12 @@ export function VendorMutateDialog({
   const isEdit = Boolean(currentVendor?.id)
   const [isSaving, setIsSaving] = useState(false)
 
-  const form = useForm({
+  const form = useForm<VendorFormValues>({
     resolver: zodResolver(vendorFormSchema),
     defaultValues: {
       name: '',
       description: '',
+      description_i18n: {},
       icon: '',
       status: 1,
     },
@@ -80,6 +85,7 @@ export function VendorMutateDialog({
         id: currentVendor.id,
         name: currentVendor.name,
         description: currentVendor.description || '',
+        description_i18n: currentVendor.description_i18n || {},
         icon: currentVendor.icon || '',
         status: currentVendor.status || 1,
       })
@@ -87,13 +93,14 @@ export function VendorMutateDialog({
       form.reset({
         name: '',
         description: '',
+        description_i18n: {},
         icon: '',
         status: 1,
       })
     }
   }, [open, isEdit, currentVendor, form])
 
-  const onSubmit = async (values: Record<string, unknown>) => {
+  const onSubmit = async (values: VendorFormValues) => {
     setIsSaving(true)
     try {
       const response = isEdit
@@ -155,22 +162,10 @@ export function VendorMutateDialog({
               )}
             />
 
-            <FormField
+            <LocalizedDescriptionFields
               control={form.control}
-              name='description'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('Description')}</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder={t('Describe this vendor...')}
-                      rows={3}
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+              basePlaceholder='Describe this vendor...'
+              localizedPlaceholder='Describe this vendor in {{language}}...'
             />
 
             <FormField

@@ -225,6 +225,7 @@ export const STATIC_I18N_KEYS = [
   'Per-call',
   'Chinese',
   'English',
+  'Spanish',
   'Japanese',
   'Official Repository',
   'Configuration File',

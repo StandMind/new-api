@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"encoding/json"
 	"sort"
 	"strconv"
 	"strings"
@@ -135,6 +134,13 @@ func UpdateModelMeta(c *gin.Context) {
 			return
 		}
 
+		if m.DescriptionI18n == nil {
+			var existing model.Model
+			if err := model.DB.Select("description_i18n").First(&existing, m.Id).Error; err == nil {
+				m.DescriptionI18n = existing.DescriptionI18n
+			}
+		}
+
 		if err := m.Update(); err != nil {
 			common.ApiError(c, err)
 			return
@@ -192,7 +198,7 @@ func enrichModels(models []*model.Model) {
 			mm := models[idx]
 			if mm.Endpoints == "" {
 				eps := model.GetModelSupportEndpointTypes(mm.ModelName)
-				if b, err := json.Marshal(eps); err == nil {
+				if b, err := common.Marshal(eps); err == nil {
 					mm.Endpoints = string(b)
 				}
 			}
@@ -282,7 +288,7 @@ func enrichModels(models []*model.Model) {
 			for et := range es {
 				eps = append(eps, et)
 			}
-			if b, err := json.Marshal(eps); err == nil {
+			if b, err := common.Marshal(eps); err == nil {
 				mm.Endpoints = string(b)
 			}
 		}

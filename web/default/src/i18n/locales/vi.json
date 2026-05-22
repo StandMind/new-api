@@ -4526,6 +4526,17 @@
     "Zero retention": "Không lưu dữ liệu",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Default description": "Mô tả mặc định",
+    "Describe this model in {{language}}...": "Mô tả mô hình này bằng {{language}}...",
+    "Describe this vendor in {{language}}...": "Mô tả nhà cung cấp này bằng {{language}}...",
+    "Fill only the languages that need custom descriptions.": "Chỉ điền các ngôn ngữ cần mô tả tùy chỉnh.",
+    "French": "Tiếng Pháp",
+    "Localized descriptions": "Mô tả bản địa hóa",
+    "Russian": "Tiếng Nga",
+    "Spanish": "Tiếng Tây Ban Nha",
+    "Used when a matching localized description is not configured.": "Được dùng khi chưa cấu hình mô tả bản địa hóa phù hợp.",
+    "Vietnamese": "Tiếng Việt",
+    "{{language}} description": "Mô tả bằng {{language}}"
   }
 }

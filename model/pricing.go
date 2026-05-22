@@ -1,10 +1,8 @@
 package model
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
-
 	"sync"
 	"time"
 
@@ -18,6 +16,7 @@ import (
 type Pricing struct {
 	ModelName              string                  `json:"model_name"`
 	Description            string                  `json:"description,omitempty"`
+	DescriptionI18n        LocalizedText           `json:"-"`
 	Icon                   string                  `json:"icon,omitempty"`
 	Tags                   string                  `json:"tags,omitempty"`
 	VendorID               int                     `json:"vendor_id,omitempty"`
@@ -39,10 +38,11 @@ type Pricing struct {
 }
 
 type PricingVendor struct {
-	ID          int    `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Icon        string `json:"icon,omitempty"`
+	ID              int           `json:"id"`
+	Name            string        `json:"name"`
+	Description     string        `json:"description,omitempty"`
+	DescriptionI18n LocalizedText `json:"-"`
+	Icon            string        `json:"icon,omitempty"`
 }
 
 var (
@@ -93,6 +93,22 @@ func GetVendors() []PricingVendor {
 		GetPricing()
 	}
 	return vendorsList
+}
+
+func LocalizePricingData(pricing []Pricing, vendors []PricingVendor, locale string) ([]Pricing, []PricingVendor) {
+	localizedPricing := make([]Pricing, len(pricing))
+	copy(localizedPricing, pricing)
+	for i := range localizedPricing {
+		localizedPricing[i].Description = localizedPricing[i].DescriptionI18n.Localize(locale, localizedPricing[i].Description)
+	}
+
+	localizedVendors := make([]PricingVendor, len(vendors))
+	copy(localizedVendors, vendors)
+	for i := range localizedVendors {
+		localizedVendors[i].Description = localizedVendors[i].DescriptionI18n.Localize(locale, localizedVendors[i].Description)
+	}
+
+	return localizedPricing, localizedVendors
 }
 
 func GetModelSupportEndpointTypes(model string) []constant.EndpointType {
@@ -181,10 +197,11 @@ func updatePricing() {
 	vendorsList = make([]PricingVendor, 0, len(vendorMap))
 	for _, v := range vendorMap {
 		vendorsList = append(vendorsList, PricingVendor{
-			ID:          v.Id,
-			Name:        v.Name,
-			Description: v.Description,
-			Icon:        v.Icon,
+			ID:              v.Id,
+			Name:            v.Name,
+			Description:     v.Description,
+			DescriptionI18n: v.DescriptionI18n,
+			Icon:            v.Icon,
 		})
 	}
 
@@ -220,7 +237,7 @@ func updatePricing() {
 			continue
 		}
 		var raw map[string]interface{}
-		if err := json.Unmarshal([]byte(meta.Endpoints), &raw); err == nil {
+		if err := common.Unmarshal([]byte(meta.Endpoints), &raw); err == nil {
 			endpoints := make([]string, 0, len(raw))
 			for k, v := range raw {
 				switch v.(type) {
@@ -264,7 +281,7 @@ func updatePricing() {
 			continue
 		}
 		var raw map[string]interface{}
-		if err := json.Unmarshal([]byte(meta.Endpoints), &raw); err == nil {
+		if err := common.Unmarshal([]byte(meta.Endpoints), &raw); err == nil {
 			for k, v := range raw {
 				switch val := v.(type) {
 				case string:
@@ -300,6 +317,7 @@ func updatePricing() {
 				continue
 			}
 			pricing.Description = meta.Description
+			pricing.DescriptionI18n = meta.DescriptionI18n
 			pricing.Icon = meta.Icon
 			pricing.Tags = meta.Tags
 			pricing.VendorID = meta.VendorID

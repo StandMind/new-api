@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, type FormEvent } from 'react'
 import * as z from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -55,14 +55,11 @@ type DocumentationFormValues = {
   json: string
 }
 
-const supportedLocales = new Set(['en', 'zh', 'fr', 'ru', 'ja', 'vi'])
+const supportedLocales = new Set(['en', 'zh', 'es', 'fr', 'ru', 'ja', 'vi'])
+const supportedLocaleLabel = 'en, zh, es, fr, ru, ja, vi'
 const slugPattern = /^[A-Za-z0-9._~/-]+$/
 
-function validateLocalizedText(
-  value: unknown,
-  path: string,
-  required = false
-) {
+function validateLocalizedText(value: unknown, path: string, required = false) {
   if (value === undefined || value === null) {
     if (required) throw new Error(`${path} is required`)
     return
@@ -178,7 +175,11 @@ function validateDebugExamples(value: unknown, path: string) {
 
   for (const [slug, rawExample] of Object.entries(value)) {
     validateSlug(slug, `${path}.${slug}`, true)
-    if (!rawExample || typeof rawExample !== 'object' || Array.isArray(rawExample)) {
+    if (
+      !rawExample ||
+      typeof rawExample !== 'object' ||
+      Array.isArray(rawExample)
+    ) {
       throw new Error(`${path}.${slug} must be an object`)
     }
 
@@ -198,12 +199,20 @@ function validateDebugExamples(value: unknown, path: string) {
       throw new Error(`${path}.${slug} requires path or path_template`)
     }
     if (example.body !== undefined) {
-      if (!example.body || typeof example.body !== 'object' || Array.isArray(example.body)) {
-        throw new Error(`${path}.${slug}.body must be an object keyed by locale`)
+      if (
+        !example.body ||
+        typeof example.body !== 'object' ||
+        Array.isArray(example.body)
+      ) {
+        throw new Error(
+          `${path}.${slug}.body must be an object keyed by locale`
+        )
       }
       for (const locale of Object.keys(example.body)) {
         if (!supportedLocales.has(locale)) {
-          throw new Error(`${path}.${slug}.body.${locale} uses an unsupported locale`)
+          throw new Error(
+            `${path}.${slug}.body.${locale} uses an unsupported locale`
+          )
         }
       }
     }
@@ -229,7 +238,7 @@ function validateDocumentationConfig(value: string) {
     typeof config.default_locale !== 'string' ||
     !supportedLocales.has(config.default_locale)
   ) {
-    throw new Error('default_locale must be one of en, zh, fr, ru, ja, vi')
+    throw new Error(`default_locale must be one of ${supportedLocaleLabel}`)
   }
   validateSlug(config.default_slug, 'default_slug')
   validateNavItems(config.nav, 'nav')
@@ -287,15 +296,28 @@ export function DocumentationSection({
     })
   }, [defaultValue, form])
 
-  const onSubmit = async (values: DocumentationFormValues) => {
-    const normalized = normalizeJsonString(values.json, DOCUMENTATION_FALLBACK)
-    if (normalized === initialNormalizedRef.current) return
+  const onSubmit = useCallback(
+    async (values: DocumentationFormValues) => {
+      const normalized = normalizeJsonString(
+        values.json,
+        DOCUMENTATION_FALLBACK
+      )
+      if (normalized === initialNormalizedRef.current) return
 
-    await updateOption.mutateAsync({
-      key: DOCUMENTATION_OPTION_KEY,
-      value: normalized,
-    })
-  }
+      await updateOption.mutateAsync({
+        key: DOCUMENTATION_OPTION_KEY,
+        value: normalized,
+      })
+    },
+    [updateOption]
+  )
+
+  const handleFormSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      void form.handleSubmit(onSubmit)(event)
+    },
+    [form, onSubmit]
+  )
 
   return (
     <SettingsSection
@@ -303,7 +325,7 @@ export function DocumentationSection({
       description={t('Configure Markdown documentation pages and navigation')}
     >
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-6'>
+        <form onSubmit={handleFormSubmit} className='space-y-6'>
           <FormField
             control={form.control}
             name='json'

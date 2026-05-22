@@ -38,6 +38,7 @@ var (
 	supportedLocales = map[string]struct{}{
 		"en": {},
 		"zh": {},
+		"es": {},
 		"fr": {},
 		"ru": {},
 		"ja": {},
@@ -105,7 +106,7 @@ func DefaultSettingsJSONString() string {
 }
 
 func SupportedLocales() []string {
-	return []string{"en", "zh", "fr", "ru", "ja", "vi"}
+	return []string{"en", "zh", "es", "fr", "ru", "ja", "vi"}
 }
 
 func NormalizeLocale(value string) string {

@@ -38,6 +38,7 @@ const (
 var supportedLocales = map[string]struct{}{
 	"en": {},
 	"zh": {},
+	"es": {},
 	"fr": {},
 	"ru": {},
 	"ja": {},
@@ -65,7 +66,7 @@ type RenderData struct {
 }
 
 func SupportedLocales() []string {
-	return []string{"en", "zh", "fr", "ru", "ja", "vi"}
+	return []string{"en", "zh", "es", "fr", "ru", "ja", "vi"}
 }
 
 func NormalizeLocale(value string) string {
@@ -121,6 +122,16 @@ func DefaultSettings() Settings {
 						"验证码",
 						"验证码将在 {{.ValidMinutes}} 分钟后失效。",
 						"如果这不是你本人操作，请忽略此邮件。",
+					),
+				},
+				"es": {
+					Subject: "Verificación de correo electrónico de {{.SystemName}}",
+					HTML: verificationHTML(
+						"Verificación de correo electrónico",
+						"Usa el código siguiente para verificar tu dirección de correo electrónico en {{.SystemName}}.",
+						"Código de verificación",
+						"Este código vence en {{.ValidMinutes}} minutos.",
+						"Si no solicitaste este correo, puedes ignorarlo.",
 					),
 				},
 				"fr": {
@@ -185,6 +196,17 @@ func DefaultSettings() Settings {
 						"该链接将在 {{.ValidMinutes}} 分钟后失效。",
 						"如果按钮无法点击，请复制下方链接到浏览器打开：",
 						"如果这不是你本人操作，请忽略此邮件。",
+					),
+				},
+				"es": {
+					Subject: "Restablecimiento de contraseña de {{.SystemName}}",
+					HTML: resetHTML(
+						"Restablecimiento de contraseña",
+						"Recibimos una solicitud para restablecer la contraseña de tu cuenta de {{.SystemName}}.",
+						"Restablecer contraseña",
+						"Este enlace vence en {{.ValidMinutes}} minutos.",
+						"Si el botón no funciona, copia y pega este enlace en tu navegador:",
+						"Si no solicitaste restablecer la contraseña, puedes ignorar este correo.",
 					),
 				},
 				"fr": {

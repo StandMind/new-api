@@ -61,7 +61,6 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
-import { Textarea } from '@/components/ui/textarea'
 import { JsonEditor } from '@/components/json-editor'
 import { TagInput } from '@/components/tag-input'
 import {
@@ -76,12 +75,14 @@ import { createModel, updateModel, getModel, getVendors } from '../../api'
 import { getNameRuleOptions, ENDPOINT_TEMPLATES } from '../../constants'
 import { modelsQueryKeys, vendorsQueryKeys, parseModelTags } from '../../lib'
 import type { Model } from '../../types'
+import { LocalizedDescriptionFields } from '../localized-description-fields'
 
 // Extended schema for ratio configuration (internal form state only)
 const extendedModelFormSchema = z.object({
   id: z.number().optional(),
   model_name: z.string().min(1, 'Model name is required'),
   description: z.string(),
+  description_i18n: z.record(z.string(), z.string()),
   icon: z.string(),
   tags: z.array(z.string()),
   vendor_id: z.number().optional(),
@@ -203,6 +204,7 @@ export function ModelMutateDrawer({
     defaultValues: {
       model_name: '',
       description: '',
+      description_i18n: {},
       icon: '',
       tags: [],
       vendor_id: undefined,
@@ -262,6 +264,7 @@ export function ModelMutateDrawer({
         id: model.id,
         model_name: model.model_name,
         description: model.description || '',
+        description_i18n: model.description_i18n || {},
         icon: model.icon || '',
         tags: parseModelTags(model.tags),
         vendor_id: model.vendor_id,
@@ -366,6 +369,7 @@ export function ModelMutateDrawer({
       form.reset({
         model_name: currentRow?.model_name || '',
         description: '',
+        description_i18n: {},
         icon: '',
         tags: [],
         vendor_id: undefined,
@@ -675,22 +679,10 @@ export function ModelMutateDrawer({
                 )}
               />
 
-              <FormField
+              <LocalizedDescriptionFields
                 control={form.control}
-                name='description'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Description')}</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder={t('Describe this model...')}
-                        rows={3}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                basePlaceholder='Describe this model...'
+                localizedPlaceholder='Describe this model in {{language}}...'
               />
 
               <FormField

@@ -18,6 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
+export type SupportedLocale = 'en' | 'zh' | 'es' | 'fr' | 'ru' | 'ja' | 'vi'
+export type LocalizedText = Partial<Record<SupportedLocale, string>>
+
 // ============================================================================
 // Model Types
 // ============================================================================
@@ -37,6 +40,7 @@ export interface Model {
   id: number
   model_name: string
   description?: string
+  description_i18n?: LocalizedText
   icon?: string
   tags?: string
   vendor_id?: number
@@ -61,6 +65,7 @@ export interface Vendor {
   id: number
   name: string
   description?: string
+  description_i18n?: LocalizedText
   icon?: string
   status: number
   created_time: number
@@ -231,6 +236,7 @@ export const modelFormSchema = z.object({
   id: z.number().optional(),
   model_name: z.string().min(1, 'Model name is required'),
   description: z.string().default(''),
+  description_i18n: z.record(z.string(), z.string()),
   icon: z.string().default(''),
   tags: z.array(z.string()).default([]),
   vendor_id: z.number().optional(),
@@ -248,9 +254,10 @@ export type ModelFormValues = z.infer<typeof modelFormSchema>
 export const vendorFormSchema = z.object({
   id: z.number().optional(),
   name: z.string().min(1, 'Vendor name is required'),
-  description: z.string().default(''),
-  icon: z.string().default(''),
-  status: z.number().default(1),
+  description: z.string(),
+  description_i18n: z.record(z.string(), z.string()),
+  icon: z.string(),
+  status: z.number(),
 })
 
 export type VendorFormValues = z.infer<typeof vendorFormSchema>

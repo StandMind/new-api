@@ -99,13 +99,16 @@ function isLikelyUntranslated({ locale, baseValue, value }) {
   const s = baseValue.trim()
   if (s.length < 6) return false
   if (!/[A-Za-z]{3,}/.test(s)) return false
+  if (/^[a-z]{2}_[a-z]+(?:\s+or\s+[a-z]{2}_[a-z]+)+$/i.test(s)) return false
 
   // For locales with non-latin scripts, equality with EN is a strong signal.
   if (locale === 'ja' || locale === 'zh') return true
   if (locale === 'ru') return true
 
-  // For fr/vi: still useful but noisier; keep it conservative.
-  if (locale === 'fr' || locale === 'vi') return /\b(the|and|or|to|with|please)\b/i.test(s)
+  // For Latin-script locales: still useful but noisier; keep it conservative.
+  if (locale === 'es' || locale === 'fr' || locale === 'vi') {
+    return /\b(the|and|or|to|with|please)\b/i.test(s)
+  }
 
   return false
 }
@@ -210,5 +213,3 @@ main().catch((err) => {
   console.error(err)
   process.exitCode = 1
 })
-
-

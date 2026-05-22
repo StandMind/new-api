@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, type FormEvent } from 'react'
 import * as z from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -51,7 +51,8 @@ type EmailTemplatesFormValues = {
   json: string
 }
 
-const supportedLocales = new Set(['en', 'zh', 'fr', 'ru', 'ja', 'vi'])
+const supportedLocales = new Set(['en', 'zh', 'es', 'fr', 'ru', 'ja', 'vi'])
+const supportedLocaleLabel = 'en, zh, es, fr, ru, ja, vi'
 
 function validateEmailTemplateConfig(value: string) {
   const normalized = normalizeJsonString(value, EMAIL_TEMPLATES_FALLBACK)
@@ -67,7 +68,7 @@ function validateEmailTemplateConfig(value: string) {
     typeof defaultLocale !== 'string' ||
     !supportedLocales.has(defaultLocale)
   ) {
-    throw new Error('default_locale must be one of en, zh, fr, ru, ja, vi')
+    throw new Error(`default_locale must be one of ${supportedLocaleLabel}`)
   }
 
   if (
@@ -167,18 +168,28 @@ export function EmailTemplatesSection({
     })
   }, [defaultValue, form])
 
-  const onSubmit = async (values: EmailTemplatesFormValues) => {
-    const normalized = normalizeJsonString(
-      values.json,
-      EMAIL_TEMPLATES_FALLBACK
-    )
-    if (normalized === initialNormalizedRef.current) return
+  const onSubmit = useCallback(
+    async (values: EmailTemplatesFormValues) => {
+      const normalized = normalizeJsonString(
+        values.json,
+        EMAIL_TEMPLATES_FALLBACK
+      )
+      if (normalized === initialNormalizedRef.current) return
 
-    await updateOption.mutateAsync({
-      key: EMAIL_TEMPLATES_OPTION_KEY,
-      value: normalized,
-    })
-  }
+      await updateOption.mutateAsync({
+        key: EMAIL_TEMPLATES_OPTION_KEY,
+        value: normalized,
+      })
+    },
+    [updateOption]
+  )
+
+  const handleFormSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      void form.handleSubmit(onSubmit)(event)
+    },
+    [form, onSubmit]
+  )
 
   return (
     <SettingsSection
@@ -188,7 +199,7 @@ export function EmailTemplatesSection({
       )}
     >
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-6'>
+        <form onSubmit={handleFormSubmit} className='space-y-6'>
           <FormField
             control={form.control}
             name='json'
