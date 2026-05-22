@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Aivrae</title>
+  <rect width="64" height="64" rx="14" fill="#0f172a"/>
+  <path d="M18 42 30 17h4l12 25h-6l-2.5-5.5h-11L24 42h-6Zm11-11h6l-3-7-3 7Z" fill="#f8fafc"/>
+  <path d="M43 19h5v23h-5z" fill="#38bdf8"/>
+  <circle cx="47.5" cy="14.5" r="3.5" fill="#22c55e"/>
+</svg>
