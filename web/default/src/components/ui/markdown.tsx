@@ -78,6 +78,15 @@ const calloutKinds = ['note', 'tip', 'important', 'warning', 'caution'] as const
 type CalloutKind = (typeof calloutKinds)[number]
 
 const calloutPattern = /^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/i
+const endpointPattern =
+  /^(?:Endpoint|接口|端点):\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(.+)$/i
+
+type EndpointInfo = {
+  method: string
+  path: string
+}
+
+type TableKind = 'default' | 'parameters' | 'status' | 'comparison' | 'clients'
 
 const languageAliases: Record<string, string> = {
   bash: 'shellscript',
@@ -207,6 +216,68 @@ function extractNodeText(node: ReactNode): string {
   return ''
 }
 
+function parseEndpoint(children: ReactNode): EndpointInfo | undefined {
+  const text = extractNodeText(children).replace(/\s+/g, ' ').trim()
+  const match = text.match(endpointPattern)
+  if (!match) return undefined
+
+  return {
+    method: (match[1] ?? '').toUpperCase(),
+    path: (match[2] ?? '').trim(),
+  }
+}
+
+function getMethodClassName(method: string) {
+  switch (method.toUpperCase()) {
+    case 'GET':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-300'
+    case 'POST':
+      return 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/70 dark:bg-sky-950/30 dark:text-sky-300'
+    case 'PUT':
+    case 'PATCH':
+      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-300'
+    case 'DELETE':
+      return 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-300'
+    default:
+      return 'border-border bg-muted text-muted-foreground'
+  }
+}
+
+function getTableKind(children: ReactNode): TableKind {
+  const text = extractNodeText(children).toLowerCase()
+
+  if (
+    /parameter|required|description|header|请求头|参数|必填|说明/.test(text)
+  ) {
+    return 'parameters'
+  }
+  if (/status|meaning|handling|状态码|含义|建议处理/.test(text)) {
+    return 'status'
+  }
+  if (/client|provider|base url|客户端|填写|使用场景/.test(text)) {
+    return 'clients'
+  }
+  if (/comparison|recommended|项目|对比|建议/.test(text)) {
+    return 'comparison'
+  }
+
+  return 'default'
+}
+
+function getCodeBlockTitle(
+  code: string,
+  language: string,
+  t: ReturnType<typeof useTranslation>['t']
+) {
+  if (language === 'shellscript' && /^\s*curl\b/.test(code)) {
+    return t('Request')
+  }
+  if (language === 'json' && /"choices"|"usage"|"object"|"data"/.test(code)) {
+    return t('Response')
+  }
+  return displayLanguage(language)
+}
+
 function stripCalloutMarker(children: ReactNode): ReactNode {
   let stripped = false
 
@@ -283,6 +354,7 @@ function displayLanguage(value: string) {
 function CodeBlock({ code, language }: { code: string; language?: string }) {
   const { t } = useTranslation()
   const lang = language ? normalizeLanguage(language) : inferLanguage(code)
+  const title = getCodeBlockTitle(code, lang, t)
   const [html, setHtml] = useState('')
   const [copied, setCopied] = useState(false)
 
@@ -318,9 +390,21 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
   }
 
   return (
-    <figure className='not-prose group bg-card my-6 overflow-hidden rounded-lg border shadow-sm'>
-      <figcaption className='bg-muted/50 text-muted-foreground flex h-10 items-center justify-between border-b px-3 text-xs'>
-        <span className='font-medium'>{displayLanguage(lang)}</span>
+    <figure className='not-prose group bg-card my-7 overflow-hidden rounded-lg border shadow-sm'>
+      <figcaption className='bg-muted/45 text-muted-foreground flex h-11 items-center justify-between border-b px-3 text-xs'>
+        <div className='flex min-w-0 items-center gap-3'>
+          <span className='flex items-center gap-1.5' aria-hidden='true'>
+            <span className='size-2 rounded-full bg-red-400/80' />
+            <span className='size-2 rounded-full bg-amber-400/80' />
+            <span className='size-2 rounded-full bg-emerald-400/80' />
+          </span>
+          <span className='truncate font-medium'>{title}</span>
+          {title !== displayLanguage(lang) ? (
+            <span className='border-border/70 bg-background/70 hidden rounded border px-1.5 py-0.5 font-mono text-[0.6875rem] sm:inline'>
+              {displayLanguage(lang)}
+            </span>
+          ) : null}
+        </div>
         <TooltipProvider delay={0}>
           <Tooltip>
             <TooltipTrigger
@@ -362,6 +446,89 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
         )}
       </div>
     </figure>
+  )
+}
+
+function MarkdownEndpoint({ method, path }: EndpointInfo) {
+  const { t } = useTranslation()
+  const [copied, setCopied] = useState(false)
+
+  const copyEndpoint = async () => {
+    await navigator.clipboard?.writeText(`${method} ${path}`)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1600)
+  }
+
+  return (
+    <section className='not-prose bg-card my-7 overflow-hidden rounded-lg border shadow-sm'>
+      <div className='bg-muted/35 text-muted-foreground flex items-center justify-between border-b px-4 py-2.5 text-xs font-medium'>
+        <span>{t('Endpoint')}</span>
+        <TooltipProvider delay={0}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='icon-sm'
+                  className='text-muted-foreground hover:text-foreground'
+                  aria-label={copied ? t('Copied') : t('Copy')}
+                  onClick={copyEndpoint}
+                />
+              }
+            >
+              {copied ? <Check /> : <Clipboard />}
+              <span className='sr-only'>
+                {copied ? t('Copied') : t('Copy')}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{copied ? t('Copied') : t('Copy')}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+      <div className='flex min-w-0 flex-col gap-3 p-4 sm:flex-row sm:items-center'>
+        <span
+          className={cn(
+            'inline-flex h-7 w-fit items-center rounded-md border px-2.5 font-mono text-xs font-semibold',
+            getMethodClassName(method)
+          )}
+        >
+          {method}
+        </span>
+        <code className='bg-muted text-foreground min-w-0 overflow-x-auto rounded-md px-3 py-2 font-mono text-sm leading-none'>
+          {path}
+        </code>
+      </div>
+    </section>
+  )
+}
+
+function MarkdownTable({ children }: { children: ReactNode }) {
+  const kind = getTableKind(children)
+
+  return (
+    <div
+      className={cn(
+        'not-prose bg-card my-7 overflow-x-auto rounded-lg border shadow-sm',
+        kind !== 'default' && '[&_tbody_tr:hover]:bg-muted/45'
+      )}
+    >
+      <table
+        className={cn(
+          'w-full border-collapse text-sm',
+          kind === 'parameters' &&
+            '[&_td:first-child]:font-mono [&_td:first-child]:text-[0.8125rem] [&_td:first-child]:font-semibold',
+          kind === 'status' &&
+            '[&_td:first-child]:font-mono [&_td:first-child]:font-semibold',
+          kind === 'clients' && '[&_td:first-child]:font-semibold',
+          kind === 'comparison' && '[&_td:first-child]:font-semibold'
+        )}
+      >
+        {children}
+      </table>
+    </div>
   )
 }
 
@@ -511,22 +678,26 @@ export function Markdown({ children, className }: MarkdownProps) {
       </MarkdownHeading>
     ),
     hr: () => <hr className='my-8' />,
+    p: ({ children: paragraphChildren }) => {
+      const endpoint = parseEndpoint(paragraphChildren)
+      if (endpoint) {
+        return <MarkdownEndpoint {...endpoint} />
+      }
+
+      return <p>{paragraphChildren}</p>
+    },
     pre: ({ children: preChildren }) => <>{preChildren}</>,
     table: ({ children: tableChildren }) => (
-      <div className='not-prose my-6 overflow-x-auto rounded-lg border'>
-        <table className='w-full border-collapse text-sm'>
-          {tableChildren}
-        </table>
-      </div>
+      <MarkdownTable>{tableChildren}</MarkdownTable>
     ),
     tbody: ({ children: tableChildren }) => <tbody>{tableChildren}</tbody>,
     td: ({ children: tableChildren }) => (
-      <td className='border-t px-4 py-3 align-top leading-6'>
+      <td className='border-t px-4 py-3.5 align-top leading-6'>
         {tableChildren}
       </td>
     ),
     th: ({ children: tableChildren }) => (
-      <th className='bg-muted/60 text-foreground px-4 py-3 text-left text-xs font-semibold tracking-wide uppercase'>
+      <th className='bg-muted/55 text-foreground px-4 py-3 text-left text-xs font-semibold tracking-wide uppercase'>
         {tableChildren}
       </th>
     ),
@@ -534,7 +705,7 @@ export function Markdown({ children, className }: MarkdownProps) {
       <thead className='border-b'>{tableChildren}</thead>
     ),
     tr: ({ children: tableChildren }) => (
-      <tr className='even:bg-muted/25'>{tableChildren}</tr>
+      <tr className='even:bg-muted/20 transition-colors'>{tableChildren}</tr>
     ),
   }
 
@@ -543,11 +714,11 @@ export function Markdown({ children, className }: MarkdownProps) {
       className={cn(
         'prose prose-neutral prose-sm dark:prose-invert max-w-none',
         'prose-headings:font-semibold prose-headings:tracking-tight prose-headings:scroll-mt-24',
-        'prose-h1:text-3xl prose-h1:leading-tight prose-h2:mt-10 prose-h2:border-b prose-h2:pb-2 prose-h2:text-2xl prose-h3:mt-8 prose-h3:text-xl prose-h4:mt-6 prose-h4:text-base',
-        'prose-p:my-4 prose-p:leading-7',
+        'prose-h1:text-3xl prose-h1:leading-tight prose-h2:mt-12 prose-h2:border-b prose-h2:pb-3 prose-h2:text-2xl prose-h3:mt-9 prose-h3:text-xl prose-h4:mt-7 prose-h4:text-base',
+        'prose-p:my-4 prose-p:text-[0.95rem] prose-p:leading-7',
         'prose-a:text-primary prose-a:no-underline hover:prose-a:underline',
         'prose-strong:font-semibold',
-        'prose-ul:my-4 prose-ol:my-4 prose-li:my-1.5',
+        'prose-ul:my-5 prose-ol:my-5 prose-li:my-1.5 prose-li:leading-7',
         'prose-img:rounded-lg prose-img:shadow-sm',
         '[&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
         '[overflow-wrap:anywhere] break-words',

@@ -239,9 +239,6 @@ function DocumentationShell({
                 <h2 className='text-3xl font-semibold tracking-tight'>
                   {page.title}
                 </h2>
-                <p className='text-muted-foreground mt-2 text-sm'>
-                  {t('Language')}: {page.locale}
-                </p>
               </header>
               <Markdown className='prose-neutral dark:prose-invert'>
                 {page.content}
