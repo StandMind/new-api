@@ -17,25 +17,32 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import {
+  Children,
   cloneElement,
   isValidElement,
   useEffect,
   useState,
+  type HTMLAttributes,
   type ReactElement,
   type ReactNode,
 } from 'react'
 import {
+  Braces,
   Check,
   Clipboard,
+  Code2,
   Hash,
   Info,
   Lightbulb,
   OctagonAlert,
+  Rows3,
+  SquareTerminal,
   TriangleAlert,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
+import remarkDirective from 'remark-directive'
 import remarkGfm from 'remark-gfm'
 import { createHighlighterCore, type HighlighterCore } from 'shiki/core'
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
@@ -55,6 +62,7 @@ import githubDark from 'shiki/themes/github-dark.mjs'
 import githubLight from 'shiki/themes/github-light.mjs'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { remarkApiDirectives } from '@/components/ui/markdown-directives'
 import {
   Tooltip,
   TooltipContent,
@@ -84,9 +92,19 @@ const endpointPattern =
 type EndpointInfo = {
   method: string
   path: string
+  description?: string
+  title?: string
 }
 
 type TableKind = 'default' | 'parameters' | 'status' | 'comparison' | 'clients'
+
+type ApiDirectiveProps = HTMLAttributes<HTMLElement> & {
+  description?: string
+  method?: string
+  path?: string
+  status?: string
+  title?: string
+}
 
 const languageAliases: Record<string, string> = {
   bash: 'shellscript',
@@ -449,7 +467,7 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
   )
 }
 
-function MarkdownEndpoint({ method, path }: EndpointInfo) {
+function MarkdownEndpoint({ method, path, title, description }: EndpointInfo) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
 
@@ -462,7 +480,10 @@ function MarkdownEndpoint({ method, path }: EndpointInfo) {
   return (
     <section className='not-prose bg-card my-7 overflow-hidden rounded-lg border shadow-sm'>
       <div className='bg-muted/35 text-muted-foreground flex items-center justify-between border-b px-4 py-2.5 text-xs font-medium'>
-        <span>{t('Endpoint')}</span>
+        <div className='flex min-w-0 items-center gap-2'>
+          <SquareTerminal className='size-3.5 shrink-0' />
+          <span className='truncate'>{title || t('Endpoint')}</span>
+        </div>
         <TooltipProvider delay={0}>
           <Tooltip>
             <TooltipTrigger
@@ -500,6 +521,183 @@ function MarkdownEndpoint({ method, path }: EndpointInfo) {
         <code className='bg-muted text-foreground min-w-0 overflow-x-auto rounded-md px-3 py-2 font-mono text-sm leading-none'>
           {path}
         </code>
+      </div>
+      {description ? (
+        <p className='text-muted-foreground m-0 border-t px-4 py-3 text-sm leading-6'>
+          {description}
+        </p>
+      ) : null}
+    </section>
+  )
+}
+
+function ApiDirectiveEndpoint({
+  description,
+  method,
+  path,
+  title,
+}: ApiDirectiveProps) {
+  if (!method || !path) return null
+
+  return (
+    <MarkdownEndpoint
+      method={method}
+      path={path}
+      title={title}
+      description={description}
+    />
+  )
+}
+
+function ApiDirectivePanel({
+  children,
+  title,
+  status,
+  variant = 'default',
+}: ApiDirectiveProps & {
+  variant?: 'default' | 'parameters' | 'request' | 'response'
+}) {
+  const { t } = useTranslation()
+  const labels = {
+    default: title || t('Details'),
+    parameters: title || t('Parameters'),
+    request: title || t('Request'),
+    response: title || t('Response'),
+  }
+  const icons = {
+    default: <Info className='size-4' />,
+    parameters: <Rows3 className='size-4' />,
+    request: <Code2 className='size-4' />,
+    response: <Braces className='size-4' />,
+  }
+
+  return (
+    <section className='not-prose bg-card my-7 overflow-hidden rounded-lg border shadow-sm'>
+      <header className='bg-muted/35 text-muted-foreground flex items-center justify-between border-b px-4 py-3 text-sm font-medium'>
+        <div className='flex min-w-0 items-center gap-2'>
+          {icons[variant]}
+          <span className='truncate'>{labels[variant]}</span>
+        </div>
+        {status ? (
+          <span
+            className={cn(
+              'rounded-md border px-2 py-0.5 font-mono text-xs',
+              status.startsWith('2')
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-300'
+                : 'border-border bg-background text-muted-foreground'
+            )}
+          >
+            {status}
+          </span>
+        ) : null}
+      </header>
+      <div className='api-doc-body px-4 py-4 text-sm leading-7 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0'>
+        {children}
+      </div>
+    </section>
+  )
+}
+
+function ApiDirectiveSection({
+  children,
+  description,
+  method,
+  path,
+  title,
+}: ApiDirectiveProps) {
+  return (
+    <section className='not-prose bg-card my-8 overflow-hidden rounded-lg border shadow-sm'>
+      {(title || description || method || path) && (
+        <header className='bg-muted/30 border-b px-5 py-4'>
+          {title ? (
+            <h3 className='text-foreground text-base font-semibold'>{title}</h3>
+          ) : null}
+          {description ? (
+            <p className='text-muted-foreground mt-1 text-sm leading-6'>
+              {description}
+            </p>
+          ) : null}
+          {method && path ? (
+            <div className='mt-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center'>
+              <span
+                className={cn(
+                  'inline-flex h-7 w-fit items-center rounded-md border px-2.5 font-mono text-xs font-semibold',
+                  getMethodClassName(method)
+                )}
+              >
+                {method}
+              </span>
+              <code className='bg-muted text-foreground min-w-0 overflow-x-auto rounded-md px-3 py-2 font-mono text-sm leading-none'>
+                {path}
+              </code>
+            </div>
+          ) : null}
+        </header>
+      )}
+      <div className='api-doc-body px-5 py-5 text-sm leading-7 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0'>
+        {children}
+      </div>
+    </section>
+  )
+}
+
+function ApiTab({ children }: ApiDirectiveProps) {
+  return <>{children}</>
+}
+
+function ApiTabs({ children, title }: ApiDirectiveProps) {
+  const { t } = useTranslation()
+  const tabs = Children.toArray(children).flatMap((child, index) => {
+    if (!isValidElement<ApiDirectiveProps>(child) || child.type !== ApiTab) {
+      return []
+    }
+
+    return [
+      {
+        content: child.props.children,
+        title: child.props.title || `${t('Example')} ${index + 1}`,
+      },
+    ]
+  })
+  const [activeTab, setActiveTab] = useState(0)
+  const activeIndex = activeTab < tabs.length ? activeTab : 0
+
+  if (tabs.length === 0) {
+    return (
+      <div className='not-prose my-7 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0'>
+        {children}
+      </div>
+    )
+  }
+
+  return (
+    <section className='not-prose bg-card my-7 overflow-hidden rounded-lg border shadow-sm'>
+      <header className='bg-muted/35 border-b px-3 py-3'>
+        <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+          <div className='text-muted-foreground flex items-center gap-2 text-sm font-medium'>
+            <Code2 className='size-4' />
+            <span>{title || t('Example')}</span>
+          </div>
+          <div className='bg-muted inline-flex w-fit max-w-full gap-1 overflow-x-auto rounded-md p-1'>
+            {tabs.map((tab, index) => (
+              <button
+                key={`${tab.title}-${index}`}
+                type='button'
+                className={cn(
+                  'text-muted-foreground hover:text-foreground h-7 rounded px-2.5 text-xs font-medium whitespace-nowrap transition-colors',
+                  index === activeIndex &&
+                    'bg-background text-foreground shadow-sm'
+                )}
+                onClick={() => setActiveTab(index)}
+              >
+                {tab.title}
+              </button>
+            ))}
+          </div>
+        </div>
+      </header>
+      <div className='api-doc-body [&>*:first-child]:mt-0 [&>*:last-child]:mb-0'>
+        {tabs[activeIndex]?.content}
       </div>
     </section>
   )
@@ -709,24 +907,30 @@ export function Markdown({ children, className }: MarkdownProps) {
     ),
   }
 
+  Object.assign(components, {
+    'api-endpoint': (props: ApiDirectiveProps) => (
+      <ApiDirectiveEndpoint {...props} />
+    ),
+    'api-parameters': (props: ApiDirectiveProps) => (
+      <ApiDirectivePanel {...props} variant='parameters' />
+    ),
+    'api-request': (props: ApiDirectiveProps) => (
+      <ApiDirectivePanel {...props} variant='request' />
+    ),
+    'api-response': (props: ApiDirectiveProps) => (
+      <ApiDirectivePanel {...props} variant='response' />
+    ),
+    'api-section': (props: ApiDirectiveProps) => (
+      <ApiDirectiveSection {...props} />
+    ),
+    'api-tab': ApiTab,
+    'api-tabs': ApiTabs,
+  })
+
   return (
-    <div
-      className={cn(
-        'prose prose-neutral prose-sm dark:prose-invert max-w-none',
-        'prose-headings:font-semibold prose-headings:tracking-tight prose-headings:scroll-mt-24',
-        'prose-h1:text-3xl prose-h1:leading-tight prose-h2:mt-12 prose-h2:border-b prose-h2:pb-3 prose-h2:text-2xl prose-h3:mt-9 prose-h3:text-xl prose-h4:mt-7 prose-h4:text-base',
-        'prose-p:my-4 prose-p:text-[0.95rem] prose-p:leading-7',
-        'prose-a:text-primary prose-a:no-underline hover:prose-a:underline',
-        'prose-strong:font-semibold',
-        'prose-ul:my-5 prose-ol:my-5 prose-li:my-1.5 prose-li:leading-7',
-        'prose-img:rounded-lg prose-img:shadow-sm',
-        '[&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
-        '[overflow-wrap:anywhere] break-words',
-        className
-      )}
-    >
+    <div className={cn('markdown-content', className)}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkDirective, remarkApiDirectives]}
         rehypePlugins={[rehypeRaw]}
         components={components}
       >
