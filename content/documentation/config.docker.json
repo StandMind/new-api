@@ -484,10 +484,10 @@
       "method": "POST",
       "path": "/v1/chat/completions",
       "auth": "bearer",
-      "model": "gpt-4o-mini",
+      "model": "gpt-5.4-mini",
       "body": {
         "zh": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -498,7 +498,7 @@
           "max_tokens": 256
         },
         "en": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -509,7 +509,7 @@
           "max_tokens": 256
         },
         "fr": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -520,7 +520,7 @@
           "max_tokens": 256
         },
         "ru": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -531,7 +531,7 @@
           "max_tokens": 256
         },
         "ja": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -542,7 +542,7 @@
           "max_tokens": 256
         },
         "vi": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -558,10 +558,10 @@
       "method": "POST",
       "path": "/v1/chat/completions",
       "auth": "bearer",
-      "model": "gpt-4o-mini",
+      "model": "gpt-5.4-mini",
       "body": {
         "zh": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -572,7 +572,7 @@
           "max_tokens": 256
         },
         "en": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -583,7 +583,7 @@
           "max_tokens": 256
         },
         "fr": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -594,7 +594,7 @@
           "max_tokens": 256
         },
         "ru": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -605,7 +605,7 @@
           "max_tokens": 256
         },
         "ja": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -616,7 +616,7 @@
           "max_tokens": 256
         },
         "vi": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -632,10 +632,10 @@
       "method": "POST",
       "path": "/v1/chat/completions",
       "auth": "bearer",
-      "model": "gpt-4o-mini",
+      "model": "gpt-5.4-mini",
       "body": {
         "zh": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -646,7 +646,7 @@
           "max_tokens": 128
         },
         "en": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -657,7 +657,7 @@
           "max_tokens": 128
         },
         "fr": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -668,7 +668,7 @@
           "max_tokens": 128
         },
         "ru": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -679,7 +679,7 @@
           "max_tokens": 128
         },
         "ja": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -690,7 +690,7 @@
           "max_tokens": 128
         },
         "vi": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -706,10 +706,10 @@
       "method": "POST",
       "path": "/v1/chat/completions",
       "auth": "bearer",
-      "model": "gpt-4o-mini",
+      "model": "gpt-5.4-mini",
       "body": {
         "zh": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -719,7 +719,7 @@
           "max_tokens": 128
         },
         "en": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -729,7 +729,7 @@
           "max_tokens": 128
         },
         "fr": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -739,7 +739,7 @@
           "max_tokens": 128
         },
         "ru": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -749,7 +749,7 @@
           "max_tokens": 128
         },
         "ja": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -759,7 +759,7 @@
           "max_tokens": 128
         },
         "vi": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -779,10 +779,10 @@
       "method": "POST",
       "path": "/v1/chat/completions",
       "auth": "bearer",
-      "model": "gpt-4o-mini",
+      "model": "gpt-5.4-mini",
       "body": {
         "zh": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "system",
@@ -797,7 +797,7 @@
           "max_tokens": 512
         },
         "en": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "system",
@@ -812,7 +812,7 @@
           "max_tokens": 512
         },
         "fr": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "system",
@@ -827,7 +827,7 @@
           "max_tokens": 512
         },
         "ru": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "system",
@@ -842,7 +842,7 @@
           "max_tokens": 512
         },
         "ja": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "system",
@@ -857,7 +857,7 @@
           "max_tokens": 512
         },
         "vi": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "system",
@@ -877,10 +877,10 @@
       "method": "POST",
       "path": "/v1/chat/completions",
       "auth": "bearer",
-      "model": "gpt-4o-mini",
+      "model": "gpt-5.4-mini",
       "body": {
         "zh": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "stream": true,
           "stream_options": {
             "include_usage": true
@@ -893,7 +893,7 @@
           ]
         },
         "en": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "stream": true,
           "stream_options": {
             "include_usage": true
@@ -906,7 +906,7 @@
           ]
         },
         "fr": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "stream": true,
           "stream_options": {
             "include_usage": true
@@ -919,7 +919,7 @@
           ]
         },
         "ru": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "stream": true,
           "stream_options": {
             "include_usage": true
@@ -932,7 +932,7 @@
           ]
         },
         "ja": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "stream": true,
           "stream_options": {
             "include_usage": true
@@ -945,7 +945,7 @@
           ]
         },
         "vi": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "stream": true,
           "stream_options": {
             "include_usage": true
@@ -963,10 +963,10 @@
       "method": "POST",
       "path": "/v1/chat/completions",
       "auth": "bearer",
-      "model": "gpt-4o-mini",
+      "model": "gpt-5.4-mini",
       "body": {
         "zh": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -996,7 +996,7 @@
           "tool_choice": "auto"
         },
         "en": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -1026,7 +1026,7 @@
           "tool_choice": "auto"
         },
         "fr": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -1056,7 +1056,7 @@
           "tool_choice": "auto"
         },
         "ru": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -1086,7 +1086,7 @@
           "tool_choice": "auto"
         },
         "ja": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -1116,7 +1116,7 @@
           "tool_choice": "auto"
         },
         "vi": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "messages": [
             {
               "role": "user",
@@ -1221,10 +1221,10 @@
       "method": "POST",
       "path": "/v1/responses",
       "auth": "bearer",
-      "model": "gpt-4o-mini",
+      "model": "gpt-5.4-mini",
       "body": {
         "zh": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "input": [
             {
               "role": "user",
@@ -1233,7 +1233,7 @@
           ]
         },
         "en": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "input": [
             {
               "role": "user",
@@ -1242,7 +1242,7 @@
           ]
         },
         "fr": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "input": [
             {
               "role": "user",
@@ -1251,7 +1251,7 @@
           ]
         },
         "ru": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "input": [
             {
               "role": "user",
@@ -1260,7 +1260,7 @@
           ]
         },
         "ja": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "input": [
             {
               "role": "user",
@@ -1269,7 +1269,7 @@
           ]
         },
         "vi": {
-          "model": "gpt-4o-mini",
+          "model": "gpt-5.4-mini",
           "input": [
             {
               "role": "user",
