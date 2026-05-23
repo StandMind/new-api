@@ -540,9 +540,7 @@ const RechargeCard = ({
                         <div className='font-medium text-lg mb-2'>
                           {product.name}
                         </div>
-                        <div className='text-sm text-gray-600 mb-2'>
-                          {t('充值额度')}: {product.quota}
-                        </div>
+                        {/* Creem quota is an internal crediting value, so users only see the product and price. */}
                         <div className='text-lg font-semibold text-blue-600'>
                           {product.currency === 'EUR' ? '€' : '$'}
                           {product.price}

@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { formatNumber } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -71,10 +70,7 @@ export function CreemConfirmDialog({
               {formatCreemPrice(product.price, product.currency)}
             </span>
           </div>
-          <div className='flex items-center justify-between'>
-            <span className='text-muted-foreground'>{t('Quota')}</span>
-            <span className='font-medium'>{formatNumber(product.quota)}</span>
-          </div>
+          {/* Creem quota is an internal crediting value and is intentionally hidden from users. */}
         </div>
 
         <DialogFooter className='grid grid-cols-2 gap-2 sm:flex'>

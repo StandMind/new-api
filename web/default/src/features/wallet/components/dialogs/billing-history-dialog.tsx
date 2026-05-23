@@ -184,6 +184,8 @@ export function BillingHistoryDialog({
                 <div className='space-y-3'>
                   {records.map((record) => {
                     const statusConfig = getStatusConfig(record.status)
+                    const hideCreditedAmount =
+                      !isAdmin && record.payment_method === 'creem'
                     return (
                       <div
                         key={record.id}
@@ -239,18 +241,20 @@ export function BillingHistoryDialog({
                               {getPaymentMethodName(record.payment_method, t)}
                             </div>
                           </div>
-                          <div className='space-y-1'>
-                            <Label className='text-muted-foreground text-xs'>
-                              {t('Amount')}
-                            </Label>
-                            <div className='text-sm font-semibold'>
-                              {formatCurrencyFromUSD(record.amount, {
-                                digitsLarge: 2,
-                                digitsSmall: 2,
-                                abbreviate: false,
-                              })}
+                          {!hideCreditedAmount && (
+                            <div className='space-y-1'>
+                              <Label className='text-muted-foreground text-xs'>
+                                {t('Amount')}
+                              </Label>
+                              <div className='text-sm font-semibold'>
+                                {formatCurrencyFromUSD(record.amount, {
+                                  digitsLarge: 2,
+                                  digitsSmall: 2,
+                                  abbreviate: false,
+                                })}
+                              </div>
                             </div>
-                          </div>
+                          )}
                           <div className='space-y-1'>
                             <Label className='text-muted-foreground text-xs'>
                               {t('Payment')}

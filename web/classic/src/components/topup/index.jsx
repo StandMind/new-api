@@ -940,9 +940,7 @@ const TopUp = () => {
               {t('价格')}：{selectedCreemProduct.currency === 'EUR' ? '€' : '$'}
               {selectedCreemProduct.price}
             </p>
-            <p>
-              {t('充值额度')}：{selectedCreemProduct.quota}
-            </p>
+            {/* Creem quota is an internal crediting value and is intentionally hidden from users. */}
             <p>{t('是否确认充值？')}</p>
           </>
         )}
