@@ -73,7 +73,6 @@ import { DynamicPricingBreakdown } from './dynamic-pricing-breakdown'
 import { ModelDetailsApi, ModelDetailsProviderInfo } from './model-details-api'
 import { ModalityIcons } from './model-details-modalities'
 import { ModelDetailsPerformance } from './model-details-performance'
-import { ModelDetailsQuickStats } from './model-details-quick-stats'
 
 // ----------------------------------------------------------------------------
 // Local UI helpers
@@ -963,7 +962,13 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
             />
           </section>
 
-          <ModelDetailsQuickStats metadata={metadata} />
+          {/*
+            The quick stats row is hidden because context length, max output,
+            modalities, knowledge cutoff, and release date are currently inferred
+            client-side rather than loaded from reliable model configuration.
+            Re-enable this after the pricing/model metadata API returns real
+            configured values for these fields.
+          */}
 
           <ModelSignalsSection
             capabilities={metadata.capabilities}
