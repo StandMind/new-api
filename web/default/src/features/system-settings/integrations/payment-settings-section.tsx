@@ -21,7 +21,7 @@ import * as z from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Code2, Eye, ShieldAlert } from 'lucide-react'
+import { Code2, Eye, EyeOff, ShieldAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -45,6 +45,12 @@ import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { RiskAcknowledgementDialog } from '@/components/risk-acknowledgement-dialog'
 import { confirmPaymentCompliance } from '../api'
 import { SettingsSection } from '../components/settings-section'
@@ -156,6 +162,67 @@ type PaymentComplianceDefaults = {
   confirmedBy: number
 }
 
+type PaymentSecretField =
+  | 'CreemApiKey'
+  | 'CreemWebhookSecret'
+  | 'CreemTestApiKey'
+  | 'CreemTestWebhookSecret'
+
+type SecretInputProps = React.ComponentProps<typeof Input> & {
+  visible: boolean
+  onVisibleChange: (visible: boolean) => void
+  showLabel: string
+  hideLabel: string
+}
+
+function SecretInput({
+  visible,
+  onVisibleChange,
+  showLabel,
+  hideLabel,
+  className,
+  ...props
+}: SecretInputProps) {
+  const label = visible ? hideLabel : showLabel
+
+  return (
+    <div className='relative'>
+      <Input
+        {...props}
+        type={visible ? 'text' : 'password'}
+        className={cn('pr-9 font-mono', className)}
+      />
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                type='button'
+                variant='ghost'
+                size='icon-sm'
+                className='absolute top-1/2 right-1 h-6 w-6 -translate-y-1/2'
+                aria-label={label}
+                title={label}
+                onClick={() => onVisibleChange(!visible)}
+              />
+            }
+          >
+            {visible ? (
+              <EyeOff className='h-3.5 w-3.5' />
+            ) : (
+              <Eye className='h-3.5 w-3.5' />
+            )}
+            <span className='sr-only'>{label}</span>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{label}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+  )
+}
+
 type PaymentSettingsSectionProps = {
   defaultValues: PaymentFormValues
   waffoDefaultValues: WaffoSettingsValues
@@ -187,7 +254,25 @@ export function PaymentSettingsSection({
     React.useState(true)
   const [creemTestProductsVisualMode, setCreemTestProductsVisualMode] =
     React.useState(true)
+  const [visibleSecretFields, setVisibleSecretFields] = React.useState<
+    Partial<Record<PaymentSecretField, boolean>>
+  >({})
   const [showComplianceDialog, setShowComplianceDialog] = React.useState(false)
+
+  const setSecretVisible = React.useCallback(
+    (field: PaymentSecretField, visible: boolean) => {
+      setVisibleSecretFields((current) => ({
+        ...current,
+        [field]: visible,
+      }))
+    },
+    []
+  )
+
+  const isSecretVisible = React.useCallback(
+    (field: PaymentSecretField) => visibleSecretFields[field] ?? false,
+    [visibleSecretFields]
+  )
 
   const complianceStatements = React.useMemo(
     () => [
@@ -578,6 +663,13 @@ export function PaymentSettingsSection({
       StripeUnitPrice: values.StripeUnitPrice,
       StripeMinTopUp: values.StripeMinTopUp,
       StripePromotionCodesEnabled: values.StripePromotionCodesEnabled,
+      CreemApiKey: values.CreemApiKey.trim(),
+      CreemWebhookSecret: values.CreemWebhookSecret.trim(),
+      CreemTestMode: values.CreemTestMode,
+      CreemTestApiKey: values.CreemTestApiKey.trim(),
+      CreemTestWebhookSecret: values.CreemTestWebhookSecret.trim(),
+      CreemProducts: values.CreemProducts.trim(),
+      CreemTestProducts: values.CreemTestProducts.trim(),
     }
 
     const initial = {
@@ -599,6 +691,13 @@ export function PaymentSettingsSection({
       StripeMinTopUp: initialRef.current.StripeMinTopUp,
       StripePromotionCodesEnabled:
         initialRef.current.StripePromotionCodesEnabled,
+      CreemApiKey: initialRef.current.CreemApiKey.trim(),
+      CreemWebhookSecret: initialRef.current.CreemWebhookSecret.trim(),
+      CreemTestMode: initialRef.current.CreemTestMode,
+      CreemTestApiKey: initialRef.current.CreemTestApiKey.trim(),
+      CreemTestWebhookSecret: initialRef.current.CreemTestWebhookSecret.trim(),
+      CreemProducts: initialRef.current.CreemProducts.trim(),
+      CreemTestProducts: initialRef.current.CreemTestProducts.trim(),
     }
 
     const updates: Array<{ key: string; value: string | number | boolean }> = []
@@ -693,6 +792,61 @@ export function PaymentSettingsSection({
       updates.push({
         key: 'StripePromotionCodesEnabled',
         value: sanitized.StripePromotionCodesEnabled,
+      })
+    }
+
+    if (
+      sanitized.CreemApiKey &&
+      sanitized.CreemApiKey !== initial.CreemApiKey
+    ) {
+      updates.push({ key: 'CreemApiKey', value: sanitized.CreemApiKey })
+    }
+
+    if (
+      sanitized.CreemWebhookSecret &&
+      sanitized.CreemWebhookSecret !== initial.CreemWebhookSecret
+    ) {
+      updates.push({
+        key: 'CreemWebhookSecret',
+        value: sanitized.CreemWebhookSecret,
+      })
+    }
+
+    if (sanitized.CreemTestMode !== initial.CreemTestMode) {
+      updates.push({ key: 'CreemTestMode', value: sanitized.CreemTestMode })
+    }
+
+    if (
+      sanitized.CreemTestApiKey &&
+      sanitized.CreemTestApiKey !== initial.CreemTestApiKey
+    ) {
+      updates.push({ key: 'CreemTestApiKey', value: sanitized.CreemTestApiKey })
+    }
+
+    if (
+      sanitized.CreemTestWebhookSecret &&
+      sanitized.CreemTestWebhookSecret !== initial.CreemTestWebhookSecret
+    ) {
+      updates.push({
+        key: 'CreemTestWebhookSecret',
+        value: sanitized.CreemTestWebhookSecret,
+      })
+    }
+
+    if (
+      normalizeJsonForComparison(sanitized.CreemProducts) !==
+      normalizeJsonForComparison(initial.CreemProducts)
+    ) {
+      updates.push({ key: 'CreemProducts', value: sanitized.CreemProducts })
+    }
+
+    if (
+      normalizeJsonForComparison(sanitized.CreemTestProducts) !==
+      normalizeJsonForComparison(initial.CreemTestProducts)
+    ) {
+      updates.push({
+        key: 'CreemTestProducts',
+        value: sanitized.CreemTestProducts,
       })
     }
 
@@ -1394,10 +1548,15 @@ export function PaymentSettingsSection({
                   <FormItem>
                     <FormLabel>{t('Live API Key')}</FormLabel>
                     <FormControl>
-                      <Input
-                        type='password'
+                      <SecretInput
                         placeholder={t('Enter Creem API key')}
                         autoComplete='new-password'
+                        visible={isSecretVisible('CreemApiKey')}
+                        onVisibleChange={(visible) =>
+                          setSecretVisible('CreemApiKey', visible)
+                        }
+                        showLabel={t('Show')}
+                        hideLabel={t('Hide')}
                         {...field}
                         onChange={(event) => field.onChange(event.target.value)}
                       />
@@ -1417,10 +1576,15 @@ export function PaymentSettingsSection({
                   <FormItem>
                     <FormLabel>{t('Live Webhook Secret')}</FormLabel>
                     <FormControl>
-                      <Input
-                        type='password'
+                      <SecretInput
                         placeholder={t('Enter webhook secret')}
                         autoComplete='new-password'
+                        visible={isSecretVisible('CreemWebhookSecret')}
+                        onVisibleChange={(visible) =>
+                          setSecretVisible('CreemWebhookSecret', visible)
+                        }
+                        showLabel={t('Show')}
+                        hideLabel={t('Hide')}
                         {...field}
                         onChange={(event) => field.onChange(event.target.value)}
                       />
@@ -1526,10 +1690,15 @@ export function PaymentSettingsSection({
                   <FormItem>
                     <FormLabel>{t('Test API Key')}</FormLabel>
                     <FormControl>
-                      <Input
-                        type='password'
+                      <SecretInput
                         placeholder={t('Enter Creem test API key')}
                         autoComplete='new-password'
+                        visible={isSecretVisible('CreemTestApiKey')}
+                        onVisibleChange={(visible) =>
+                          setSecretVisible('CreemTestApiKey', visible)
+                        }
+                        showLabel={t('Show')}
+                        hideLabel={t('Hide')}
                         {...field}
                         onChange={(event) => field.onChange(event.target.value)}
                       />
@@ -1549,10 +1718,15 @@ export function PaymentSettingsSection({
                   <FormItem>
                     <FormLabel>{t('Test Webhook Secret')}</FormLabel>
                     <FormControl>
-                      <Input
-                        type='password'
+                      <SecretInput
                         placeholder={t('Enter test webhook secret')}
                         autoComplete='new-password'
+                        visible={isSecretVisible('CreemTestWebhookSecret')}
+                        onVisibleChange={(visible) =>
+                          setSecretVisible('CreemTestWebhookSecret', visible)
+                        }
+                        showLabel={t('Show')}
+                        hideLabel={t('Hide')}
                         {...field}
                         onChange={(event) => field.onChange(event.target.value)}
                       />

@@ -392,9 +392,20 @@ export function ModelMutateDrawer({
     async (values: ExtendedModelFormValues): Promise<void> => {
       setIsSubmitting(true)
       try {
+        const descriptionI18n = Object.fromEntries(
+          Object.entries(values.description_i18n || {})
+            .map(([locale, description]) => [
+              locale,
+              String(description || '').trim(),
+            ])
+            .filter(([, description]) => description)
+        )
+
         const submitData = {
           ...values,
           id: isEditing ? currentRow!.id : undefined,
+          description: values.description.trim(),
+          description_i18n: descriptionI18n,
           tags: Array.isArray(values.tags) ? values.tags.join(',') : '',
           status: values.status ? 1 : 0,
           sync_official: values.sync_official ? 1 : 0,

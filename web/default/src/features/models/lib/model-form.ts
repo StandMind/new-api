@@ -94,11 +94,20 @@ export function transformModelToFormDefaults(model: Model): ModelFormValues {
 export function transformFormDataToModelPayload(
   formData: ModelFormValues
 ): Partial<Model> {
+  const descriptionI18n = Object.fromEntries(
+    Object.entries(formData.description_i18n || {})
+      .map(([locale, description]) => [
+        locale,
+        String(description || '').trim(),
+      ])
+      .filter(([, description]) => description)
+  )
+
   return {
     id: formData.id,
     model_name: formData.model_name,
-    description: formData.description || '',
-    description_i18n: formData.description_i18n || {},
+    description: formData.description?.trim() || '',
+    description_i18n: descriptionI18n,
     icon: formData.icon || '',
     tags: formatTagsArray(formData.tags),
     vendor_id: formData.vendor_id,

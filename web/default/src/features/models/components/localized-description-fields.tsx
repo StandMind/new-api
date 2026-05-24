@@ -16,7 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { Control, FieldPath, FieldValues } from 'react-hook-form'
+import type {
+  Control,
+  FieldPath,
+  FieldValues,
+  PathValue,
+} from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import {
   FormControl,
@@ -58,12 +63,17 @@ export function LocalizedDescriptionFields<TFieldValues extends FieldValues>({
 }: LocalizedDescriptionFieldsProps<TFieldValues>) {
   const { t } = useTranslation()
   const descriptionName = 'description' as FieldPath<TFieldValues>
+  const emptyStringValue = '' as PathValue<
+    TFieldValues,
+    FieldPath<TFieldValues>
+  >
 
   return (
     <div className='space-y-4'>
       <FormField
         control={control}
         name={descriptionName}
+        defaultValue={emptyStringValue}
         render={({ field }) => (
           <FormItem>
             <FormLabel>{t('Default description')}</FormLabel>
@@ -116,6 +126,7 @@ export function LocalizedDescriptionFields<TFieldValues extends FieldValues>({
                   name={
                     `description_i18n.${locale.value}` as FieldPath<TFieldValues>
                   }
+                  defaultValue={emptyStringValue}
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>

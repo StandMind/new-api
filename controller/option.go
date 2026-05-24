@@ -53,6 +53,18 @@ func isVisiblePublicKeyOption(key string) bool {
 	}
 }
 
+func isVisibleRootPaymentSecretOption(key string) bool {
+	switch key {
+	case "CreemApiKey",
+		"CreemWebhookSecret",
+		"CreemTestApiKey",
+		"CreemTestWebhookSecret":
+		return true
+	default:
+		return false
+	}
+}
+
 func collectModelNamesFromOptionValue(raw string, modelNames map[string]struct{}) {
 	if strings.TrimSpace(raw) == "" {
 		return
@@ -97,7 +109,9 @@ func GetOptions(c *gin.Context) {
 			strings.HasSuffix(k, "Key") ||
 			strings.HasSuffix(k, "secret") ||
 			strings.HasSuffix(k, "api_key")
-		if isSensitiveKey && !isVisiblePublicKeyOption(k) {
+		if isSensitiveKey &&
+			!isVisiblePublicKeyOption(k) &&
+			!isVisibleRootPaymentSecretOption(k) {
 			continue
 		}
 		options = append(options, &model.Option{
