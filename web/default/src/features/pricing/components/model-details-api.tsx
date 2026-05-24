@@ -20,7 +20,6 @@ import { useMemo, useState } from 'react'
 import {
   ChevronRight,
   ExternalLink,
-  Gauge,
   KeyRound,
   ScrollText,
   ShieldCheck,
@@ -46,9 +45,7 @@ import {
   CodeBlockCopyButton,
 } from '@/components/ai-elements/code-block'
 import {
-  buildRateLimits,
   buildSupportedParameters,
-  formatRateLimit,
   type SupportedParameter,
 } from '../lib/mock-stats'
 import { replaceModelInPath } from '../lib/model-helpers'
@@ -86,6 +83,29 @@ type SampleContext = {
   modelName: string
   endpointType: string
   endpointPath: string
+}
+
+type EndpointOption = {
+  type: string
+  path: string
+  method: string
+}
+
+function buildEndpointOptions(
+  model: PricingModel,
+  endpointMap: Record<string, { path?: string; method?: string }>
+): EndpointOption[] {
+  const types = model.supported_endpoint_types || []
+  return types
+    .map((type) => {
+      const info = endpointMap[type] || {}
+      let path = info.path || ''
+      if (path && path.includes('{model}')) {
+        path = replaceModelInPath(path, model.model_name || '')
+      }
+      return { type, path, method: info.method || 'POST' }
+    })
+    .filter((e) => Boolean(e.path))
 }
 
 function buildChatSample(lang: Lang, ctx: SampleContext): string {
@@ -448,7 +468,9 @@ function buildSample(
 
 function CodeSamplesSection(props: {
   model: PricingModel
-  endpointMap: Record<string, { path?: string; method?: string }>
+  endpoints: EndpointOption[]
+  endpointType: string
+  onEndpointTypeChange: (endpointType: string) => void
 }) {
   const { t } = useTranslation()
   const { status } = useStatus()
@@ -466,30 +488,16 @@ function CodeSamplesSection(props: {
     return 'https://api.example.com'
   }, [status])
 
-  const endpoints = useMemo(() => {
-    const types = props.model.supported_endpoint_types || []
-    return types
-      .map((type) => {
-        const info = props.endpointMap[type] || {}
-        let path = info.path || ''
-        if (path && path.includes('{model}')) {
-          path = replaceModelInPath(path, props.model.model_name || '')
-        }
-        return { type, path, method: info.method || 'POST' }
-      })
-      .filter((e) => Boolean(e.path))
-  }, [props.model, props.endpointMap])
-
-  const [endpointType, setEndpointType] = useState<string>(
-    endpoints[0]?.type ?? ''
-  )
   const [lang, setLang] = useState<Lang>('curl')
 
   const activeEndpoint = useMemo(() => {
-    return endpoints.find((e) => e.type === endpointType) ?? endpoints[0]
-  }, [endpointType, endpoints])
+    return (
+      props.endpoints.find((e) => e.type === props.endpointType) ??
+      props.endpoints[0]
+    )
+  }, [props.endpointType, props.endpoints])
 
-  if (endpoints.length === 0 || !activeEndpoint) {
+  if (props.endpoints.length === 0 || !activeEndpoint) {
     return null
   }
 
@@ -506,10 +514,13 @@ function CodeSamplesSection(props: {
       <SectionTitle icon={ScrollText}>{t('Code samples')}</SectionTitle>
 
       <div className='flex flex-wrap items-center gap-2'>
-        {endpoints.length > 1 && (
-          <Tabs value={endpointType} onValueChange={setEndpointType}>
+        {props.endpoints.length > 1 && (
+          <Tabs
+            value={activeEndpoint.type}
+            onValueChange={props.onEndpointTypeChange}
+          >
             <TabsList className='bg-muted/40 h-8 p-0.5'>
-              {endpoints.map((ep) => (
+              {props.endpoints.map((ep) => (
                 <TabsTrigger
                   key={ep.type}
                   value={ep.type}
@@ -558,18 +569,36 @@ function CodeSamplesSection(props: {
 // Supported parameters table
 // ---------------------------------------------------------------------------
 
-function SupportedParametersSection(props: { model: PricingModel }) {
+function SupportedParametersSection(props: {
+  model: PricingModel
+  endpointType: string
+}) {
   const { t } = useTranslation()
   const params = useMemo(
-    () => buildSupportedParameters(props.model),
-    [props.model]
+    () => buildSupportedParameters(props.model, props.endpointType),
+    [props.model, props.endpointType]
   )
 
   if (params.length === 0) return null
 
   return (
     <section>
-      <SectionTitle icon={Sigma}>{t('Supported parameters')}</SectionTitle>
+      <SectionTitle icon={Sigma}>
+        <span>{t('Supported parameters')}</span>
+        {props.endpointType && (
+          <Badge
+            variant='secondary'
+            className='h-5 rounded-sm px-1.5 font-mono text-[10px] font-normal'
+          >
+            {props.endpointType}
+          </Badge>
+        )}
+      </SectionTitle>
+      <p className='text-muted-foreground mb-2 text-xs'>
+        {t(
+          'Shown for the selected endpoint; optional support can vary by upstream model.'
+        )}
+      </p>
       <div className='border-border/60 overflow-hidden rounded-lg border'>
         <Table>
           <TableHeader>
@@ -662,58 +691,6 @@ function ParamRangeCell(props: { param: SupportedParameter }) {
     )
   }
   return <span className='text-muted-foreground/60 text-[11px]'>—</span>
-}
-
-// ---------------------------------------------------------------------------
-// Rate-limits table
-// ---------------------------------------------------------------------------
-
-function RateLimitsSection(props: { model: PricingModel }) {
-  const { t } = useTranslation()
-  const limits = useMemo(() => buildRateLimits(props.model), [props.model])
-
-  if (limits.length === 0) return null
-
-  return (
-    <section>
-      <SectionTitle icon={Gauge}>{t('Rate limits')}</SectionTitle>
-      <div className='border-border/60 overflow-hidden rounded-lg border'>
-        <Table>
-          <TableHeader>
-            <TableRow className='bg-muted/30 hover:bg-muted/30'>
-              <TableHead className='h-9 text-xs'>{t('Group')}</TableHead>
-              <TableHead className='h-9 text-right text-xs'>RPM</TableHead>
-              <TableHead className='h-9 text-right text-xs'>TPM</TableHead>
-              <TableHead className='h-9 text-right text-xs'>RPD</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {limits.map((l) => (
-              <TableRow key={l.group} className='hover:bg-muted/20'>
-                <TableCell className='py-2 font-mono text-xs'>
-                  {l.group}
-                </TableCell>
-                <TableCell className='py-2 text-right font-mono text-xs'>
-                  {formatRateLimit(l.rpm)}
-                </TableCell>
-                <TableCell className='py-2 text-right font-mono text-xs'>
-                  {formatRateLimit(l.tpm)}
-                </TableCell>
-                <TableCell className='py-2 text-right font-mono text-xs'>
-                  {formatRateLimit(l.rpd)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-      <p className='text-muted-foreground mt-2 text-[11px] leading-relaxed'>
-        {t(
-          'RPM = requests per minute, TPM = tokens per minute, RPD = requests per day. Limits apply per token group.'
-        )}
-      </p>
-    </section>
-  )
 }
 
 // ---------------------------------------------------------------------------
@@ -841,7 +818,7 @@ function AuthSection() {
           </p>
           <p className='text-muted-foreground'>
             {t(
-              'Generate tokens from the Tokens page; you can scope them to specific models, groups, IPs, and rate-limits.'
+              'Generate tokens from the Tokens page; you can scope them to specific models, groups, and IPs.'
             )}
           </p>
         </div>
@@ -858,12 +835,32 @@ export function ModelDetailsApi(props: {
   model: PricingModel
   endpointMap: Record<string, { path?: string; method?: string }>
 }) {
+  const endpoints = useMemo(
+    () => buildEndpointOptions(props.model, props.endpointMap),
+    [props.model, props.endpointMap]
+  )
+  const [endpointType, setEndpointType] = useState<string>(
+    endpoints[0]?.type ?? ''
+  )
+  const activeEndpoint = useMemo(() => {
+    return endpoints.find((e) => e.type === endpointType) ?? endpoints[0]
+  }, [endpointType, endpoints])
+  const selectedEndpointType = activeEndpoint?.type ?? endpointType
+
   return (
     <div className='space-y-6'>
-      <CodeSamplesSection model={props.model} endpointMap={props.endpointMap} />
+      <CodeSamplesSection
+        model={props.model}
+        endpoints={endpoints}
+        endpointType={selectedEndpointType}
+        onEndpointTypeChange={setEndpointType}
+      />
       <AuthSection />
-      <SupportedParametersSection model={props.model} />
-      <RateLimitsSection model={props.model} />
+      <SupportedParametersSection
+        model={props.model}
+        endpointType={selectedEndpointType}
+      />
+      {/* Rate limits are hidden until they can be sourced from enforced backend configuration. */}
     </div>
   )
 }
