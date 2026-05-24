@@ -546,6 +546,20 @@ export function SubscriptionsMutateDrawer({
                   </FormItem>
                 )}
               />
+
+              <FormField
+                control={form.control}
+                name='creem_test_product_id'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Creem Test Product ID')}</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder='prod_test_...' />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
           </form>
         </Form>

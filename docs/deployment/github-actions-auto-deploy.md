@@ -12,7 +12,8 @@
 - compose 文件里后端服务名必须是 `new-api`。
 
 服务器上的 compose 文件可以继续使用原项目的 `docker-compose.yml`。工作流会
-临时写入一个 `docker-compose.image.override.yml`，只覆盖 `new-api` 服务的
+上传 `content/documentation/config.docker.json` 并写入数据库 Option
+`DocumentationSettings`，然后临时写入一个 `docker-compose.image.override.yml`，只覆盖 `new-api` 服务的
 镜像地址。重启命令使用 `up -d --no-deps --force-recreate new-api`，因此只替换
 `new-api` 容器，不会重启或重建 PostgreSQL、Redis、端口、卷等配置。
 
@@ -114,7 +115,8 @@ content/documentation/config.docker.json
 - 本地开发：在“系统设置 -> 内容 -> Documentation”中粘贴
   `content/documentation/config.local.json`。
 - Docker 部署：Markdown 内容会随镜像放到 `/app/documentation/docs`，在后台粘贴
-  `content/documentation/config.docker.json` 后即可启用。
+  `content/documentation/config.docker.json` 后即可启用。当前 GitHub Actions 部署会自动把
+  `content/documentation/config.docker.json` 写入线上 PostgreSQL 的 `DocumentationSettings`。
 - 后端不会读取 `/data/docs/config.json`，也不会用文件配置覆盖数据库配置。
 
 新镜像可以直接提供这些公开路由：

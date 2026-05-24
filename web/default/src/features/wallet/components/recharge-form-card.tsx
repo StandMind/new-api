@@ -72,6 +72,7 @@ interface RechargeFormCardProps {
   onOpenBilling?: () => void
   creemProducts?: CreemProduct[]
   enableCreemTopup?: boolean
+  creemTestMode?: boolean
   onCreemProductSelect?: (product: CreemProduct) => void
   enableWaffoTopup?: boolean
   waffoPayMethods?: WaffoPayMethod[]
@@ -102,6 +103,7 @@ export function RechargeFormCard({
   onOpenBilling,
   creemProducts,
   enableCreemTopup,
+  creemTestMode,
   onCreemProductSelect,
   enableWaffoTopup,
   waffoPayMethods,
@@ -435,8 +437,13 @@ export function RechargeFormCard({
         creemProducts.length > 0 &&
         onCreemProductSelect && (
           <div className='space-y-2.5 border-t pt-4 sm:space-y-3 sm:pt-6'>
-            <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
-              {t('Creem Payment')}
+            <Label className='text-muted-foreground flex items-center gap-2 text-xs font-medium tracking-wider uppercase'>
+              <span>{t('Creem Payment')}</span>
+              {creemTestMode && (
+                <span className='rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'>
+                  {t('Test Mode')}
+                </span>
+              )}
             </Label>
             <CreemProductsSection
               products={creemProducts}

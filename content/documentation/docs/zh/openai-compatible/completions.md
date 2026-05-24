@@ -9,6 +9,6 @@ curl https://aivrae.com/v1/completions \
   -d '{
     "model": "MODEL_NAME",
     "prompt": "Write a short tagline for an API gateway.",
-    "max_tokens": 80
+    "max_tokens": 4096
   }'
 ```

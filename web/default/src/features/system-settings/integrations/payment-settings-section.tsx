@@ -123,7 +123,18 @@ const paymentSchema = z.object({
   CreemApiKey: z.string(),
   CreemWebhookSecret: z.string(),
   CreemTestMode: z.boolean(),
+  CreemTestApiKey: z.string(),
+  CreemTestWebhookSecret: z.string(),
   CreemProducts: z.string().superRefine((value, ctx) => {
+    const error = getJsonError(value, (parsed) => Array.isArray(parsed))
+    if (error) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: error,
+      })
+    }
+  }),
+  CreemTestProducts: z.string().superRefine((value, ctx) => {
     const error = getJsonError(value, (parsed) => Array.isArray(parsed))
     if (error) {
       ctx.addIssue({
@@ -173,6 +184,8 @@ export function PaymentSettingsSection({
   const [amountDiscountVisualMode, setAmountDiscountVisualMode] =
     React.useState(true)
   const [creemProductsVisualMode, setCreemProductsVisualMode] =
+    React.useState(true)
+  const [creemTestProductsVisualMode, setCreemTestProductsVisualMode] =
     React.useState(true)
   const [showComplianceDialog, setShowComplianceDialog] = React.useState(false)
 
@@ -259,6 +272,7 @@ export function PaymentSettingsSection({
       AmountOptions: formatJsonForEditor(defaultValues.AmountOptions),
       AmountDiscount: formatJsonForEditor(defaultValues.AmountDiscount),
       CreemProducts: formatJsonForEditor(defaultValues.CreemProducts),
+      CreemTestProducts: formatJsonForEditor(defaultValues.CreemTestProducts),
     },
   })
 
@@ -271,6 +285,7 @@ export function PaymentSettingsSection({
       AmountOptions: formatJsonForEditor(parsedDefaults.AmountOptions),
       AmountDiscount: formatJsonForEditor(parsedDefaults.AmountDiscount),
       CreemProducts: formatJsonForEditor(parsedDefaults.CreemProducts),
+      CreemTestProducts: formatJsonForEditor(parsedDefaults.CreemTestProducts),
     })
   }, [defaultsSignature, form])
 
@@ -464,14 +479,20 @@ export function PaymentSettingsSection({
       CreemApiKey: values.CreemApiKey.trim(),
       CreemWebhookSecret: values.CreemWebhookSecret.trim(),
       CreemTestMode: values.CreemTestMode as boolean,
+      CreemTestApiKey: values.CreemTestApiKey.trim(),
+      CreemTestWebhookSecret: values.CreemTestWebhookSecret.trim(),
       CreemProducts: values.CreemProducts.trim(),
+      CreemTestProducts: values.CreemTestProducts.trim(),
     }
 
     const initial = {
       CreemApiKey: initialRef.current.CreemApiKey.trim(),
       CreemWebhookSecret: initialRef.current.CreemWebhookSecret.trim(),
       CreemTestMode: initialRef.current.CreemTestMode,
+      CreemTestApiKey: initialRef.current.CreemTestApiKey.trim(),
+      CreemTestWebhookSecret: initialRef.current.CreemTestWebhookSecret.trim(),
       CreemProducts: initialRef.current.CreemProducts.trim(),
+      CreemTestProducts: initialRef.current.CreemTestProducts.trim(),
     }
 
     const updates: Array<{ key: string; value: string | boolean }> = []
@@ -498,10 +519,37 @@ export function PaymentSettingsSection({
     }
 
     if (
+      sanitized.CreemTestApiKey &&
+      sanitized.CreemTestApiKey !== initial.CreemTestApiKey
+    ) {
+      updates.push({ key: 'CreemTestApiKey', value: sanitized.CreemTestApiKey })
+    }
+
+    if (
+      sanitized.CreemTestWebhookSecret &&
+      sanitized.CreemTestWebhookSecret !== initial.CreemTestWebhookSecret
+    ) {
+      updates.push({
+        key: 'CreemTestWebhookSecret',
+        value: sanitized.CreemTestWebhookSecret,
+      })
+    }
+
+    if (
       normalizeJsonForComparison(sanitized.CreemProducts) !==
       normalizeJsonForComparison(initial.CreemProducts)
     ) {
       updates.push({ key: 'CreemProducts', value: sanitized.CreemProducts })
+    }
+
+    if (
+      normalizeJsonForComparison(sanitized.CreemTestProducts) !==
+      normalizeJsonForComparison(initial.CreemTestProducts)
+    ) {
+      updates.push({
+        key: 'CreemTestProducts',
+        value: sanitized.CreemTestProducts,
+      })
     }
 
     if (updates.length === 0) {
@@ -1320,13 +1368,31 @@ export function PaymentSettingsSection({
               </ul>
             </div>
 
+            <Alert>
+              <AlertTitle>
+                {t('Creem test mode uses sandbox credentials')}
+              </AlertTitle>
+              <AlertDescription>
+                {t(
+                  'Create products in the Creem test dashboard, enter the test API key and test product IDs here, then use card 4242 4242 4242 4242 on checkout. Test mode does not create a real charge.'
+                )}
+              </AlertDescription>
+            </Alert>
+
+            <div>
+              <h4 className='text-sm font-medium'>{t('Live configuration')}</h4>
+              <p className='text-muted-foreground text-sm'>
+                {t('Used when Creem test mode is disabled.')}
+              </p>
+            </div>
+
             <div className='grid gap-6 md:grid-cols-2'>
               <FormField
                 control={form.control}
                 name='CreemApiKey'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('API Key')}</FormLabel>
+                    <FormLabel>{t('Live API Key')}</FormLabel>
                     <FormControl>
                       <Input
                         type='password'
@@ -1349,7 +1415,7 @@ export function PaymentSettingsSection({
                 name='CreemWebhookSecret'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Webhook Secret')}</FormLabel>
+                    <FormLabel>{t('Live Webhook Secret')}</FormLabel>
                     <FormControl>
                       <Input
                         type='password'
@@ -1399,7 +1465,7 @@ export function PaymentSettingsSection({
               render={({ field }) => (
                 <FormItem>
                   <div className='mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
-                    <FormLabel>{t('Products')}</FormLabel>
+                    <FormLabel>{t('Live Products')}</FormLabel>
                     <Button
                       type='button'
                       variant='outline'
@@ -1438,7 +1504,118 @@ export function PaymentSettingsSection({
                     )}
                   </FormControl>
                   <FormDescription>
-                    {t('Configure Creem products. Provide a JSON array.')}
+                    {t('Configure live Creem products. Provide a JSON array.')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div>
+              <h4 className='text-sm font-medium'>{t('Test configuration')}</h4>
+              <p className='text-muted-foreground text-sm'>
+                {t('Used when Creem test mode is enabled.')}
+              </p>
+            </div>
+
+            <div className='grid gap-6 md:grid-cols-2'>
+              <FormField
+                control={form.control}
+                name='CreemTestApiKey'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Test API Key')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='password'
+                        placeholder={t('Enter Creem test API key')}
+                        autoComplete='new-password'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Creem test API key (leave blank unless updating)')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='CreemTestWebhookSecret'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Test Webhook Secret')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='password'
+                        placeholder={t('Enter test webhook secret')}
+                        autoComplete='new-password'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Creem test webhook signing secret (leave blank unless updating)'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <FormField
+              control={form.control}
+              name='CreemTestProducts'
+              render={({ field }) => (
+                <FormItem>
+                  <div className='mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+                    <FormLabel>{t('Test Products')}</FormLabel>
+                    <Button
+                      type='button'
+                      variant='outline'
+                      size='sm'
+                      onClick={() =>
+                        setCreemTestProductsVisualMode(
+                          !creemTestProductsVisualMode
+                        )
+                      }
+                      className='w-full sm:w-auto'
+                    >
+                      {creemTestProductsVisualMode ? (
+                        <>
+                          <Code2 className='mr-2 h-3 w-3' />
+                          {t('JSON Editor')}
+                        </>
+                      ) : (
+                        <>
+                          <Eye className='mr-2 h-3 w-3' />
+                          {t('Visual Editor')}
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <FormControl>
+                    {creemTestProductsVisualMode ? (
+                      <CreemProductsVisualEditor
+                        value={field.value}
+                        onChange={field.onChange}
+                      />
+                    ) : (
+                      <Textarea
+                        rows={4}
+                        placeholder='[{"name":"Test Basic","productId":"prod_test_xxx","price":3,"quota":300000,"currency":"USD"}]'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    )}
+                  </FormControl>
+                  <FormDescription>
+                    {t('Configure test Creem products. Provide a JSON array.')}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

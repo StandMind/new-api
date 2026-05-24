@@ -240,6 +240,51 @@ function getModelFromBodyText(bodyText: string) {
   return undefined
 }
 
+function isStreamRequested(payload: unknown, endpointPath: string) {
+  if (isObjectRecord(payload) && payload.stream === true) return true
+  return endpointPath.toLowerCase().includes('stream')
+}
+
+function shouldReadStreamResponse(
+  payload: unknown,
+  endpointPath: string,
+  response: Response
+) {
+  const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
+  if (contentType.includes('text/event-stream')) return true
+  if (contentType.includes('application/json')) return false
+  return isStreamRequested(payload, endpointPath)
+}
+
+async function readStreamingText(
+  response: Response,
+  onChunk: (chunk: string) => void
+) {
+  const reader = response.body?.getReader()
+  if (!reader) return response.text()
+
+  const decoder = new TextDecoder()
+  let text = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    const chunk = decoder.decode(value, { stream: true })
+    if (!chunk) continue
+    text += chunk
+    onChunk(chunk)
+  }
+
+  const tail = decoder.decode()
+  if (tail) {
+    text += tail
+    onChunk(tail)
+  }
+
+  return text
+}
+
 export function ApiDebugPanel({ debug }: ApiDebugPanelProps) {
   const { t } = useTranslation()
   const apiOrigin = useMemo(getBrowserOrigin, [])
@@ -330,6 +375,20 @@ export function ApiDebugPanel({ debug }: ApiDebugPanelProps) {
         headers,
         body: debug.method === 'GET' ? undefined : JSON.stringify(payload),
       })
+
+      if (shouldReadStreamResponse(payload, endpointPath, result)) {
+        let hasChunk = false
+        const text = await readStreamingText(result, (chunk) => {
+          hasChunk = true
+          setResponse((current) => `${current}${chunk}`)
+        })
+
+        if (!hasChunk) {
+          setResponse(text)
+        }
+        return
+      }
+
       const text = await result.text()
       try {
         setResponse(formatResponse(JSON.parse(text)))
@@ -387,7 +446,7 @@ export function ApiDebugPanel({ debug }: ApiDebugPanelProps) {
         <Label className='grid gap-2'>
           <span>{t('Endpoint')}</span>
           <div className='flex min-w-0 rounded-md'>
-            <div className='border-input bg-muted text-muted-foreground flex min-w-0 max-w-[45%] shrink-0 items-center rounded-l-md border border-r-0 px-3 text-sm sm:max-w-[55%]'>
+            <div className='border-input bg-muted text-muted-foreground flex max-w-[45%] min-w-0 shrink-0 items-center rounded-l-md border border-r-0 px-3 text-sm sm:max-w-[55%]'>
               <span className='truncate'>{apiOrigin}</span>
             </div>
             <Input

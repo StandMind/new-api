@@ -167,7 +167,8 @@
             "fr": "Chat completion non streaming",
             "ru": "Chat completion без потока",
             "ja": "チャット補完（非ストリーム）",
-            "vi": "Tạo chat completion không stream"
+            "vi": "Tạo chat completion không stream",
+            "es": "Crear chat completion sin streaming"
           }
         },
         {
@@ -179,7 +180,8 @@
             "fr": "Chat completion streaming",
             "ru": "Chat completion с потоком",
             "ja": "チャット補完（ストリーム）",
-            "vi": "Tạo chat completion dạng stream"
+            "vi": "Tạo chat completion dạng stream",
+            "es": "Crear chat completion con streaming"
           }
         },
         {
@@ -251,7 +253,8 @@
             "fr": "Format natif Claude",
             "ru": "Нативный формат Claude",
             "ja": "Claude ネイティブ形式",
-            "vi": "Định dạng native Claude"
+            "vi": "Định dạng native Claude",
+            "es": "Formato nativo de Claude"
           }
         },
         {
@@ -263,7 +266,8 @@
             "fr": "Format natif Gemini",
             "ru": "Нативный формат Gemini",
             "ja": "Gemini ネイティブ形式",
-            "vi": "Định dạng native Gemini"
+            "vi": "Định dạng native Gemini",
+            "es": "Formato nativo de Gemini"
           }
         },
         {
@@ -495,7 +499,7 @@
             }
           ],
           "temperature": 0.7,
-          "max_tokens": 256
+          "max_tokens": 4096
         },
         "en": {
           "model": "gpt-5.4-mini",
@@ -506,7 +510,7 @@
             }
           ],
           "temperature": 0.7,
-          "max_tokens": 256
+          "max_tokens": 4096
         },
         "fr": {
           "model": "gpt-5.4-mini",
@@ -517,7 +521,7 @@
             }
           ],
           "temperature": 0.7,
-          "max_tokens": 256
+          "max_tokens": 4096
         },
         "ru": {
           "model": "gpt-5.4-mini",
@@ -528,7 +532,7 @@
             }
           ],
           "temperature": 0.7,
-          "max_tokens": 256
+          "max_tokens": 4096
         },
         "ja": {
           "model": "gpt-5.4-mini",
@@ -539,7 +543,7 @@
             }
           ],
           "temperature": 0.7,
-          "max_tokens": 256
+          "max_tokens": 4096
         },
         "vi": {
           "model": "gpt-5.4-mini",
@@ -550,7 +554,18 @@
             }
           ],
           "temperature": 0.7,
-          "max_tokens": 256
+          "max_tokens": 4096
+        },
+        "es": {
+          "model": "gpt-5.4-mini",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Presenta Aivrae en una frase."
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 4096
         }
       }
     },
@@ -569,7 +584,7 @@
             }
           ],
           "temperature": 0.2,
-          "max_tokens": 256
+          "max_tokens": 4096
         },
         "en": {
           "model": "gpt-5.4-mini",
@@ -580,7 +595,7 @@
             }
           ],
           "temperature": 0.2,
-          "max_tokens": 256
+          "max_tokens": 4096
         },
         "fr": {
           "model": "gpt-5.4-mini",
@@ -591,7 +606,7 @@
             }
           ],
           "temperature": 0.2,
-          "max_tokens": 256
+          "max_tokens": 4096
         },
         "ru": {
           "model": "gpt-5.4-mini",
@@ -602,7 +617,7 @@
             }
           ],
           "temperature": 0.2,
-          "max_tokens": 256
+          "max_tokens": 4096
         },
         "ja": {
           "model": "gpt-5.4-mini",
@@ -613,7 +628,7 @@
             }
           ],
           "temperature": 0.2,
-          "max_tokens": 256
+          "max_tokens": 4096
         },
         "vi": {
           "model": "gpt-5.4-mini",
@@ -624,7 +639,7 @@
             }
           ],
           "temperature": 0.2,
-          "max_tokens": 256
+          "max_tokens": 4096
         }
       }
     },
@@ -643,7 +658,7 @@
             }
           ],
           "temperature": 0.7,
-          "max_tokens": 128
+          "max_tokens": 4096
         },
         "en": {
           "model": "gpt-5.4-mini",
@@ -654,7 +669,7 @@
             }
           ],
           "temperature": 0.7,
-          "max_tokens": 128
+          "max_tokens": 4096
         },
         "fr": {
           "model": "gpt-5.4-mini",
@@ -665,7 +680,7 @@
             }
           ],
           "temperature": 0.7,
-          "max_tokens": 128
+          "max_tokens": 4096
         },
         "ru": {
           "model": "gpt-5.4-mini",
@@ -676,7 +691,7 @@
             }
           ],
           "temperature": 0.7,
-          "max_tokens": 128
+          "max_tokens": 4096
         },
         "ja": {
           "model": "gpt-5.4-mini",
@@ -687,7 +702,7 @@
             }
           ],
           "temperature": 0.7,
-          "max_tokens": 128
+          "max_tokens": 4096
         },
         "vi": {
           "model": "gpt-5.4-mini",
@@ -698,7 +713,7 @@
             }
           ],
           "temperature": 0.7,
-          "max_tokens": 128
+          "max_tokens": 4096
         }
       }
     },
@@ -716,7 +731,7 @@
               "content": "确认当前 Base URL 调用可用。"
             }
           ],
-          "max_tokens": 128
+          "max_tokens": 4096
         },
         "en": {
           "model": "gpt-5.4-mini",
@@ -726,7 +741,7 @@
               "content": "Confirm this Base URL works."
             }
           ],
-          "max_tokens": 128
+          "max_tokens": 4096
         },
         "fr": {
           "model": "gpt-5.4-mini",
@@ -736,7 +751,7 @@
               "content": "Confirme que cette Base URL fonctionne."
             }
           ],
-          "max_tokens": 128
+          "max_tokens": 4096
         },
         "ru": {
           "model": "gpt-5.4-mini",
@@ -746,7 +761,7 @@
               "content": "Подтверди, что этот Base URL работает."
             }
           ],
-          "max_tokens": 128
+          "max_tokens": 4096
         },
         "ja": {
           "model": "gpt-5.4-mini",
@@ -756,7 +771,7 @@
               "content": "この Base URL が動作することを確認してください。"
             }
           ],
-          "max_tokens": 128
+          "max_tokens": 4096
         },
         "vi": {
           "model": "gpt-5.4-mini",
@@ -766,7 +781,7 @@
               "content": "Xác nhận Base URL này hoạt động."
             }
           ],
-          "max_tokens": 128
+          "max_tokens": 4096
         }
       }
     },
@@ -794,7 +809,7 @@
             }
           ],
           "temperature": 0.7,
-          "max_tokens": 512
+          "max_tokens": 4096
         },
         "en": {
           "model": "gpt-5.4-mini",
@@ -809,7 +824,7 @@
             }
           ],
           "temperature": 0.7,
-          "max_tokens": 512
+          "max_tokens": 4096
         },
         "fr": {
           "model": "gpt-5.4-mini",
@@ -824,7 +839,7 @@
             }
           ],
           "temperature": 0.7,
-          "max_tokens": 512
+          "max_tokens": 4096
         },
         "ru": {
           "model": "gpt-5.4-mini",
@@ -839,7 +854,7 @@
             }
           ],
           "temperature": 0.7,
-          "max_tokens": 512
+          "max_tokens": 4096
         },
         "ja": {
           "model": "gpt-5.4-mini",
@@ -854,7 +869,7 @@
             }
           ],
           "temperature": 0.7,
-          "max_tokens": 512
+          "max_tokens": 4096
         },
         "vi": {
           "model": "gpt-5.4-mini",
@@ -869,7 +884,22 @@
             }
           ],
           "temperature": 0.7,
-          "max_tokens": 512
+          "max_tokens": 4096
+        },
+        "es": {
+          "model": "gpt-5.4-mini",
+          "messages": [
+            {
+              "role": "system",
+              "content": "Eres un asistente conciso."
+            },
+            {
+              "role": "user",
+              "content": "Escribe un breve mensaje de bienvenida."
+            }
+          ],
+          "temperature": 0.7,
+          "max_tokens": 4096
         }
       }
     },
@@ -890,7 +920,8 @@
               "role": "user",
               "content": "给我三个产品名创意。"
             }
-          ]
+          ],
+          "max_tokens": 4096
         },
         "en": {
           "model": "gpt-5.4-mini",
@@ -903,7 +934,8 @@
               "role": "user",
               "content": "Give me three product name ideas."
             }
-          ]
+          ],
+          "max_tokens": 4096
         },
         "fr": {
           "model": "gpt-5.4-mini",
@@ -916,7 +948,8 @@
               "role": "user",
               "content": "Donne-moi trois idées de noms de produit."
             }
-          ]
+          ],
+          "max_tokens": 4096
         },
         "ru": {
           "model": "gpt-5.4-mini",
@@ -929,7 +962,8 @@
               "role": "user",
               "content": "Предложи три идеи названия продукта."
             }
-          ]
+          ],
+          "max_tokens": 4096
         },
         "ja": {
           "model": "gpt-5.4-mini",
@@ -942,7 +976,8 @@
               "role": "user",
               "content": "プロダクト名の案を3つ出してください。"
             }
-          ]
+          ],
+          "max_tokens": 4096
         },
         "vi": {
           "model": "gpt-5.4-mini",
@@ -955,7 +990,22 @@
               "role": "user",
               "content": "Gợi ý ba tên sản phẩm."
             }
-          ]
+          ],
+          "max_tokens": 4096
+        },
+        "es": {
+          "model": "gpt-5.4-mini",
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          },
+          "messages": [
+            {
+              "role": "user",
+              "content": "Sugiere tres nombres de producto."
+            }
+          ],
+          "max_tokens": 4096
         }
       }
     },
@@ -1156,32 +1206,32 @@
         "zh": {
           "model": "gpt-3.5-turbo-instruct",
           "prompt": "为 API 中转站写一句简短标语。",
-          "max_tokens": 80
+          "max_tokens": 4096
         },
         "en": {
           "model": "gpt-3.5-turbo-instruct",
           "prompt": "Write a short tagline for an API gateway.",
-          "max_tokens": 80
+          "max_tokens": 4096
         },
         "fr": {
           "model": "gpt-3.5-turbo-instruct",
           "prompt": "Écris un court slogan pour une passerelle API.",
-          "max_tokens": 80
+          "max_tokens": 4096
         },
         "ru": {
           "model": "gpt-3.5-turbo-instruct",
           "prompt": "Напиши короткий слоган для API-шлюза.",
-          "max_tokens": 80
+          "max_tokens": 4096
         },
         "ja": {
           "model": "gpt-3.5-turbo-instruct",
           "prompt": "API ゲートウェイ向けの短いキャッチコピーを書いてください。",
-          "max_tokens": 80
+          "max_tokens": 4096
         },
         "vi": {
           "model": "gpt-3.5-turbo-instruct",
           "prompt": "Viết một khẩu hiệu ngắn cho cổng API.",
-          "max_tokens": 80
+          "max_tokens": 4096
         }
       }
     },
@@ -1290,7 +1340,7 @@
       "body": {
         "zh": {
           "model": "claude-3-5-sonnet-20241022",
-          "max_tokens": 512,
+          "max_tokens": 4096,
           "messages": [
             {
               "role": "user",
@@ -1300,7 +1350,7 @@
         },
         "en": {
           "model": "claude-3-5-sonnet-20241022",
-          "max_tokens": 512,
+          "max_tokens": 4096,
           "messages": [
             {
               "role": "user",
@@ -1310,7 +1360,7 @@
         },
         "fr": {
           "model": "claude-3-5-sonnet-20241022",
-          "max_tokens": 512,
+          "max_tokens": 4096,
           "messages": [
             {
               "role": "user",
@@ -1320,7 +1370,7 @@
         },
         "ru": {
           "model": "claude-3-5-sonnet-20241022",
-          "max_tokens": 512,
+          "max_tokens": 4096,
           "messages": [
             {
               "role": "user",
@@ -1330,7 +1380,7 @@
         },
         "ja": {
           "model": "claude-3-5-sonnet-20241022",
-          "max_tokens": 512,
+          "max_tokens": 4096,
           "messages": [
             {
               "role": "user",
@@ -1340,11 +1390,21 @@
         },
         "vi": {
           "model": "claude-3-5-sonnet-20241022",
-          "max_tokens": 512,
+          "max_tokens": 4096,
           "messages": [
             {
               "role": "user",
               "content": "Viết một phần giới thiệu dự án ngắn gọn."
+            }
+          ]
+        },
+        "es": {
+          "model": "claude-3-5-sonnet-20241022",
+          "max_tokens": 4096,
+          "messages": [
+            {
+              "role": "user",
+              "content": "Escribe una presentacion concisa del proyecto."
             }
           ]
         }
@@ -1370,7 +1430,7 @@
           ],
           "generationConfig": {
             "temperature": 0.7,
-            "maxOutputTokens": 256
+            "maxOutputTokens": 4096
           }
         },
         "en": {
@@ -1386,7 +1446,7 @@
           ],
           "generationConfig": {
             "temperature": 0.7,
-            "maxOutputTokens": 256
+            "maxOutputTokens": 4096
           }
         },
         "fr": {
@@ -1402,7 +1462,7 @@
           ],
           "generationConfig": {
             "temperature": 0.7,
-            "maxOutputTokens": 256
+            "maxOutputTokens": 4096
           }
         },
         "ru": {
@@ -1418,7 +1478,7 @@
           ],
           "generationConfig": {
             "temperature": 0.7,
-            "maxOutputTokens": 256
+            "maxOutputTokens": 4096
           }
         },
         "ja": {
@@ -1434,7 +1494,7 @@
           ],
           "generationConfig": {
             "temperature": 0.7,
-            "maxOutputTokens": 256
+            "maxOutputTokens": 4096
           }
         },
         "vi": {
@@ -1450,7 +1510,23 @@
           ],
           "generationConfig": {
             "temperature": 0.7,
-            "maxOutputTokens": 256
+            "maxOutputTokens": 4096
+          }
+        },
+        "es": {
+          "contents": [
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "Presenta Aivrae en una frase."
+                }
+              ]
+            }
+          ],
+          "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 4096
           }
         }
       }

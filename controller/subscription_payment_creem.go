@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -50,11 +51,19 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		common.ApiErrorMsg(c, "套餐未启用")
 		return
 	}
-	if plan.CreemProductId == "" {
+	creemProductId := strings.TrimSpace(plan.CreemProductId)
+	if setting.CreemTestMode {
+		creemProductId = strings.TrimSpace(plan.CreemTestProductId)
+	}
+	if creemProductId == "" {
+		if setting.CreemTestMode {
+			common.ApiErrorMsg(c, "该套餐未配置 Creem 测试商品 ID")
+			return
+		}
 		common.ApiErrorMsg(c, "该套餐未配置 CreemProductId")
 		return
 	}
-	if setting.CreemWebhookSecret == "" && !setting.CreemTestMode {
+	if setting.GetActiveCreemWebhookSecret() == "" && !setting.CreemTestMode {
 		common.ApiErrorMsg(c, "Creem Webhook 未配置")
 		return
 	}
@@ -67,6 +76,11 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 	}
 	if user == nil {
 		common.ApiErrorMsg(c, "用户不存在")
+		return
+	}
+	email, err := getCreemCustomerEmail(user)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
 		return
 	}
 
@@ -112,14 +126,14 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		currency = "USD"
 	}
 	product := &CreemProduct{
-		ProductId: plan.CreemProductId,
+		ProductId: creemProductId,
 		Name:      plan.Title,
 		Price:     plan.PriceAmount,
 		Currency:  currency,
 		Quota:     0,
 	}
 
-	checkoutUrl, err := genCreemLink(c.Request.Context(), referenceId, product, user.Email, user.Username)
+	checkoutUrl, err := genCreemLink(c.Request.Context(), referenceId, product, email, user.Username)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Creem 订阅支付链接创建失败 trade_no=%s product_id=%s error=%q", referenceId, product.ProductId, err.Error()))
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})

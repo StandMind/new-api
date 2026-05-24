@@ -48,13 +48,22 @@ func TestCreemWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	confirmPaymentComplianceForTest(t)
 	originalAPIKey := setting.CreemApiKey
 	originalProducts := setting.CreemProducts
+	originalTestAPIKey := setting.CreemTestApiKey
+	originalTestMode := setting.CreemTestMode
+	originalTestProducts := setting.CreemTestProducts
+	originalTestWebhookSecret := setting.CreemTestWebhookSecret
 	originalWebhookSecret := setting.CreemWebhookSecret
 	t.Cleanup(func() {
 		setting.CreemApiKey = originalAPIKey
 		setting.CreemProducts = originalProducts
+		setting.CreemTestApiKey = originalTestAPIKey
+		setting.CreemTestMode = originalTestMode
+		setting.CreemTestProducts = originalTestProducts
+		setting.CreemTestWebhookSecret = originalTestWebhookSecret
 		setting.CreemWebhookSecret = originalWebhookSecret
 	})
 
+	setting.CreemTestMode = false
 	setting.CreemWebhookSecret = ""
 	setting.CreemApiKey = "creem_api_key"
 	setting.CreemProducts = `[{"productId":"prod_123"}]`
@@ -65,6 +74,24 @@ func TestCreemWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 
 	setting.CreemProducts = "[]"
 	require.False(t, isCreemWebhookEnabled())
+
+	setting.CreemApiKey = "live_creem_api_key"
+	setting.CreemProducts = `[{"productId":"prod_live"}]`
+	setting.CreemWebhookSecret = "live_creem_secret"
+	setting.CreemTestMode = true
+	setting.CreemTestApiKey = ""
+	setting.CreemTestProducts = "[]"
+	setting.CreemTestWebhookSecret = ""
+	require.False(t, isCreemTopUpEnabled())
+	require.False(t, isCreemWebhookEnabled())
+
+	setting.CreemTestApiKey = "test_creem_api_key"
+	setting.CreemTestProducts = `[{"productId":"prod_test"}]`
+	require.True(t, isCreemTopUpEnabled())
+	require.False(t, isCreemWebhookEnabled())
+
+	setting.CreemTestWebhookSecret = "test_creem_secret"
+	require.True(t, isCreemWebhookEnabled())
 }
 
 func TestWaffoWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {

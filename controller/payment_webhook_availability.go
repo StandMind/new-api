@@ -32,14 +32,14 @@ func isCreemTopUpEnabled() bool {
 	if !isPaymentComplianceConfirmed() {
 		return false
 	}
-	products := strings.TrimSpace(setting.CreemProducts)
-	return strings.TrimSpace(setting.CreemApiKey) != "" &&
+	products := strings.TrimSpace(setting.GetActiveCreemProducts())
+	return strings.TrimSpace(setting.GetActiveCreemApiKey()) != "" &&
 		products != "" &&
 		products != "[]"
 }
 
 func isCreemWebhookConfigured() bool {
-	return strings.TrimSpace(setting.CreemWebhookSecret) != ""
+	return strings.TrimSpace(setting.GetActiveCreemWebhookSecret()) != ""
 }
 
 func isCreemWebhookEnabled() bool {

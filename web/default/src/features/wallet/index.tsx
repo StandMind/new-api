@@ -298,6 +298,7 @@ export function Wallet(props: WalletProps) {
                   onOpenBilling={() => setBillingDialogOpen(true)}
                   creemProducts={topupInfo?.creem_products}
                   enableCreemTopup={topupInfo?.enable_creem_topup}
+                  creemTestMode={topupInfo?.creem_test_mode}
                   onCreemProductSelect={handleCreemProductSelect}
                   enableWaffoTopup={topupInfo?.enable_waffo_topup}
                   waffoPayMethods={topupInfo?.waffo_pay_methods}

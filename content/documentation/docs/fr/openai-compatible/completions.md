@@ -9,6 +9,6 @@ curl https://aivrae.com/v1/completions \
   -d '{
     "model": "MODEL_NAME",
     "prompt": "Écris un court slogan pour une passerelle API.",
-    "max_tokens": 80
+    "max_tokens": 4096
   }'
 ```
