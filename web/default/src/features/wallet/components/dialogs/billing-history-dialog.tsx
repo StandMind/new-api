@@ -19,8 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState } from 'react'
 import { Search, Copy, Check, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { formatCurrencyFromUSD } from '@/lib/currency'
-import { formatNumber } from '@/lib/format'
+import {
+  formatBillingCurrencyFromUSD,
+  formatLocalCurrencyAmount,
+  getCurrencyDisplay,
+} from '@/lib/currency'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import {
   AlertDialog,
@@ -97,6 +100,42 @@ export function BillingHistoryDialog({
         setConfirmTradeNo(null)
       }
     }
+  }
+
+  const formatPaymentAmount = (record: {
+    amount: number
+    money: number
+    payment_method: string
+  }) => {
+    if (record.payment_method === 'creem') {
+      return formatBillingCurrencyFromUSD(record.money, {
+        digitsLarge: 2,
+        digitsSmall: 2,
+        abbreviate: false,
+      })
+    }
+
+    return formatLocalCurrencyAmount(record.money, {
+      digitsLarge: 2,
+      digitsSmall: 2,
+      abbreviate: false,
+    })
+  }
+
+  const formatCreditedAmount = (record: {
+    amount: number
+    payment_method: string
+  }) => {
+    const amountUSD =
+      record.payment_method === 'creem'
+        ? record.amount / getCurrencyDisplay().config.quotaPerUnit
+        : record.amount
+
+    return formatBillingCurrencyFromUSD(amountUSD, {
+      digitsLarge: 2,
+      digitsSmall: 2,
+      abbreviate: false,
+    })
   }
 
   return (
@@ -184,8 +223,6 @@ export function BillingHistoryDialog({
                 <div className='space-y-3'>
                   {records.map((record) => {
                     const statusConfig = getStatusConfig(record.status)
-                    const hideCreditedAmount =
-                      !isAdmin && record.payment_method === 'creem'
                     return (
                       <div
                         key={record.id}
@@ -241,26 +278,20 @@ export function BillingHistoryDialog({
                               {getPaymentMethodName(record.payment_method, t)}
                             </div>
                           </div>
-                          {!hideCreditedAmount && (
-                            <div className='space-y-1'>
-                              <Label className='text-muted-foreground text-xs'>
-                                {t('Amount')}
-                              </Label>
-                              <div className='text-sm font-semibold'>
-                                {formatCurrencyFromUSD(record.amount, {
-                                  digitsLarge: 2,
-                                  digitsSmall: 2,
-                                  abbreviate: false,
-                                })}
-                              </div>
-                            </div>
-                          )}
                           <div className='space-y-1'>
                             <Label className='text-muted-foreground text-xs'>
                               {t('Payment')}
                             </Label>
                             <div className='text-sm font-semibold text-red-600'>
-                              {formatNumber(record.money)}
+                              {formatPaymentAmount(record)}
+                            </div>
+                          </div>
+                          <div className='space-y-1'>
+                            <Label className='text-muted-foreground text-xs'>
+                              {t('Credited Amount')}
+                            </Label>
+                            <div className='text-sm font-semibold'>
+                              {formatCreditedAmount(record)}
                             </div>
                           </div>
                         </div>
