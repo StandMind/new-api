@@ -11,6 +11,8 @@ func SetSEORouter(router *gin.Engine) {
 	seoRouter.Use(middleware.RouteTag("web"))
 	{
 		seoRouter.GET("/robots.txt", controller.GetRobotsTxt)
+		seoRouter.HEAD("/robots.txt", controller.GetRobotsTxt)
 		seoRouter.GET("/sitemap.xml", controller.GetSitemapXML)
+		seoRouter.HEAD("/sitemap.xml", controller.GetSitemapXML)
 	}
 }
