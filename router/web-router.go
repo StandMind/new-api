@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/service/webbranding"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
@@ -29,6 +30,20 @@ func SetWebRouter(router *gin.Engine, assets ThemeAssets) {
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 	router.Use(middleware.GlobalWebRateLimit())
 	router.Use(middleware.Cache())
+
+	router.GET("/", func(c *gin.Context) {
+		serveIndexPage(c, assets)
+	})
+	router.HEAD("/", func(c *gin.Context) {
+		serveIndexPage(c, assets)
+	})
+	router.GET("/index.html", func(c *gin.Context) {
+		serveIndexPage(c, assets)
+	})
+	router.HEAD("/index.html", func(c *gin.Context) {
+		serveIndexPage(c, assets)
+	})
+
 	router.Use(static.Serve("/", themeFS))
 	router.NoRoute(func(c *gin.Context) {
 		c.Set(middleware.RouteTagKey, "web")
@@ -36,11 +51,16 @@ func SetWebRouter(router *gin.Engine, assets ThemeAssets) {
 			controller.RelayNotFound(c)
 			return
 		}
-		c.Header("Cache-Control", "no-cache")
-		if common.GetTheme() == "classic" {
-			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.ClassicIndexPage)
-		} else {
-			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.DefaultIndexPage)
-		}
+		serveIndexPage(c, assets)
 	})
+}
+
+func serveIndexPage(c *gin.Context, assets ThemeAssets) {
+	c.Set(middleware.RouteTagKey, "web")
+	c.Header("Cache-Control", "no-cache")
+	if common.GetTheme() == "classic" {
+		c.Data(http.StatusOK, "text/html; charset=utf-8", webbranding.ApplyIndexPageBranding(assets.ClassicIndexPage))
+		return
+	}
+	c.Data(http.StatusOK, "text/html; charset=utf-8", webbranding.ApplyIndexPageBranding(assets.DefaultIndexPage))
 }
