@@ -38,6 +38,18 @@ func TestBlogPostCreateListAndLocalize(t *testing.T) {
 	require.Empty(t, zhItems[0].Content)
 	require.Equal(t, 1, zhItems[0].ReadingMinutes)
 
+	searchedItems, total, err := ListPublishedBlogPosts("zh-CN", "价格", "", 0, 10)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, searchedItems, 1)
+	require.Equal(t, "model-pricing-guide", searchedItems[0].Slug)
+
+	taggedItems, total, err := ListPublishedBlogPosts("en", "", "api", 0, 10)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, taggedItems, 1)
+	require.Equal(t, "model-pricing-guide", taggedItems[0].Slug)
+
 	enPost, err := GetPublishedBlogPostBySlug("model-pricing-guide", "es")
 	require.NoError(t, err)
 	require.Equal(t, "Model pricing guide", enPost.Title)

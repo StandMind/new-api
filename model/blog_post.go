@@ -357,21 +357,23 @@ func listBlogPosts(query *gorm.DB, keyword string, tag string, offset int, limit
 	keyword = strings.TrimSpace(keyword)
 	if keyword != "" {
 		like := "%" + keyword + "%"
-		query = query.Joins("LEFT JOIN blog_post_translations ON blog_post_translations.post_id = blog_posts.id").
-			Where("blog_posts.slug LIKE ? OR blog_post_translations.title LIKE ? OR blog_post_translations.summary LIKE ?", like, like, like)
+		translationQuery := DB.Model(&BlogPostTranslation{}).
+			Select("post_id").
+			Where("title LIKE ? OR summary LIKE ? OR content LIKE ?", like, like, like)
+		query = query.Where("blog_posts.slug LIKE ? OR blog_posts.id IN (?)", like, translationQuery)
 	}
 	if tag = strings.TrimSpace(strings.ToLower(tag)); tag != "" {
 		query = query.Where("tags LIKE ?", "%"+tag+"%")
 	}
 
 	var total int64
-	if err := query.Session(&gorm.Session{}).Distinct("blog_posts.id").Count(&total).Error; err != nil {
+	if err := query.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
 	var ids []int
 	if err := query.Session(&gorm.Session{}).
-		Distinct("blog_posts.id").
+		Select("blog_posts.id").
 		Order("blog_posts.published_time DESC").
 		Order("blog_posts.id DESC").
 		Offset(offset).
