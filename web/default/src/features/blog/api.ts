@@ -23,6 +23,7 @@ import type {
   BlogPost,
   BlogPostAdmin,
   BlogPostPayload,
+  BlogPostStats,
   BlogResponse,
   BlogPostStatus,
 } from './types'
@@ -67,6 +68,15 @@ export async function getBlogPost(slug: string, lang?: string) {
   return res.data
 }
 
+export async function recordBlogPostView(slug: string) {
+  const res = await api.post<BlogResponse<null>>(
+    `/api/blog/posts/${encodeURIComponent(slug)}/view`,
+    {},
+    { skipBusinessError: true, skipErrorHandler: true } as Record<string, unknown>
+  )
+  return res.data
+}
+
 export async function getAdminBlogPosts(params: {
   page?: number
   pageSize?: number
@@ -81,6 +91,27 @@ export async function getAdminBlogPosts(params: {
         page_size: params.pageSize ?? 20,
         keyword: params.keyword || undefined,
         status: params.status || undefined,
+      },
+    }
+  )
+  return res.data
+}
+
+export async function getAdminBlogPostStats(
+  id: number,
+  params: {
+    days?: number
+    startDate?: string
+    endDate?: string
+  } = {}
+) {
+  const res = await api.get<BlogResponse<BlogPostStats>>(
+    `/api/blog/admin/posts/${id}/stats`,
+    {
+      params: {
+        days: params.days ?? 30,
+        start_date: params.startDate || undefined,
+        end_date: params.endDate || undefined,
       },
     }
   )

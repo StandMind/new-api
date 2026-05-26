@@ -41,6 +41,21 @@ export type BlogPostTranslation = {
   content: string
 }
 
+export type BlogPostDailyStats = {
+  date: string
+  views: number
+}
+
+export type BlogPostStats = {
+  days: number
+  start_date: string
+  end_date: string
+  views_today: number
+  total_views: number
+  lifetime_views: number
+  daily?: BlogPostDailyStats[]
+}
+
 export type BlogPostAdmin = {
   id: number
   slug: string
@@ -52,6 +67,7 @@ export type BlogPostAdmin = {
   created_time: number
   updated_time: number
   translations: Partial<Record<InterfaceLanguageCode, BlogPostTranslation>>
+  stats?: BlogPostStats
 }
 
 export type BlogPostPayload = Omit<

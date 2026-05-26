@@ -18,8 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Edit, Plus, Search, Trash2 } from 'lucide-react'
+import { BarChart3, Edit, Plus, Search, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts'
 import {
   INTERFACE_LANGUAGE_OPTIONS,
   normalizeInterfaceLanguage,
@@ -34,6 +35,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
@@ -51,12 +58,14 @@ import { TagInput } from '@/components/tag-input'
 import {
   createAdminBlogPost,
   deleteAdminBlogPost,
+  getAdminBlogPostStats,
   getAdminBlogPosts,
   updateAdminBlogPost,
 } from '@/features/blog/api'
 import type {
   BlogPostAdmin,
   BlogPostPayload,
+  BlogPostStats,
   BlogPostStatus,
   BlogPostTranslation,
 } from '@/features/blog/types'
@@ -64,6 +73,8 @@ import { SettingsSection } from '../components/settings-section'
 import { toast } from 'sonner'
 
 const BLOG_PAGE_SIZE = 20
+const DEFAULT_BLOG_STATS_DAYS = 30
+const DAY_MS = 24 * 60 * 60 * 1000
 
 const emptyTranslation: BlogPostTranslation = {
   title: '',
@@ -121,6 +132,35 @@ function inputToTimestamp(value: string) {
   return Math.floor(new Date(value).getTime() / 1000)
 }
 
+function dateToInputDate(value: Date) {
+  return value.toISOString().slice(0, 10)
+}
+
+function timestampToDateInput(value: number) {
+  if (!value) return ''
+  return dateToInputDate(new Date(value * 1000))
+}
+
+function getDefaultStatsRange(post?: BlogPostAdmin) {
+  const endDate = dateToInputDate(new Date())
+  const defaultStart = dateToInputDate(
+    new Date(new Date(`${endDate}T00:00:00Z`).getTime() - (DEFAULT_BLOG_STATS_DAYS - 1) * DAY_MS)
+  )
+  const publishedDate = timestampToDateInput(post?.published_time ?? 0)
+  let startDate = defaultStart
+  if (publishedDate && publishedDate > defaultStart) {
+    startDate = publishedDate > endDate ? endDate : publishedDate
+  }
+  return { startDate, endDate }
+}
+
+function normalizeStatsRange(range: { startDate: string; endDate: string }) {
+  if (!range.startDate || !range.endDate || range.startDate <= range.endDate) {
+    return range
+  }
+  return { startDate: range.endDate, endDate: range.startDate }
+}
+
 function formatDateTime(value: number, locale: string) {
   if (!value) return '-'
   return new Intl.DateTimeFormat(locale, {
@@ -132,8 +172,233 @@ function formatDateTime(value: number, locale: string) {
   }).format(new Date(value * 1000))
 }
 
+function formatBlogStatsDate(value: string, locale: string) {
+  if (!value) return '-'
+  return new Intl.DateTimeFormat(locale, {
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date(`${value}T12:00:00Z`))
+}
+
+function formatNumber(value: number | undefined, locale: string) {
+  return new Intl.NumberFormat(locale).format(value ?? 0)
+}
+
 function statusLabel(status: BlogPostStatus, t: (key: string) => string) {
   return status === 'published' ? t('Published') : t('Draft')
+}
+
+function getLocalizedBlogTranslation(post: BlogPostAdmin, locale: string) {
+  return post.translations[locale as InterfaceLanguageCode] ??
+    post.translations.en ??
+    post.translations.zh
+}
+
+type BlogStatsDialogProps = {
+  open: boolean
+  post?: BlogPostAdmin
+  stats?: BlogPostStats
+  loading: boolean
+  error: boolean
+  rangeStart: string
+  rangeEnd: string
+  locale: string
+  onRangeChange: (range: { startDate: string; endDate: string }) => void
+  onResetRange: () => void
+  onOpenChange: (open: boolean) => void
+}
+
+function BlogStatsDialog({
+  open,
+  post,
+  stats,
+  loading,
+  error,
+  rangeStart,
+  rangeEnd,
+  locale,
+  onRangeChange,
+  onResetRange,
+  onOpenChange,
+}: BlogStatsDialogProps) {
+  const { t } = useTranslation()
+  const translation = post ? getLocalizedBlogTranslation(post, locale) : undefined
+  const daily = stats?.daily ?? []
+  const hasChartRange = daily.length > 0
+  const chartData = daily.map((point) => ({
+    ...point,
+    label: formatBlogStatsDate(point.date, locale),
+  }))
+  const chartConfig = {
+    views: {
+      label: t('Views'),
+      color: 'var(--primary)',
+    },
+  } satisfies ChartConfig
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className='max-h-[92svh] overflow-y-auto sm:max-w-3xl'>
+        <DialogHeader>
+          <DialogTitle>{t('Blog post stats')}</DialogTitle>
+          <DialogDescription>
+            {translation?.title || post?.slug || t('Blog')}
+          </DialogDescription>
+        </DialogHeader>
+
+        {loading ? (
+          <div className='space-y-3'>
+            <Skeleton className='h-20 w-full' />
+            <Skeleton className='h-48 w-full' />
+          </div>
+        ) : error ? (
+          <div className='rounded-lg border border-dashed px-4 py-10 text-center text-sm'>
+            {t('Failed to load blog stats')}
+          </div>
+        ) : stats ? (
+          <div className='space-y-5'>
+            <div className='grid gap-3 sm:grid-cols-3'>
+              <div className='rounded-lg border p-4'>
+                <p className='text-muted-foreground text-sm'>
+                  {t('All-time views')}
+                </p>
+                <p className='mt-2 text-2xl font-semibold tabular-nums'>
+                  {formatNumber(stats.lifetime_views, locale)}
+                </p>
+              </div>
+              <div className='rounded-lg border p-4'>
+                <p className='text-muted-foreground text-sm'>
+                  {t('Selected range')}
+                </p>
+                <p className='mt-2 text-2xl font-semibold tabular-nums'>
+                  {formatNumber(stats.total_views, locale)}
+                </p>
+              </div>
+              <div className='rounded-lg border p-4'>
+                <p className='text-muted-foreground text-sm'>{t('Today')}</p>
+                <p className='mt-2 text-2xl font-semibold tabular-nums'>
+                  {formatNumber(stats.views_today, locale)}
+                </p>
+              </div>
+            </div>
+
+            <div className='space-y-2'>
+              <div className='flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'>
+                <h4 className='text-sm font-semibold'>{t('Daily views')}</h4>
+                <div className='grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]'>
+                  <div className='space-y-1'>
+                    <Label htmlFor='blog-stats-start' className='text-xs'>
+                      {t('Start date')}
+                    </Label>
+                    <Input
+                      id='blog-stats-start'
+                      type='date'
+                      value={rangeStart}
+                      max={rangeEnd}
+                      onChange={(event) =>
+                        onRangeChange({
+                          startDate: event.target.value,
+                          endDate: rangeEnd,
+                        })
+                      }
+                    />
+                  </div>
+                  <div className='space-y-1'>
+                    <Label htmlFor='blog-stats-end' className='text-xs'>
+                      {t('End date')}
+                    </Label>
+                    <Input
+                      id='blog-stats-end'
+                      type='date'
+                      value={rangeEnd}
+                      min={rangeStart}
+                      max={dateToInputDate(new Date())}
+                      onChange={(event) =>
+                        onRangeChange({
+                          startDate: rangeStart,
+                          endDate: event.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    className='self-end'
+                    onClick={onResetRange}
+                  >
+                    {t('Reset')}
+                  </Button>
+                </div>
+              </div>
+              <div className='h-48 overflow-x-auto rounded-lg border p-3'>
+                {hasChartRange ? (
+                  <ChartContainer
+                    config={chartConfig}
+                    className='h-full min-w-[34rem] aspect-auto'
+                    initialDimension={{ width: 544, height: 192 }}
+                  >
+                    <LineChart
+                      accessibilityLayer
+                      data={chartData}
+                      margin={{ top: 8, right: 12, bottom: 0, left: 0 }}
+                    >
+                      <CartesianGrid vertical={false} />
+                      <XAxis
+                        dataKey='date'
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        minTickGap={24}
+                        tickFormatter={(value) =>
+                          formatBlogStatsDate(String(value), locale)
+                        }
+                      />
+                      <YAxis
+                        width={48}
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        allowDecimals={false}
+                        tickFormatter={(value) =>
+                          formatNumber(Number(value), locale)
+                        }
+                      />
+                      <ChartTooltip
+                        cursor={{
+                          stroke: 'var(--border)',
+                          strokeDasharray: '4 4',
+                        }}
+                        content={
+                          <ChartTooltipContent
+                            labelFormatter={(value) =>
+                              formatBlogStatsDate(String(value), locale)
+                            }
+                          />
+                        }
+                      />
+                      <Line
+                        dataKey='views'
+                        type='monotone'
+                        stroke='var(--color-views)'
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 4 }}
+                      />
+                    </LineChart>
+                  </ChartContainer>
+                ) : (
+                  <div className='text-muted-foreground flex h-full items-center justify-center text-sm'>
+                    {t('No views in this period')}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 type BlogEditorDialogProps = {
@@ -383,6 +648,8 @@ export function BlogSection() {
   const [keyword, setKeyword] = useState('')
   const [status, setStatus] = useState<BlogPostStatus | ''>('')
   const [editingPost, setEditingPost] = useState<BlogPostAdmin | undefined>()
+  const [statsPost, setStatsPost] = useState<BlogPostAdmin | undefined>()
+  const [statsRange, setStatsRange] = useState(() => getDefaultStatsRange())
   const [editorOpen, setEditorOpen] = useState(false)
 
   const postsQuery = useQuery({
@@ -394,6 +661,21 @@ export function BlogSection() {
         keyword,
         status,
       }),
+  })
+
+  const statsQuery = useQuery({
+    queryKey: [
+      'admin-blog-post-stats',
+      statsPost?.id,
+      statsRange.startDate,
+      statsRange.endDate,
+    ],
+    queryFn: () =>
+      getAdminBlogPostStats(statsPost!.id, {
+        startDate: statsRange.startDate,
+        endDate: statsRange.endDate,
+      }),
+    enabled: Boolean(statsPost?.id && statsRange.startDate && statsRange.endDate),
   })
 
   const invalidatePosts = () =>
@@ -450,6 +732,11 @@ export function BlogSection() {
   const openEdit = (post: BlogPostAdmin) => {
     setEditingPost(post)
     setEditorOpen(true)
+  }
+
+  const openStats = (post: BlogPostAdmin) => {
+    setStatsRange(getDefaultStatsRange(post))
+    setStatsPost(post)
   }
 
   const handleDelete = (post: BlogPostAdmin) => {
@@ -518,15 +805,13 @@ export function BlogSection() {
                   <TableHead>{t('Slug')}</TableHead>
                   <TableHead>{t('Status')}</TableHead>
                   <TableHead>{t('Published at')}</TableHead>
+                  <TableHead className='text-right'>{t('30-day views')}</TableHead>
                   <TableHead className='text-right'>{t('Actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {posts.map((post) => {
-                  const translation =
-                    post.translations[locale] ??
-                    post.translations.en ??
-                    post.translations.zh
+                  const translation = getLocalizedBlogTranslation(post, locale)
                   return (
                     <TableRow key={post.id}>
                       <TableCell className='min-w-64 whitespace-normal'>
@@ -544,8 +829,31 @@ export function BlogSection() {
                       <TableCell>
                         {formatDateTime(post.published_time, locale)}
                       </TableCell>
+                      <TableCell className='text-right'>
+                        <div className='font-medium tabular-nums'>
+                          {formatNumber(post.stats?.total_views, locale)}
+                        </div>
+                        <div className='text-muted-foreground text-xs'>
+                          {t('Today {{count}}', {
+                            count: formatNumber(post.stats?.views_today, locale),
+                          })}
+                        </div>
+                        <div className='text-muted-foreground text-xs'>
+                          {t('All-time {{count}}', {
+                            count: formatNumber(post.stats?.lifetime_views, locale),
+                          })}
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <div className='flex justify-end gap-2'>
+                          <Button
+                            size='icon-sm'
+                            variant='outline'
+                            aria-label={t('View blog stats')}
+                            onClick={() => openStats(post)}
+                          >
+                            <BarChart3 className='size-4' />
+                          </Button>
                           <Button
                             size='icon-sm'
                             variant='outline'
@@ -616,6 +924,28 @@ export function BlogSection() {
           if (!open) setEditingPost(undefined)
         }}
         onSubmit={(payload) => saveMutation.mutate(payload)}
+      />
+      <BlogStatsDialog
+        open={Boolean(statsPost)}
+        post={statsPost}
+        stats={statsQuery.data?.success ? statsQuery.data.data : undefined}
+        loading={statsQuery.isLoading}
+        error={statsQuery.isError || statsQuery.data?.success === false}
+        rangeStart={statsRange.startDate}
+        rangeEnd={statsRange.endDate}
+        locale={locale}
+        onRangeChange={(range) =>
+          setStatsRange((current) =>
+            normalizeStatsRange({
+              startDate: range.startDate || current.startDate,
+              endDate: range.endDate || current.endDate,
+            })
+          )
+        }
+        onResetRange={() => setStatsRange(getDefaultStatsRange(statsPost))}
+        onOpenChange={(open) => {
+          if (!open) setStatsPost(undefined)
+        }}
       />
     </SettingsSection>
   )

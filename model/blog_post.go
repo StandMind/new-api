@@ -62,6 +62,7 @@ type BlogPostAdminDTO struct {
 	CreatedTime   int64                                 `json:"created_time"`
 	UpdatedTime   int64                                 `json:"updated_time"`
 	Translations  map[string]BlogPostTranslationPayload `json:"translations"`
+	Stats         BlogPostStatsSummaryDTO               `json:"stats"`
 }
 
 type BlogPostPublicDTO struct {
@@ -80,7 +81,7 @@ type BlogPostPublicDTO struct {
 }
 
 func migrateBlogTables() error {
-	return DB.AutoMigrate(&BlogPost{}, &BlogPostTranslation{})
+	return DB.AutoMigrate(&BlogPost{}, &BlogPostTranslation{}, &BlogPostDailyView{})
 }
 
 func NormalizeBlogSlug(value string) string {
@@ -203,8 +204,17 @@ func ListBlogPostsAdmin(keyword string, status string, offset int, limit int) ([
 		return nil, 0, err
 	}
 	items := make([]BlogPostAdminDTO, 0, len(posts))
+	ids := make([]int, 0, len(posts))
 	for _, post := range posts {
 		items = append(items, post.toAdminDTO())
+		ids = append(ids, post.Id)
+	}
+	stats, err := GetBlogPostStatsSummaries(ids, defaultBlogStatsDays, false)
+	if err != nil {
+		return nil, 0, err
+	}
+	for index := range items {
+		items[index].Stats = stats[items[index].Id]
 	}
 	return items, total, nil
 }
@@ -222,6 +232,11 @@ func GetBlogPostAdmin(id int) (*BlogPostAdminDTO, error) {
 		return nil, err
 	}
 	item := post.toAdminDTO()
+	stats, err := GetBlogPostStats(id, defaultBlogStatsDays)
+	if err != nil {
+		return nil, err
+	}
+	item.Stats = stats
 	return &item, nil
 }
 
@@ -316,6 +331,9 @@ func DeleteBlogPost(id int) error {
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("post_id = ?", id).Delete(&BlogPostTranslation{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("post_id = ?", id).Delete(&BlogPostDailyView{}).Error; err != nil {
 			return err
 		}
 		result := tx.Delete(&BlogPost{}, id)
@@ -494,6 +512,7 @@ func (post BlogPost) toAdminDTO() BlogPostAdminDTO {
 		CreatedTime:   post.CreatedTime,
 		UpdatedTime:   post.UpdatedTime,
 		Translations:  translations,
+		Stats:         BlogPostStatsSummaryDTO{Days: defaultBlogStatsDays},
 	}
 }
 

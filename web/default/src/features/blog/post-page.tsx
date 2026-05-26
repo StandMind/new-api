@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ArrowLeft, CalendarDays, SearchX } from 'lucide-react'
@@ -32,7 +32,7 @@ import {
 } from '@/components/ui/markdown'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PublicLayout } from '@/components/layout'
-import { getBlogPost } from './api'
+import { getBlogPost, recordBlogPostView } from './api'
 
 type BlogPostPageProps = {
   slug: string
@@ -136,12 +136,21 @@ function TableOfContents({ headings }: { headings: MarkdownHeading[] }) {
 export function BlogPostPage({ slug }: BlogPostPageProps) {
   const { t, i18n } = useTranslation()
   const locale = normalizeInterfaceLanguage(i18n.language)
+  const recordedSlugsRef = useRef<Set<string>>(new Set())
   const { data, isLoading } = useQuery({
     queryKey: ['blog-post', slug, locale],
     queryFn: () => getBlogPost(slug, locale),
   })
 
   const post = data?.success ? data.data : undefined
+  useEffect(() => {
+    if (!post?.slug || recordedSlugsRef.current.has(post.slug)) return
+    recordedSlugsRef.current.add(post.slug)
+    void recordBlogPostView(post.slug).catch(() => {
+      recordedSlugsRef.current.delete(post.slug)
+    })
+  }, [post?.slug])
+
   const headings = useMemo(
     () => extractMarkdownHeadings(post?.content ?? ''),
     [post?.content]

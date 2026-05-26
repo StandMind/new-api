@@ -11,6 +11,7 @@ func SetBlogRouter(apiRouter *gin.RouterGroup) {
 	{
 		blogRoute.GET("/posts", controller.GetPublicBlogPosts)
 		blogRoute.GET("/posts/:slug", controller.GetPublicBlogPost)
+		blogRoute.POST("/posts/:slug/view", controller.RecordPublicBlogPostView)
 	}
 
 	blogAdminRoute := blogRoute.Group("/admin")
@@ -18,6 +19,7 @@ func SetBlogRouter(apiRouter *gin.RouterGroup) {
 	{
 		blogAdminRoute.GET("/posts", controller.GetAdminBlogPosts)
 		blogAdminRoute.GET("/posts/:id", controller.GetAdminBlogPost)
+		blogAdminRoute.GET("/posts/:id/stats", controller.GetAdminBlogPostStats)
 		blogAdminRoute.POST("/posts", controller.CreateAdminBlogPost)
 		blogAdminRoute.PUT("/posts/:id", controller.UpdateAdminBlogPost)
 		blogAdminRoute.DELETE("/posts/:id", controller.DeleteAdminBlogPost)
