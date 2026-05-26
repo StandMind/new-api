@@ -94,6 +94,11 @@ export function useTopNavLinks(): TopNavLink[] {
     }
   }
 
+  // Blog
+  if (modules?.blog !== false) {
+    links.push({ title: t('Blog'), href: '/blog' })
+  }
+
   // About
   if (modules?.about !== false) {
     links.push({ title: t('About'), href: '/about' })

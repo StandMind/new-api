@@ -20,6 +20,7 @@ import type { ContentSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
 import { AnnouncementsSection } from './announcements-section'
 import { ApiInfoSection } from './api-info-section'
+import { BlogSection } from './blog-section'
 import { ChatSettingsSection } from './chat-settings-section'
 import { DashboardSection } from './dashboard-section'
 import { DocumentationSection } from './documentation-section'
@@ -105,6 +106,12 @@ const CONTENT_SECTIONS = [
     build: (settings: ContentSettings) => (
       <DocumentationSection defaultValue={settings.DocumentationSettings} />
     ),
+  },
+  {
+    id: 'blog',
+    titleKey: 'Blog',
+    descriptionKey: 'Manage multilingual Markdown blog posts',
+    build: () => <BlogSection />,
   },
   {
     id: 'uptime-kuma',

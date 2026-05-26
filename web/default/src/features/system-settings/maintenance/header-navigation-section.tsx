@@ -48,6 +48,7 @@ const headerNavSchema = z.object({
   rankingsEnabled: z.boolean(),
   rankingsRequireAuth: z.boolean(),
   docs: z.boolean(),
+  blog: z.boolean(),
   about: z.boolean(),
 })
 
@@ -83,6 +84,8 @@ const toFormValues = (config: HeaderNavModulesConfig): HeaderNavFormValues => ({
       : Boolean(config.rankings.requireAuth),
   docs:
     config.docs === undefined ? HEADER_NAV_DEFAULT.docs : Boolean(config.docs),
+  blog:
+    config.blog === undefined ? HEADER_NAV_DEFAULT.blog : Boolean(config.blog),
   about:
     config.about === undefined
       ? HEADER_NAV_DEFAULT.about
@@ -112,6 +115,7 @@ export function HeaderNavigationSection({
       home: values.home,
       console: values.console,
       docs: values.docs,
+      blog: values.blog,
       about: values.about,
       pricing: {
         ...(config.pricing ?? HEADER_NAV_DEFAULT.pricing),
@@ -159,6 +163,11 @@ export function HeaderNavigationSection({
       key: 'docs',
       title: t('Docs'),
       description: t('Documentation or external knowledge base.'),
+    },
+    {
+      key: 'blog',
+      title: t('Blog'),
+      description: t('Public article index for updates and guides.'),
     },
     {
       key: 'about',

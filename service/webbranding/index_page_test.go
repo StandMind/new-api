@@ -60,3 +60,23 @@ func TestApplyIndexPageBrandingLeavesNonIconLinksUnchanged(t *testing.T) {
 	require.Contains(t, body, `rel="stylesheet" href="/style.css"`)
 	require.Contains(t, body, `rel="shortcut icon" href="/assets/logo.png"`)
 }
+
+func TestApplyIndexPageBrandingWithMetaInjectsSEOAndRootHTML(t *testing.T) {
+	withBrand(t, "", "")
+
+	page := []byte(`<!doctype html><html lang="en"><head><title>New API</title><meta name="title" content="New API"><meta name="description" content="Default"></head><body><div id="root"></div></body></html>`)
+
+	body := string(ApplyIndexPageBrandingWithMeta(page, PageMeta{
+		Title:       `Article & Guide`,
+		Description: `Useful <summary>`,
+		Language:    "zh",
+		HeadHTML:    `<link rel="canonical" href="https://example.com/blog/a">`,
+		RootHTML:    `<main><article>Full article</article></main>`,
+	}))
+
+	require.Contains(t, body, `<html lang="zh">`)
+	require.Contains(t, body, `<title>Article &amp; Guide</title>`)
+	require.Contains(t, body, `content="Useful &lt;summary&gt;"`)
+	require.Contains(t, body, `<link rel="canonical" href="https://example.com/blog/a">`)
+	require.Contains(t, body, `<div id="root"><main><article>Full article</article></main></div>`)
+}

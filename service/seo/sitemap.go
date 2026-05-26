@@ -87,6 +87,10 @@ func buildSitemapEntries(baseURL string) []sitemapEntry {
 		builder.addDocumentationPages()
 	}
 
+	if isBooleanModulePublic("blog", true) {
+		builder.addBlogPages()
+	}
+
 	builder.addPath("/terms", changeMonthly, "0.5")
 	builder.addPath("/privacy-policy", changeMonthly, "0.5")
 
@@ -247,6 +251,20 @@ func (b *sitemapBuilder) addDocumentationPages() {
 	}
 	for _, page := range config.Pages {
 		b.addPath(page.Path, changeMonthly, "0.5")
+	}
+}
+
+func (b *sitemapBuilder) addBlogPages() {
+	b.addPath("/blog", changeWeekly, "0.8")
+	if model.DB == nil {
+		return
+	}
+	slugs, err := model.GetPublishedBlogSitemapSlugs()
+	if err != nil {
+		return
+	}
+	for _, slug := range slugs {
+		b.addPath("/blog/"+slug, changeWeekly, "0.7")
 	}
 }
 

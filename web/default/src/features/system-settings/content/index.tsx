@@ -129,6 +129,7 @@ export function ContentSettings() {
     | 'faq'
     | 'email-templates'
     | 'documentation'
+    | 'blog'
     | 'uptime-kuma'
     | 'chat'
     | 'drawing'
