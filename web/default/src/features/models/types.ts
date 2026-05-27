@@ -43,6 +43,7 @@ export interface Model {
   description_i18n?: LocalizedText
   icon?: string
   tags?: string
+  tags_i18n?: LocalizedText
   vendor_id?: number
   endpoints?: string
   status: number
@@ -239,6 +240,7 @@ export const modelFormSchema = z.object({
   description_i18n: z.record(z.string(), z.string()),
   icon: z.string().default(''),
   tags: z.array(z.string()).default([]),
+  tags_i18n: z.record(z.string(), z.array(z.string())).default({}),
   vendor_id: z.number().optional(),
   endpoints: z.string().default(''),
   name_rule: z.number().min(0).max(3).default(0),

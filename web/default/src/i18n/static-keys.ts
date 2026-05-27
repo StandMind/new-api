@@ -62,6 +62,7 @@ export const STATIC_I18N_KEYS = [
   'All Vendors',
   'All Groups',
   'All Tags',
+  'Add {{language}} tags...',
   'More...',
   'Less',
 

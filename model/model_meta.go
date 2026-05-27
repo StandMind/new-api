@@ -28,6 +28,7 @@ type Model struct {
 	DescriptionI18n LocalizedText  `json:"description_i18n,omitempty" gorm:"column:description_i18n;type:text"`
 	Icon            string         `json:"icon,omitempty" gorm:"type:varchar(128)"`
 	Tags            string         `json:"tags,omitempty" gorm:"type:varchar(255)"`
+	TagsI18n        LocalizedText  `json:"tags_i18n,omitempty" gorm:"column:tags_i18n;type:text"`
 	VendorID        int            `json:"vendor_id,omitempty" gorm:"index"`
 	Endpoints       string         `json:"endpoints,omitempty" gorm:"type:text"`
 	Status          int            `json:"status" gorm:"default:1"`
@@ -79,7 +80,7 @@ func (mi *Model) Update() error {
 	mi.UpdatedTime = common.GetTimestamp()
 	// 使用 Select 强制更新所有字段，包括零值
 	return DB.Model(&Model{}).Where("id = ?", mi.Id).
-		Select("model_name", "description", "description_i18n", "icon", "tags", "vendor_id", "endpoints", "status", "sync_official", "name_rule", "updated_time").
+		Select("model_name", "description", "description_i18n", "icon", "tags", "tags_i18n", "vendor_id", "endpoints", "status", "sync_official", "name_rule", "updated_time").
 		Updates(mi).Error
 }
 
@@ -198,7 +199,7 @@ func SearchModels(keyword string, vendor string, offset int, limit int) ([]*Mode
 	db := DB.Model(&Model{})
 	if keyword != "" {
 		like := "%" + keyword + "%"
-		db = db.Where("model_name LIKE ? OR description LIKE ? OR description_i18n LIKE ? OR tags LIKE ?", like, like, like, like)
+		db = db.Where("model_name LIKE ? OR description LIKE ? OR description_i18n LIKE ? OR tags LIKE ? OR tags_i18n LIKE ?", like, like, like, like, like)
 	}
 	if vendor != "" {
 		if vid, err := strconv.Atoi(vendor); err == nil {

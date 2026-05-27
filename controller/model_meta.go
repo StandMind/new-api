@@ -140,6 +140,12 @@ func UpdateModelMeta(c *gin.Context) {
 				m.DescriptionI18n = existing.DescriptionI18n
 			}
 		}
+		if m.TagsI18n == nil {
+			var existing model.Model
+			if err := model.DB.Select("tags_i18n").First(&existing, m.Id).Error; err == nil {
+				m.TagsI18n = existing.TagsI18n
+			}
+		}
 
 		if err := m.Update(); err != nil {
 			common.ApiError(c, err)

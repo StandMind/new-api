@@ -34,6 +34,7 @@ export const modelFormSchema = z.object({
   description_i18n: z.record(z.string(), z.string()),
   icon: z.string().default(''),
   tags: z.array(z.string()).default([]),
+  tags_i18n: z.record(z.string(), z.array(z.string())).default({}),
   vendor_id: z.number().optional(),
   endpoints: z.string().default(''),
   name_rule: z.number().min(0).max(3).default(0),
@@ -78,6 +79,7 @@ export function transformModelToFormDefaults(model: Model): ModelFormValues {
     description_i18n: model.description_i18n || {},
     icon: model.icon || '',
     tags: parseTagsFromUtils(model.tags),
+    tags_i18n: parseLocalizedTags(model.tags_i18n),
     vendor_id: model.vendor_id,
     endpoints: model.endpoints || '',
     name_rule: model.name_rule || 0,
@@ -110,6 +112,7 @@ export function transformFormDataToModelPayload(
     description_i18n: descriptionI18n,
     icon: formData.icon || '',
     tags: formatTagsArray(formData.tags),
+    tags_i18n: formatLocalizedTags(formData.tags_i18n),
     vendor_id: formData.vendor_id,
     endpoints: formData.endpoints || '',
     name_rule: formData.name_rule,
@@ -129,6 +132,27 @@ export function transformFormDataToModelPayload(
  */
 export function formatTagsArray(tags: string[]): string {
   return tags.filter(Boolean).join(',')
+}
+
+function parseLocalizedTags(
+  tagsI18n: Model['tags_i18n']
+): Record<string, string[]> {
+  return Object.fromEntries(
+    Object.entries(tagsI18n || {}).map(([locale, tags]) => [
+      locale,
+      parseTagsFromUtils(tags),
+    ])
+  )
+}
+
+function formatLocalizedTags(
+  tagsI18n: Record<string, string[]>
+): NonNullable<Model['tags_i18n']> {
+  return Object.fromEntries(
+    Object.entries(tagsI18n || {})
+      .map(([locale, tags]) => [locale, formatTagsArray(tags)])
+      .filter(([, tags]) => tags)
+  )
 }
 
 /**

@@ -395,6 +395,7 @@ func SyncUpstreamModels(c *gin.Context) {
 			DescriptionI18n: model.NewLocalizedText(syncLocale, up.Description),
 			Icon:            up.Icon,
 			Tags:            up.Tags,
+			TagsI18n:        model.NewLocalizedText(syncLocale, up.Tags),
 			VendorID:        vendorID,
 			Status:          chooseStatus(up.Status, 1),
 			NameRule:        up.NameRule,
@@ -442,6 +443,7 @@ func SyncUpstreamModels(c *gin.Context) {
 				}
 				if containsField(ow.Fields, "tags") {
 					local.Tags = up.Tags
+					local.TagsI18n = local.TagsI18n.With(syncLocale, up.Tags)
 					needUpdate = true
 				}
 				if containsField(ow.Fields, "vendor") {
@@ -624,8 +626,12 @@ func SyncUpstreamPreview(c *gin.Context) {
 		if strings.TrimSpace(local.Icon) != strings.TrimSpace(up.Icon) {
 			fields = append(fields, conflictField{Field: "icon", Local: local.Icon, Upstream: up.Icon})
 		}
-		if strings.TrimSpace(local.Tags) != strings.TrimSpace(up.Tags) {
-			fields = append(fields, conflictField{Field: "tags", Local: local.Tags, Upstream: up.Tags})
+		localTags := local.Tags
+		if syncLocale != "" {
+			localTags = local.TagsI18n.Localize(syncLocale, local.Tags)
+		}
+		if strings.TrimSpace(localTags) != strings.TrimSpace(up.Tags) {
+			fields = append(fields, conflictField{Field: "tags", Local: localTags, Upstream: up.Tags})
 		}
 		// vendor 对比使用名称
 		localVendor := idToVendorName[local.VendorID]

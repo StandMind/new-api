@@ -19,6 +19,7 @@ type Pricing struct {
 	DescriptionI18n        LocalizedText           `json:"-"`
 	Icon                   string                  `json:"icon,omitempty"`
 	Tags                   string                  `json:"tags,omitempty"`
+	TagsI18n               LocalizedText           `json:"-"`
 	VendorID               int                     `json:"vendor_id,omitempty"`
 	QuotaType              int                     `json:"quota_type"`
 	ModelRatio             float64                 `json:"model_ratio"`
@@ -100,6 +101,7 @@ func LocalizePricingData(pricing []Pricing, vendors []PricingVendor, locale stri
 	copy(localizedPricing, pricing)
 	for i := range localizedPricing {
 		localizedPricing[i].Description = localizedPricing[i].DescriptionI18n.Localize(locale, localizedPricing[i].Description)
+		localizedPricing[i].Tags = localizedPricing[i].TagsI18n.Localize(locale, localizedPricing[i].Tags)
 	}
 
 	localizedVendors := make([]PricingVendor, len(vendors))
@@ -320,6 +322,7 @@ func updatePricing() {
 			pricing.DescriptionI18n = meta.DescriptionI18n
 			pricing.Icon = meta.Icon
 			pricing.Tags = meta.Tags
+			pricing.TagsI18n = meta.TagsI18n
 			pricing.VendorID = meta.VendorID
 		}
 		modelPrice, findPrice := ratio_setting.GetModelPrice(model, false)

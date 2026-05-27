@@ -62,7 +62,6 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { JsonEditor } from '@/components/json-editor'
-import { TagInput } from '@/components/tag-input'
 import {
   useSystemOptions,
   getOptionValue,
@@ -76,6 +75,7 @@ import { getNameRuleOptions, ENDPOINT_TEMPLATES } from '../../constants'
 import { modelsQueryKeys, vendorsQueryKeys, parseModelTags } from '../../lib'
 import type { Model } from '../../types'
 import { LocalizedDescriptionFields } from '../localized-description-fields'
+import { LocalizedTagFields } from '../localized-tag-fields'
 
 // Extended schema for ratio configuration (internal form state only)
 const extendedModelFormSchema = z.object({
@@ -85,6 +85,7 @@ const extendedModelFormSchema = z.object({
   description_i18n: z.record(z.string(), z.string()),
   icon: z.string(),
   tags: z.array(z.string()),
+  tags_i18n: z.record(z.string(), z.array(z.string())).default({}),
   vendor_id: z.number().optional(),
   endpoints: z.string(),
   name_rule: z.number(),
@@ -108,6 +109,34 @@ type ModelMutateDrawerProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   currentRow?: Model | null
+}
+
+function parseLocalizedTags(
+  tagsI18n?: Model['tags_i18n']
+): Record<string, string[]> {
+  return Object.fromEntries(
+    Object.entries(tagsI18n || {}).map(([locale, tags]) => [
+      locale,
+      parseModelTags(tags),
+    ])
+  )
+}
+
+function formatTags(tags: string[]): string {
+  return tags
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .join(',')
+}
+
+function serializeLocalizedTags(
+  tagsI18n?: Record<string, string[]>
+): NonNullable<Model['tags_i18n']> {
+  return Object.fromEntries(
+    Object.entries(tagsI18n || {})
+      .map(([locale, tags]) => [locale, formatTags(tags)])
+      .filter(([, tags]) => tags)
+  )
 }
 
 export function ModelMutateDrawer({
@@ -207,6 +236,7 @@ export function ModelMutateDrawer({
       description_i18n: {},
       icon: '',
       tags: [],
+      tags_i18n: {},
       vendor_id: undefined,
       endpoints: '',
       name_rule: 0,
@@ -267,6 +297,7 @@ export function ModelMutateDrawer({
         description_i18n: model.description_i18n || {},
         icon: model.icon || '',
         tags: parseModelTags(model.tags),
+        tags_i18n: parseLocalizedTags(model.tags_i18n),
         vendor_id: model.vendor_id,
         endpoints: model.endpoints || '',
         name_rule: model.name_rule || 0,
@@ -372,6 +403,7 @@ export function ModelMutateDrawer({
         description_i18n: {},
         icon: '',
         tags: [],
+        tags_i18n: {},
         vendor_id: undefined,
         endpoints: '',
         name_rule: 0,
@@ -406,7 +438,8 @@ export function ModelMutateDrawer({
           id: isEditing ? currentRow!.id : undefined,
           description: values.description.trim(),
           description_i18n: descriptionI18n,
-          tags: Array.isArray(values.tags) ? values.tags.join(',') : '',
+          tags: Array.isArray(values.tags) ? formatTags(values.tags) : '',
+          tags_i18n: serializeLocalizedTags(values.tags_i18n),
           status: values.status ? 1 : 0,
           sync_official: values.sync_official ? 1 : 0,
         }
@@ -757,25 +790,10 @@ export function ModelMutateDrawer({
                 )}
               />
 
-              <FormField
+              <LocalizedTagFields
                 control={form.control}
-                name='tags'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Tags')}</FormLabel>
-                    <FormControl>
-                      <TagInput
-                        value={field.value || []}
-                        onChange={field.onChange}
-                        placeholder={t('Add tags...')}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t('Press Enter or comma to add tags')}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                basePlaceholder='Add tags...'
+                localizedPlaceholder='Add {{language}} tags...'
               />
             </div>
 
