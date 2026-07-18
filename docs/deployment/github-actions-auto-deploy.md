@@ -8,8 +8,8 @@
 
 `.github/workflows/deploy-image.yml` 包含三个任务：
 
-1. Pull Request 和 push 到 `aivrae/main`：运行 Go 测试与默认前端类型检查。
-2. push 到 `aivrae/main`：构建镜像并推送 SHA 标签到 GHCR，在工作流摘要中输出 digest。
+1. Pull Request 和 push 到 `aivrae/main`：运行 Go 测试、默认前端类型检查和容器镜像构建。
+2. Pull Request 只验证镜像可构建，不推送；push 会推送 SHA 标签到 GHCR，并在工作流摘要中输出 digest。
 3. `workflow_dispatch`：经过 `production` Environment 后，将指定 digest 部署到非活动槽。
 
 以下内容变更不会触发生产镜像构建：
@@ -49,8 +49,10 @@ new-api-master  NODE_TYPE=master，不加入 Caddy upstream
 ```text
 /opt/new-api-stack/docker-compose.slots.yml
 /opt/new-api-stack/deploy-blue-green.sh
+/opt/new-api-stack/observe-public.sh
 /opt/new-api-stack/slots.env
 /opt/new-api-stack/active-slot
+/opt/new-api-stack/deployment-history.log
 ```
 
 `active-slot` 只能包含 `blue` 或 `green`。`slots.env` 保存每个槽位与主节点当前使用
@@ -118,10 +120,17 @@ reverse_proxy new-api-green:3000 new-api-blue:3000 {
 不配置 POST 自动重试，避免已到达上游的调用被代理重放并产生重复计费。配置先在
 `aivrae-caddy` 容器内验证，之后使用 `caddy reload` 热加载，不重启 Caddy。
 
+生产 Caddyfile 是只读单文件 bind mount。部署脚本会先把候选配置复制到容器
+`/tmp/Caddyfile.candidate`，再直接从该文件 reload，并通过 Caddy Admin API 确认
+目标槽和回退槽已经进入运行时配置。这样不会依赖容器内 `/etc/caddy/Caddyfile`
+是否仍指向宿主机文件的最新 inode。
+
 ## 回滚
 
 部署脚本在每次切换前保留 Caddyfile 备份。若 reload 或公网状态检查失败，会恢复
 上一份配置并再次 reload。数据库不会自动回滚，原活动槽也不会被自动删除。
+成功切换会追加写入 `deployment-history.log`，记录新活动槽、当前镜像、上一槽位和
+上一镜像引用。
 
 手工查看状态：
 
@@ -136,6 +145,22 @@ cd /opt/new-api-stack
 ./deploy-blue-green.sh switch blue
 ./deploy-blue-green.sh switch green
 ```
+
+## 24 小时观察
+
+首次切入绿槽后，从切流时刻开始至少观察 24 小时。可用独立 systemd transient
+service 持续记录公共状态码和延迟：
+
+```bash
+systemd-run \
+  --unit=aivrae-green-observation \
+  --property=Type=exec \
+  /opt/new-api-stack/observe-public.sh 86400 5
+```
+
+逐次结果保存在 `/opt/new-api-stack/observations/*.csv`，完成摘要保存在同名
+`.summary` 文件。观察期未满前，不得创建正式 blue/master、停止旧容器或关闭
+`16980`。
 
 ## 旧端口
 

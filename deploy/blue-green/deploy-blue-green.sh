@@ -14,6 +14,7 @@ SMOKE_TOKEN="${SMOKE_TOKEN:-}"
 SMOKE_MODEL="${SMOKE_MODEL:-}"
 DEPLOY_REGISTRY_USERNAME="${DEPLOY_REGISTRY_USERNAME:-}"
 DEPLOY_REGISTRY_TOKEN="${DEPLOY_REGISTRY_TOKEN:-}"
+DEPLOY_HISTORY_FILE="${DEPLOY_HISTORY_FILE:-${DEPLOY_PATH}/deployment-history.log}"
 
 usage() {
   cat <<'EOF'
@@ -99,6 +100,28 @@ write_active_slot() {
   mv "${candidate}" "${ACTIVE_SLOT_FILE}"
 }
 
+record_switch() {
+  local active_slot="$1"
+  local previous_slot="$2"
+  local active_service
+  local previous_service
+  local active_image
+  local previous_image
+  active_service="$(service_for_slot "${active_slot}")"
+  previous_service="$(service_for_slot "${previous_slot}")"
+  active_image="$(docker inspect -f '{{.Config.Image}}' "${active_service}")"
+  previous_image="$(docker inspect -f '{{.Config.Image}}' "${previous_service}")"
+
+  printf '%s active_slot=%s active_image=%s previous_slot=%s previous_image=%s\n' \
+    "$(date -Ins)" \
+    "${active_slot}" \
+    "${active_image}" \
+    "${previous_slot}" \
+    "${previous_image}" \
+    >> "${DEPLOY_HISTORY_FILE}"
+  chmod 600 "${DEPLOY_HISTORY_FILE}"
+}
+
 update_slot_image() {
   local slot="$1"
   local image_ref="$2"
@@ -165,7 +188,7 @@ smoke_slot() {
   [ -n "${ip}" ] || fatal "could not resolve ${service} IP"
 
   response="$(curl --fail --silent --show-error --max-time 10 "http://${ip}:3000/api/status")"
-  printf '%s' "${response}" | grep -q '"success"[[:space:]]*:[[:space:]]*true' \
+  grep -q '"success"[[:space:]]*:[[:space:]]*true' <<< "${response}" \
     || fatal "${service} status smoke test failed"
 
   docker exec "${CADDY_CONTAINER}" wget -q -O /dev/null \
@@ -176,7 +199,7 @@ smoke_slot() {
     response="$(curl --fail --silent --show-error --max-time 15 \
       -H "Authorization: Bearer ${SMOKE_TOKEN}" \
       "http://${ip}:3000/v1/models")"
-    printf '%s' "${response}" | grep -q '"data"' \
+    grep -q '"data"' <<< "${response}" \
       || fatal "${service} authenticated model-list smoke test failed"
   else
     log "SMOKE_TOKEN is unset; skipping authenticated model-list smoke test"
@@ -190,7 +213,7 @@ smoke_slot() {
       -H 'Content-Type: application/json' \
       --data "${request_body}" \
       "http://${ip}:3000/v1/chat/completions")"
-    printf '%s' "${response}" | grep -q '"choices"' \
+    grep -q '"choices"' <<< "${response}" \
       || fatal "${service} non-stream relay smoke test failed"
 
     request_body="{\"model\":\"${SMOKE_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with OK.\"}],\"max_tokens\":8,\"stream\":true}"
@@ -199,7 +222,7 @@ smoke_slot() {
       -H 'Content-Type: application/json' \
       --data "${request_body}" \
       "http://${ip}:3000/v1/chat/completions")"
-    printf '%s\n' "${response}" | grep -q '^data:' \
+    grep -q '^data:' <<< "${response}" \
       || fatal "${service} stream relay smoke test failed"
   else
     log "SMOKE_MODEL or SMOKE_TOKEN is unset; skipping live relay smoke tests"
@@ -259,21 +282,35 @@ switch_caddy() {
     --adapter caddyfile >/dev/null
 
   cp -a "${CADDYFILE}" "${backup}"
-  mv "${candidate}" "${CADDYFILE}"
+  cp "${candidate}" "${CADDYFILE}"
   if ! docker exec "${CADDY_CONTAINER}" caddy reload \
-    --config /etc/caddy/Caddyfile \
+    --config /tmp/Caddyfile.candidate \
     --adapter caddyfile; then
-    cp -a "${backup}" "${CADDYFILE}"
+    cp "${backup}" "${CADDYFILE}"
+    docker cp "${backup}" "${CADDY_CONTAINER}:/tmp/Caddyfile.rollback"
     docker exec "${CADDY_CONTAINER}" caddy reload \
-      --config /etc/caddy/Caddyfile \
+      --config /tmp/Caddyfile.rollback \
       --adapter caddyfile
     fatal "Caddy reload failed; previous config restored"
   fi
 
-  if ! curl --fail --silent --show-error --max-time 15 "${PUBLIC_STATUS_URL}" >/dev/null; then
-    cp -a "${backup}" "${CADDYFILE}"
+  local active_config
+  active_config="$(docker exec "${CADDY_CONTAINER}" wget -q -O - http://127.0.0.1:2019/config/)"
+  if ! grep -q "\"dial\":\"${target_service}:3000\".*\"dial\":\"${previous_service}:3000\"" \
+    <<< "${active_config}"; then
+    cp "${backup}" "${CADDYFILE}"
+    docker cp "${backup}" "${CADDY_CONTAINER}:/tmp/Caddyfile.rollback"
     docker exec "${CADDY_CONTAINER}" caddy reload \
-      --config /etc/caddy/Caddyfile \
+      --config /tmp/Caddyfile.rollback \
+      --adapter caddyfile
+    fatal "Caddy admin config did not contain the requested upstreams; previous config restored"
+  fi
+
+  if ! curl --fail --silent --show-error --max-time 15 "${PUBLIC_STATUS_URL}" >/dev/null; then
+    cp "${backup}" "${CADDYFILE}"
+    docker cp "${backup}" "${CADDY_CONTAINER}:/tmp/Caddyfile.rollback"
+    docker exec "${CADDY_CONTAINER}" caddy reload \
+      --config /tmp/Caddyfile.rollback \
       --adapter caddyfile
     fatal "public status check failed; previous Caddy config restored"
   fi
@@ -283,16 +320,20 @@ switch_slot() {
   local target_slot="$1"
   local previous_slot
   local target_service
+  local previous_service
   validate_slot "${target_slot}"
   previous_slot="$(read_active_slot)"
   target_service="$(service_for_slot "${target_slot}")"
+  previous_service="$(service_for_slot "${previous_slot}")"
 
   [ "${target_slot}" != "${previous_slot}" ] || fatal "${target_slot} is already active"
+  container_running "${previous_service}" || fatal "active service ${previous_service} is not running"
   container_running "${target_service}" || fatal "${target_service} is not running"
   wait_healthy "${target_service}"
   smoke_slot "${target_slot}"
   switch_caddy "${target_slot}" "${previous_slot}"
   write_active_slot "${target_slot}"
+  record_switch "${target_slot}" "${previous_slot}"
   log "active slot changed from ${previous_slot} to ${target_slot}"
 }
 
@@ -301,6 +342,7 @@ deploy_inactive() {
   local active_slot
   local inactive_slot
   local inactive_service
+  local active_service
   local connections
 
   case "${image_ref}" in
@@ -311,6 +353,8 @@ deploy_inactive() {
   active_slot="$(read_active_slot)"
   inactive_slot="$(other_slot "${active_slot}")"
   inactive_service="$(service_for_slot "${inactive_slot}")"
+  active_service="$(service_for_slot "${active_slot}")"
+  container_running "${active_service}" || fatal "active service ${active_service} is not running"
   connections="$(connection_count "${inactive_service}")"
   [ "${connections}" -eq 0 ] || fatal "${inactive_service} still has ${connections} established connection(s)"
 
@@ -326,6 +370,7 @@ deploy_inactive() {
   smoke_slot "${inactive_slot}"
   switch_caddy "${inactive_slot}" "${active_slot}"
   write_active_slot "${inactive_slot}"
+  record_switch "${inactive_slot}" "${active_slot}"
   log "deployed ${image_ref} to ${inactive_slot}; ${active_slot} remains running"
 }
 
@@ -348,6 +393,9 @@ show_status() {
       printf '%s running=false\n' "${service}"
     fi
   done
+  if [ -s "${DEPLOY_HISTORY_FILE}" ]; then
+    printf 'last_switch=%s\n' "$(tail -n 1 "${DEPLOY_HISTORY_FILE}")"
+  fi
 }
 
 main() {
