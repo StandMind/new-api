@@ -14,6 +14,7 @@ PUBLIC_MODELS_URL="${PUBLIC_MODELS_URL:-https://aivrae.com/v1/models}"
 PUBLIC_CHAT_URL="${PUBLIC_CHAT_URL:-https://aivrae.com/v1/chat/completions}"
 SMOKE_TOKEN="${SMOKE_TOKEN:-}"
 SMOKE_MODEL="${SMOKE_MODEL:-}"
+SMOKE_RETRY_DELAY_SECONDS="${SMOKE_RETRY_DELAY_SECONDS:-60}"
 DEPLOY_REGISTRY_USERNAME="${DEPLOY_REGISTRY_USERNAME:-}"
 DEPLOY_REGISTRY_TOKEN="${DEPLOY_REGISTRY_TOKEN:-}"
 DEPLOY_HISTORY_FILE="${DEPLOY_HISTORY_FILE:-${DEPLOY_PATH}/deployment-history.log}"
@@ -401,10 +402,12 @@ smoke_slot() {
         break
       fi
       log "${service} non-stream relay smoke attempt ${attempt} failed"
-      sleep 3
+      [ "${attempt}" -ge 5 ] || sleep "${SMOKE_RETRY_DELAY_SECONDS}"
     done
     [ "${relay_ok}" -eq 1 ] || fatal "${service} non-stream relay smoke test failed"
 
+    log "waiting ${SMOKE_RETRY_DELAY_SECONDS} seconds before the stream relay smoke test"
+    sleep "${SMOKE_RETRY_DELAY_SECONDS}"
     request_body="{\"model\":\"${SMOKE_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with OK.\"}],\"max_tokens\":8,\"stream\":true}"
     relay_ok=0
     for attempt in $(seq 1 5); do
@@ -419,7 +422,7 @@ smoke_slot() {
         break
       fi
       log "${service} stream relay smoke attempt ${attempt} failed"
-      sleep 3
+      [ "${attempt}" -ge 5 ] || sleep "${SMOKE_RETRY_DELAY_SECONDS}"
     done
     [ "${relay_ok}" -eq 1 ] || fatal "${service} stream relay smoke test failed"
   else
@@ -738,6 +741,8 @@ start_drain_sse() {
   DRAIN_SSE_FILE="${DEPLOY_PATH}/upgrade-sse/$(date +%F_%H%M%S)-${slot}.log"
   request_body="{\"model\":\"${SMOKE_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"Count from 1 to 1000, one number per line, with no other text.\"}],\"max_tokens\":1024,\"stream\":true}"
 
+  log "waiting ${SMOKE_RETRY_DELAY_SECONDS} seconds before the public drain SSE"
+  sleep "${SMOKE_RETRY_DELAY_SECONDS}"
   curl --fail --silent --show-error --no-buffer --max-time 900 \
     -H "Authorization: Bearer ${SMOKE_TOKEN}" \
     -H 'Content-Type: application/json' \

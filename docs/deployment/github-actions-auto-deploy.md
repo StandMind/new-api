@@ -124,7 +124,9 @@ docker-compose.slots.yml  blue、green、master
 应用收到 SIGTERM 后立即将 `/readyz` 置为 503，默认等待 15 秒让 Caddy 摘除节点，
 再执行最长 900 秒的 `http.Server.Shutdown`。Compose 的 `stop_grace_period` 为
 16 分钟。脚本仍拒绝重建存在已建立 HTTP 连接的非活动槽；真实中转冒烟最多重试
-5 次，流式请求必须收到 SSE 数据和 `[DONE]`。
+5 次，流式请求必须收到 SSE 数据和 `[DONE]`。真实非流式、流式和长 SSE 探测之间
+默认间隔 60 秒；失败重试也等待 60 秒，避免把同一上游限流或自动保护窗口内的请求
+连续耗尽。该等待只延长发布，不会把 429/503 当作成功。
 
 ## 跨版本升级
 
