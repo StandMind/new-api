@@ -206,24 +206,43 @@ smoke_slot() {
   fi
 
   if [ -n "${SMOKE_TOKEN}" ] && [ -n "${SMOKE_MODEL}" ]; then
+    local attempt
+    local relay_ok
     local request_body
     request_body="{\"model\":\"${SMOKE_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with OK.\"}],\"max_tokens\":8,\"stream\":false}"
-    response="$(curl --fail --silent --show-error --max-time 90 \
-      -H "Authorization: Bearer ${SMOKE_TOKEN}" \
-      -H 'Content-Type: application/json' \
-      --data "${request_body}" \
-      "http://${ip}:3000/v1/chat/completions")"
-    grep -q '"choices"' <<< "${response}" \
-      || fatal "${service} non-stream relay smoke test failed"
+    relay_ok=0
+    for attempt in $(seq 1 5); do
+      if response="$(curl --fail --silent --show-error --max-time 90 \
+        -H "Authorization: Bearer ${SMOKE_TOKEN}" \
+        -H 'Content-Type: application/json' \
+        --data "${request_body}" \
+        "http://${ip}:3000/v1/chat/completions")" \
+        && grep -q '"choices"' <<< "${response}"; then
+        relay_ok=1
+        break
+      fi
+      log "${service} non-stream relay smoke attempt ${attempt} failed"
+      sleep 3
+    done
+    [ "${relay_ok}" -eq 1 ] || fatal "${service} non-stream relay smoke test failed"
 
     request_body="{\"model\":\"${SMOKE_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with OK.\"}],\"max_tokens\":8,\"stream\":true}"
-    response="$(curl --fail --silent --show-error --no-buffer --max-time 90 \
-      -H "Authorization: Bearer ${SMOKE_TOKEN}" \
-      -H 'Content-Type: application/json' \
-      --data "${request_body}" \
-      "http://${ip}:3000/v1/chat/completions")"
-    grep -q '^data:' <<< "${response}" \
-      || fatal "${service} stream relay smoke test failed"
+    relay_ok=0
+    for attempt in $(seq 1 5); do
+      if response="$(curl --fail --silent --show-error --no-buffer --max-time 90 \
+        -H "Authorization: Bearer ${SMOKE_TOKEN}" \
+        -H 'Content-Type: application/json' \
+        --data "${request_body}" \
+        "http://${ip}:3000/v1/chat/completions")" \
+        && grep -q '^data:' <<< "${response}" \
+        && grep -qF 'data: [DONE]' <<< "${response}"; then
+        relay_ok=1
+        break
+      fi
+      log "${service} stream relay smoke attempt ${attempt} failed"
+      sleep 3
+    done
+    [ "${relay_ok}" -eq 1 ] || fatal "${service} stream relay smoke test failed"
   else
     log "SMOKE_MODEL or SMOKE_TOKEN is unset; skipping live relay smoke tests"
   fi
