@@ -203,14 +203,3 @@ systemd-run \
 8. 使用同 digest 完成 blue -> green 和 green -> blue 往返切换。
 9. reload 前已建立的 SSE 请求能够完整收到 `[DONE]`。
 10. Caddy、PostgreSQL 和 Redis 在整个迁移过程中没有重启。
-
-## 旧端口
-
-首次部署使用的公网 `16980` 仅用于阶段性测试。正式蓝绿槽位不映射宿主机 API
-端口；旧单容器在连接排空并停止后，该端口随之关闭。随后还必须从基础 Compose
-删除旧服务并禁用停止容器的自动重启，避免端口在 Docker 或宿主机重启后恢复。
-公开 API 始终使用：
-
-```text
-https://aivrae.com
-```
