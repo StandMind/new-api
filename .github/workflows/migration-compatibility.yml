@@ -35,6 +35,12 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Prepare migration-only embedded assets
+        run: |
+          install -d web/default/dist web/classic/dist
+          printf '<!doctype html><title>migration-only</title>\n' > web/default/dist/index.html
+          printf '<!doctype html><title>migration-only</title>\n' > web/classic/dist/index.html
+
       - name: Build migration binary
         run: go build -o "${RUNNER_TEMP}/new-api" .
 
@@ -82,6 +88,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Prepare migration-only embedded assets
+        run: |
+          install -d web/default/dist web/classic/dist
+          printf '<!doctype html><title>migration-only</title>\n' > web/default/dist/index.html
+          printf '<!doctype html><title>migration-only</title>\n' > web/classic/dist/index.html
 
       - name: Create legacy schema
         run: |
@@ -142,6 +154,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Prepare migration-only embedded assets
+        run: |
+          install -d web/default/dist web/classic/dist
+          printf '<!doctype html><title>migration-only</title>\n' > web/default/dist/index.html
+          printf '<!doctype html><title>migration-only</title>\n' > web/classic/dist/index.html
 
       - name: Create legacy schema
         run: |
