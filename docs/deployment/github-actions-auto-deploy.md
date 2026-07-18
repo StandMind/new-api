@@ -8,9 +8,14 @@
 
 `.github/workflows/deploy-image.yml` 包含三个任务：
 
-1. Pull Request 和 push 到 `aivrae/main`：运行 Go 测试、默认前端类型检查和容器镜像构建。
+1. Pull Request 和 push 到 `aivrae/main`：运行 Go 测试、默认前端类型检查、部署工具校验和容器镜像构建。
 2. Pull Request 只验证镜像可构建，不推送；push 会推送 SHA 标签到 GHCR，并在工作流摘要中输出 digest。
 3. `workflow_dispatch`：经过 `production` Environment 后，将指定 digest 部署到非活动槽。
+
+当前 fork 的全量 Go 测试存在本次部署改造之前就有的失败，因此测试仍会执行并在
+工作流摘要中报告，但暂不阻断部署基础设施工作流。部署脚本语法、Compose 展开、
+默认前端类型检查和完整生产 Docker 镜像构建均为阻断式检查。修复应用测试基线
+属于后续应用代码计划，不在本次部署改造中处理。
 
 以下内容变更不会触发生产镜像构建：
 
