@@ -2,13 +2,18 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -23,6 +28,7 @@ import (
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/router"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/authz"
 	_ "github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
@@ -48,12 +54,21 @@ var classicBuildFS embed.FS
 var classicIndexPage []byte
 
 func main() {
+	if err := run(); err != nil {
+		common.SysError(err.Error())
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	startTime := time.Now()
+	if migrationOnlyRequested() {
+		return runMigrationsOnly()
+	}
 
 	err := InitResources()
 	if err != nil {
-		common.FatalLog("failed to initialize resources: " + err.Error())
-		return
+		return fmt.Errorf("failed to initialize resources: %w", err)
 	}
 
 	common.SysLog("New API " + common.Version + " started")
@@ -67,7 +82,7 @@ func main() {
 	defer func() {
 		err := model.CloseDB()
 		if err != nil {
-			common.FatalLog("failed to close database: " + err.Error())
+			common.SysError("failed to close database: " + err.Error())
 		}
 	}()
 
@@ -97,8 +112,15 @@ func main() {
 		go model.SyncChannelCache(common.SyncFrequency)
 	}
 
+	// Warm pricing after channel cache initialization so Advanced Custom
+	// endpoint inference can read cached route settings on first request.
+	model.GetPricing()
+
 	// 热更新配置
 	go model.SyncOptions(common.SyncFrequency)
+
+	// 周期性重载授权策略，保证多节点/多 master 部署下权限变更能传播到每个实例
+	go authz.StartPolicySync(common.SyncFrequency)
 
 	// 数据看板
 	go model.UpdateQuotaData()
@@ -111,15 +133,19 @@ func main() {
 		go controller.AutomaticallyUpdateChannels(frequency)
 	}
 
-	go controller.AutomaticallyTestChannels()
-
 	// Codex credential auto-refresh check every 10 minutes, refresh when expires within 1 day
 	service.StartCodexCredentialAutoRefreshTask()
 
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
 
-	// Wire task polling adaptor factory (breaks service -> relay import cycle)
+	// Report this process as a system instance so the System Info page can show
+	// all currently alive nodes in multi-instance deployments.
+	service.StartSystemInstanceReporter()
+
+	// Wire task polling adaptor factory (breaks service -> relay import cycle).
+	// Must run before the system task runner starts: the async_task_poll handler
+	// calls service.RunTaskPollingOnce, which needs this factory set.
 	service.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) service.TaskPollingAdaptor {
 		a := relay.GetTaskAdaptor(platform)
 		if a == nil {
@@ -128,17 +154,14 @@ func main() {
 		return a
 	}
 
-	// Channel upstream model update check task
-	controller.StartChannelUpstreamModelUpdateTask()
+	// Register the periodic channel test, upstream model update, and async task
+	// polling (Midjourney / Suno / video) jobs as scheduled system tasks
+	// (DB-lease dedup across masters + run history), then start the runner that
+	// schedules and executes them. Master-only execution and the UpdateTask
+	// switch are enforced inside the runner and each handler's Enabled().
+	controller.RegisterScheduledSystemTasks()
+	service.StartSystemTaskRunner()
 
-	if common.IsMasterNode && constant.UpdateTask {
-		gopool.Go(func() {
-			controller.UpdateMidjourneyTaskBulk()
-		})
-		gopool.Go(func() {
-			controller.UpdateTaskBulk()
-		})
-	}
 	if os.Getenv("BATCH_UPDATE_ENABLED") == "true" {
 		common.BatchUpdateEnabled = true
 		common.SysLog("batch update enabled with interval " + strconv.Itoa(common.BatchUpdateInterval) + "s")
@@ -172,7 +195,7 @@ func main() {
 	// This will cause SSE not to work!!!
 	//server.Use(gzip.Gzip(gzip.DefaultCompression))
 	server.Use(middleware.RequestId())
-	server.Use(middleware.PoweredBy())
+	server.Use(middleware.Version())
 	server.Use(middleware.I18n())
 	middleware.SetUpLogger(server)
 	// Initialize session store
@@ -181,7 +204,7 @@ func main() {
 		Path:     "/",
 		MaxAge:   2592000, // 30 days
 		HttpOnly: true,
-		Secure:   false,
+		Secure:   common.SessionCookieSecure,
 		SameSite: http.SameSiteStrictMode,
 	})
 	server.Use(sessions.Sessions("session", store))
@@ -201,13 +224,114 @@ func main() {
 		port = strconv.Itoa(*common.Port)
 	}
 
-	// Log startup success message
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: server,
+	}
+
+	listener, err := net.Listen("tcp", srv.Addr)
+	if err != nil {
+		return fmt.Errorf("failed to bind HTTP server on %s: %w", srv.Addr, err)
+	}
+
+	serveErr := make(chan error, 1)
+	go func() {
+		serveErr <- srv.Serve(listener)
+	}()
+
+	common.SetProcessReady(true)
+	defer common.SetProcessReady(false)
 	common.LogStartupSuccess(startTime, port)
 
-	err = server.Run(":" + port)
-	if err != nil {
-		common.FatalLog("failed to start HTTP server: " + err.Error())
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(quit)
+
+	select {
+	case sig := <-quit:
+		common.SetProcessReady(false)
+		drainSeconds := common.GetEnvOrDefault("PRE_SHUTDOWN_DRAIN_SECONDS", 15)
+		common.SysLog(fmt.Sprintf("received signal: %v, draining for %d seconds...", sig, drainSeconds))
+		if drainSeconds > 0 {
+			time.Sleep(time.Duration(drainSeconds) * time.Second)
+		}
+	case err := <-serveErr:
+		common.SetProcessReady(false)
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("HTTP server stopped unexpectedly: %w", err)
+		}
+		return nil
 	}
+
+	// SSE streams may run for minutes; give them time to finish before forced exit
+	shutdownTimeout := time.Duration(common.GetEnvOrDefault("SHUTDOWN_TIMEOUT_SECONDS", 900)) * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		return fmt.Errorf("server forced to shutdown after %s: %w", shutdownTimeout, err)
+	}
+	if err := <-serveErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("HTTP server shutdown failed: %w", err)
+	}
+	// 内存中的看板数据保存入库，避免重启丢失未落库数据 (issue #5679)
+	if common.DataExportEnabled {
+		model.SaveQuotaDataCache()
+	}
+	common.SysLog("server exited")
+	return nil
+}
+
+func migrationOnlyRequested() bool {
+	for _, arg := range os.Args[1:] {
+		if arg == "--migrate-only" || arg == "-migrate-only" {
+			return true
+		}
+	}
+	return false
+}
+
+func runMigrationsOnly() (err error) {
+	defer func() {
+		if model.DB == nil {
+			return
+		}
+		if closeErr := model.CloseDB(); closeErr != nil && err == nil {
+			err = fmt.Errorf("failed to close database after migration: %w", closeErr)
+		}
+	}()
+
+	if err = InitMigrationResources(); err != nil {
+		return err
+	}
+	common.SysLog("database migrations completed")
+	return nil
+}
+
+func InitMigrationResources() error {
+	if err := godotenv.Load(".env"); err != nil && common.DebugEnabled {
+		common.SysLog("No .env file found, using default environment variables.")
+	}
+
+	common.InitEnv()
+	logger.SetupLogger()
+
+	if err := validateMigrationNode(); err != nil {
+		return err
+	}
+	if err := model.InitDB(); err != nil {
+		return fmt.Errorf("failed to initialize primary database: %w", err)
+	}
+	if err := model.InitLogDB(); err != nil {
+		return fmt.Errorf("failed to initialize log database: %w", err)
+	}
+	return nil
+}
+
+func validateMigrationNode() error {
+	if !common.IsMasterNode {
+		return errors.New("--migrate-only cannot run with NODE_TYPE=slave")
+	}
+	return nil
 }
 
 func InjectUmamiAnalytics() {
@@ -283,6 +407,10 @@ func InitResources() error {
 		common.FatalLog("failed to initialize database: " + err.Error())
 		return err
 	}
+	if err = authz.Init(model.DB); err != nil {
+		common.FatalLog("failed to initialize authorization: " + err.Error())
+		return err
+	}
 
 	model.CheckSetup()
 
@@ -291,9 +419,6 @@ func InitResources() error {
 
 	// 清理旧的磁盘缓存文件
 	common.CleanupOldCacheFiles()
-
-	// 初始化模型
-	model.GetPricing()
 
 	// Initialize SQL Database
 	err = model.InitLogDB()

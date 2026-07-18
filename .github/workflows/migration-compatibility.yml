@@ -1,0 +1,197 @@
+name: Migration compatibility
+
+on:
+  pull_request:
+    branches:
+      - aivrae/main
+    paths:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/migration-compatibility.yml'
+  push:
+    branches:
+      - aivrae/main
+    paths:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/migration-compatibility.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  sqlite:
+    name: SQLite migration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Prepare migration-only embedded assets
+        run: |
+          install -d web/default/dist web/classic/dist
+          printf '<!doctype html><title>migration-only</title>\n' > web/default/dist/index.html
+          printf '<!doctype html><title>migration-only</title>\n' > web/classic/dist/index.html
+
+      - name: Build migration binary
+        run: go build -o "${RUNNER_TEMP}/new-api" .
+
+      - name: Run migration twice
+        env:
+          SQLITE_PATH: ${{ runner.temp }}/migration.sqlite?_busy_timeout=30000
+          NODE_TYPE: master
+          SESSION_SECRET: migration-compatibility-secret
+          REDIS_CONN_STRING: redis://127.0.0.1:1
+        run: |
+          "${RUNNER_TEMP}/new-api" --migrate-only --log-dir "${RUNNER_TEMP}/logs-sqlite"
+          "${RUNNER_TEMP}/new-api" --migrate-only --log-dir "${RUNNER_TEMP}/logs-sqlite"
+
+  postgres:
+    name: PostgreSQL ${{ matrix.version }} migration
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: '9.6'
+            image: postgres:9.6
+          - version: '15'
+            image: postgres:15
+    services:
+      postgres:
+        image: ${{ matrix.image }}
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: newapi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d newapi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Prepare migration-only embedded assets
+        run: |
+          install -d web/default/dist web/classic/dist
+          printf '<!doctype html><title>migration-only</title>\n' > web/default/dist/index.html
+          printf '<!doctype html><title>migration-only</title>\n' > web/classic/dist/index.html
+
+      - name: Create legacy schema
+        run: |
+          docker exec -i "${{ job.services.postgres.id }}" \
+            psql -v ON_ERROR_STOP=1 -U test -d newapi <<'SQL'
+          CREATE TABLE subscription_plans (
+            id bigint PRIMARY KEY,
+            title varchar(128) NOT NULL DEFAULT '',
+            price_amount double precision NOT NULL DEFAULT 0
+          );
+          CREATE TABLE tokens (
+            id bigint PRIMARY KEY,
+            model_limits varchar(1024)
+          );
+          SQL
+
+      - name: Build migration binary
+        run: go build -o "${RUNNER_TEMP}/new-api" .
+
+      - name: Run migration twice
+        env:
+          SQL_DSN: postgresql://test:test@127.0.0.1:5432/newapi?sslmode=disable
+          NODE_TYPE: master
+          SESSION_SECRET: migration-compatibility-secret
+          REDIS_CONN_STRING: redis://127.0.0.1:1
+        run: |
+          "${RUNNER_TEMP}/new-api" --migrate-only --log-dir "${RUNNER_TEMP}/logs-postgres"
+          "${RUNNER_TEMP}/new-api" --migrate-only --log-dir "${RUNNER_TEMP}/logs-postgres"
+
+      - name: Verify migrated schema
+        run: |
+          test "$(docker exec "${{ job.services.postgres.id }}" psql -At -U test -d newapi -c "SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='subscription_plans' AND column_name='price_amount'")" = numeric
+          test "$(docker exec "${{ job.services.postgres.id }}" psql -At -U test -d newapi -c "SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='tokens' AND column_name='model_limits'")" = text
+          docker exec "${{ job.services.postgres.id }}" psql -At -U test -d newapi -c "SELECT to_regclass('public.blog_posts'), to_regclass('public.system_tasks'), to_regclass('public.system_instances'), to_regclass('public.casbin_rule')" | grep -q 'blog_posts|system_tasks|system_instances|casbin_rule'
+
+  mysql:
+    name: MySQL 5.7 migration
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:5.7
+        env:
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_DATABASE: newapi
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost -ptest"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Prepare migration-only embedded assets
+        run: |
+          install -d web/default/dist web/classic/dist
+          printf '<!doctype html><title>migration-only</title>\n' > web/default/dist/index.html
+          printf '<!doctype html><title>migration-only</title>\n' > web/classic/dist/index.html
+
+      - name: Create legacy schema
+        run: |
+          docker exec -i "${{ job.services.mysql.id }}" \
+            mysql -uroot -ptest newapi <<'SQL'
+          ALTER DATABASE newapi CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          CREATE TABLE subscription_plans (
+            id bigint PRIMARY KEY,
+            title varchar(128) NOT NULL DEFAULT '',
+            price_amount double NOT NULL DEFAULT 0
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          CREATE TABLE tokens (
+            id bigint PRIMARY KEY,
+            model_limits varchar(1024)
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          SQL
+
+      - name: Build migration binary
+        run: go build -o "${RUNNER_TEMP}/new-api" .
+
+      - name: Run migration twice
+        env:
+          SQL_DSN: root:test@tcp(127.0.0.1:3306)/newapi?charset=utf8mb4&parseTime=True&loc=Local
+          NODE_TYPE: master
+          SESSION_SECRET: migration-compatibility-secret
+          REDIS_CONN_STRING: redis://127.0.0.1:1
+        run: |
+          "${RUNNER_TEMP}/new-api" --migrate-only --log-dir "${RUNNER_TEMP}/logs-mysql"
+          "${RUNNER_TEMP}/new-api" --migrate-only --log-dir "${RUNNER_TEMP}/logs-mysql"
+
+      - name: Verify migrated schema
+        run: |
+          test "$(docker exec "${{ job.services.mysql.id }}" mysql -N -uroot -ptest -e "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='newapi' AND TABLE_NAME='subscription_plans' AND COLUMN_NAME='price_amount'")" = 'decimal(10,6)'
+          test "$(docker exec "${{ job.services.mysql.id }}" mysql -N -uroot -ptest -e "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='newapi' AND TABLE_NAME='tokens' AND COLUMN_NAME='model_limits'")" = text
+          docker exec "${{ job.services.mysql.id }}" mysql -N -uroot -ptest -e "SELECT GROUP_CONCAT(TABLE_NAME ORDER BY TABLE_NAME SEPARATOR '|') FROM information_schema.TABLES WHERE TABLE_SCHEMA='newapi' AND TABLE_NAME IN ('blog_posts','system_tasks','system_instances','casbin_rule')" | grep -q 'blog_posts|casbin_rule|system_instances|system_tasks'

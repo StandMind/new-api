@@ -42,6 +42,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
+import remarkBreaks from 'remark-breaks'
 import remarkDirective from 'remark-directive'
 import remarkGfm from 'remark-gfm'
 import { createHighlighterCore, type HighlighterCore } from 'shiki/core'
@@ -71,6 +72,7 @@ import {
 } from '@/components/ui/tooltip'
 
 interface MarkdownProps {
+  breaks?: boolean
   children: string
   className?: string
 }
@@ -800,7 +802,7 @@ function MarkdownCallout({
   )
 }
 
-export function Markdown({ children, className }: MarkdownProps) {
+export function Markdown({ breaks = false, children, className }: MarkdownProps) {
   const headingCounts = new Map<string, number>()
 
   const nextHeadingId = (content: ReactNode) =>
@@ -930,7 +932,12 @@ export function Markdown({ children, className }: MarkdownProps) {
   return (
     <div className={cn('markdown-content', className)}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkDirective, remarkApiDirectives]}
+        remarkPlugins={[
+          remarkGfm,
+          ...(breaks ? [remarkBreaks] : []),
+          remarkDirective,
+          remarkApiDirectives,
+        ]}
         rehypePlugins={[rehypeRaw]}
         components={components}
       >

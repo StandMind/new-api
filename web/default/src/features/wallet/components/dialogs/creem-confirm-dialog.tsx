@@ -18,15 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+
+import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+
 import { formatCreemPrice } from '../../lib/format'
 import type { CreemProduct } from '../../types'
 
@@ -50,30 +45,17 @@ export function CreemConfirmDialog({
   if (!product) return null
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='max-sm:w-[calc(100vw-1.5rem)] sm:max-w-[425px]'>
-        <DialogHeader>
-          <DialogTitle>{t('Confirm Creem Purchase')}</DialogTitle>
-          <DialogDescription>
-            {t('Review your purchase details before proceeding.')}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className='space-y-3 py-3 sm:space-y-4 sm:py-4'>
-          <div className='flex items-center justify-between'>
-            <span className='text-muted-foreground'>{t('Product')}</span>
-            <span className='font-medium'>{product.name}</span>
-          </div>
-          <div className='flex items-center justify-between'>
-            <span className='text-muted-foreground'>{t('Price')}</span>
-            <span className='font-medium text-indigo-600'>
-              {formatCreemPrice(product.price, product.currency)}
-            </span>
-          </div>
-          {/* Creem quota is an internal crediting value and is intentionally hidden from users. */}
-        </div>
-
-        <DialogFooter className='grid grid-cols-2 gap-2 sm:flex'>
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t('Confirm Creem Purchase')}
+      description={t('Review your purchase details before proceeding.')}
+      contentClassName='max-sm:w-[calc(100vw-1.5rem)] sm:max-w-[425px]'
+      footerClassName='grid grid-cols-2 gap-2 sm:flex'
+      contentHeight='auto'
+      bodyClassName='space-y-4'
+      footer={
+        <>
           <Button
             variant='outline'
             onClick={() => onOpenChange(false)}
@@ -85,8 +67,22 @@ export function CreemConfirmDialog({
             {processing && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
             {t('Confirm Payment')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
+        </>
+      }
+    >
+      <div className='space-y-3 py-3 sm:space-y-4 sm:py-4'>
+        <div className='flex items-center justify-between'>
+          <span className='text-muted-foreground'>{t('Product')}</span>
+          <span className='font-medium'>{product.name}</span>
+        </div>
+        <div className='flex items-center justify-between'>
+          <span className='text-muted-foreground'>{t('Price')}</span>
+          <span className='text-primary font-medium'>
+            {formatCreemPrice(product.price, product.currency)}
+          </span>
+        </div>
+        {/* Quota is an internal crediting value and is intentionally hidden. */}
+      </div>
     </Dialog>
   )
 }

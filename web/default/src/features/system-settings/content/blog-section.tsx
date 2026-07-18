@@ -1,3 +1,5 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { BarChart3, Edit, Plus, Search, Trash2 } from 'lucide-react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -17,16 +19,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BarChart3, Edit, Plus, Search, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts'
-import {
-  INTERFACE_LANGUAGE_OPTIONS,
-  normalizeInterfaceLanguage,
-  type InterfaceLanguageCode,
-} from '@/i18n/languages'
+import { toast } from 'sonner'
+
+import { TagInput } from '@/components/tag-input'
 import { Button } from '@/components/ui/button'
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart'
 import {
   Dialog,
   DialogContent,
@@ -35,12 +39,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from '@/components/ui/chart'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
@@ -54,7 +52,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
-import { TagInput } from '@/components/tag-input'
 import {
   createAdminBlogPost,
   deleteAdminBlogPost,
@@ -69,8 +66,13 @@ import type {
   BlogPostStatus,
   BlogPostTranslation,
 } from '@/features/blog/types'
+import {
+  INTERFACE_LANGUAGE_OPTIONS,
+  normalizeInterfaceLanguage,
+  type InterfaceLanguageCode,
+} from '@/i18n/languages'
+
 import { SettingsSection } from '../components/settings-section'
-import { toast } from 'sonner'
 
 const BLOG_PAGE_SIZE = 20
 const DEFAULT_BLOG_STATS_DAYS = 30
@@ -144,7 +146,10 @@ function timestampToDateInput(value: number) {
 function getDefaultStatsRange(post?: BlogPostAdmin) {
   const endDate = dateToInputDate(new Date())
   const defaultStart = dateToInputDate(
-    new Date(new Date(`${endDate}T00:00:00Z`).getTime() - (DEFAULT_BLOG_STATS_DAYS - 1) * DAY_MS)
+    new Date(
+      new Date(`${endDate}T00:00:00Z`).getTime() -
+        (DEFAULT_BLOG_STATS_DAYS - 1) * DAY_MS
+    )
   )
   const publishedDate = timestampToDateInput(post?.published_time ?? 0)
   let startDate = defaultStart
@@ -189,9 +194,11 @@ function statusLabel(status: BlogPostStatus, t: (key: string) => string) {
 }
 
 function getLocalizedBlogTranslation(post: BlogPostAdmin, locale: string) {
-  return post.translations[locale as InterfaceLanguageCode] ??
+  return (
+    post.translations[locale as InterfaceLanguageCode] ??
     post.translations.en ??
-    post.translations.zh
+    post.translations.zhCN
+  )
 }
 
 type BlogStatsDialogProps = {
@@ -222,7 +229,9 @@ function BlogStatsDialog({
   onOpenChange,
 }: BlogStatsDialogProps) {
   const { t } = useTranslation()
-  const translation = post ? getLocalizedBlogTranslation(post, locale) : undefined
+  const translation = post
+    ? getLocalizedBlogTranslation(post, locale)
+    : undefined
   const daily = stats?.daily ?? []
   const hasChartRange = daily.length > 0
   const chartData = daily.map((point) => ({
@@ -335,7 +344,7 @@ function BlogStatsDialog({
                 {hasChartRange ? (
                   <ChartContainer
                     config={chartConfig}
-                    className='h-full min-w-[34rem] aspect-auto'
+                    className='aspect-auto h-full min-w-[34rem]'
                     initialDimension={{ width: 544, height: 192 }}
                   >
                     <LineChart
@@ -418,18 +427,21 @@ function BlogEditorDialog({
 }: BlogEditorDialogProps) {
   const { t, i18n } = useTranslation()
   const [draft, setDraft] = useState<BlogPostPayload>(() => clonePost(post))
-  const [locale, setLocale] = useState<InterfaceLanguageCode>(() =>
-    normalizeInterfaceLanguage(i18n.language) as InterfaceLanguageCode
+  const [locale, setLocale] = useState<InterfaceLanguageCode>(
+    () => normalizeInterfaceLanguage(i18n.language) as InterfaceLanguageCode
   )
 
   useEffect(() => {
     if (!open) return
     setDraft(clonePost(post))
-    setLocale(normalizeInterfaceLanguage(i18n.language) as InterfaceLanguageCode)
+    setLocale(
+      normalizeInterfaceLanguage(i18n.language) as InterfaceLanguageCode
+    )
   }, [i18n.language, open, post])
 
   const activeTranslation =
-    draft.translations[locale] ?? ({ ...emptyTranslation } as BlogPostTranslation)
+    draft.translations[locale] ??
+    ({ ...emptyTranslation } as BlogPostTranslation)
 
   const updateDraft = <TKey extends keyof BlogPostPayload>(
     key: TKey,
@@ -438,10 +450,7 @@ function BlogEditorDialog({
     setDraft((current) => ({ ...current, [key]: value }))
   }
 
-  const updateTranslation = (
-    key: keyof BlogPostTranslation,
-    value: string
-  ) => {
+  const updateTranslation = (key: keyof BlogPostTranslation, value: string) => {
     setDraft((current) => ({
       ...current,
       translations: {
@@ -490,7 +499,9 @@ function BlogEditorDialog({
                 placeholder='model-pricing-guide'
               />
               <p className='text-muted-foreground text-xs'>
-                {t('Used in the public URL, for example /blog/model-pricing-guide.')}
+                {t(
+                  'Used in the public URL, for example /blog/model-pricing-guide.'
+                )}
               </p>
             </div>
 
@@ -504,7 +515,9 @@ function BlogEditorDialog({
                   updateDraft('status', event.target.value as BlogPostStatus)
                 }
               >
-                <NativeSelectOption value='draft'>{t('Draft')}</NativeSelectOption>
+                <NativeSelectOption value='draft'>
+                  {t('Draft')}
+                </NativeSelectOption>
                 <NativeSelectOption value='published'>
                   {t('Published')}
                 </NativeSelectOption>
@@ -544,7 +557,9 @@ function BlogEditorDialog({
             <Input
               id='blog-cover'
               value={draft.cover_image}
-              onChange={(event) => updateDraft('cover_image', event.target.value)}
+              onChange={(event) =>
+                updateDraft('cover_image', event.target.value)
+              }
               placeholder='https://example.com/image.png'
             />
           </div>
@@ -675,7 +690,9 @@ export function BlogSection() {
         startDate: statsRange.startDate,
         endDate: statsRange.endDate,
       }),
-    enabled: Boolean(statsPost?.id && statsRange.startDate && statsRange.endDate),
+    enabled: Boolean(
+      statsPost?.id && statsRange.startDate && statsRange.endDate
+    ),
   })
 
   const invalidatePosts = () =>
@@ -775,8 +792,12 @@ export function BlogSection() {
                 setStatus(event.target.value as BlogPostStatus | '')
               }}
             >
-              <NativeSelectOption value=''>{t('All statuses')}</NativeSelectOption>
-              <NativeSelectOption value='draft'>{t('Draft')}</NativeSelectOption>
+              <NativeSelectOption value=''>
+                {t('All statuses')}
+              </NativeSelectOption>
+              <NativeSelectOption value='draft'>
+                {t('Draft')}
+              </NativeSelectOption>
               <NativeSelectOption value='published'>
                 {t('Published')}
               </NativeSelectOption>
@@ -805,7 +826,9 @@ export function BlogSection() {
                   <TableHead>{t('Slug')}</TableHead>
                   <TableHead>{t('Status')}</TableHead>
                   <TableHead>{t('Published at')}</TableHead>
-                  <TableHead className='text-right'>{t('30-day views')}</TableHead>
+                  <TableHead className='text-right'>
+                    {t('30-day views')}
+                  </TableHead>
                   <TableHead className='text-right'>{t('Actions')}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -835,12 +858,18 @@ export function BlogSection() {
                         </div>
                         <div className='text-muted-foreground text-xs'>
                           {t('Today {{count}}', {
-                            count: formatNumber(post.stats?.views_today, locale),
+                            count: formatNumber(
+                              post.stats?.views_today,
+                              locale
+                            ),
                           })}
                         </div>
                         <div className='text-muted-foreground text-xs'>
                           {t('All-time {{count}}', {
-                            count: formatNumber(post.stats?.lifetime_views, locale),
+                            count: formatNumber(
+                              post.stats?.lifetime_views,
+                              locale
+                            ),
                           })}
                         </div>
                       </TableCell>

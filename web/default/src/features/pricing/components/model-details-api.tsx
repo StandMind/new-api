@@ -16,40 +16,37 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo, useState } from 'react'
 import {
   ChevronRight,
-  ExternalLink,
+  Gauge,
   KeyRound,
   ScrollText,
-  ShieldCheck,
   Sigma,
   Zap,
 } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { BundledLanguage } from 'shiki/bundle/web'
-import { cn } from '@/lib/utils'
-import { useStatus } from '@/hooks/use-status'
-import { Badge } from '@/components/ui/badge'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+
 import {
   CodeBlock,
   CodeBlockCopyButton,
 } from '@/components/ai-elements/code-block'
 import {
+  StaticDataTable,
+  staticDataTableClassNames as tableStyles,
+} from '@/components/data-table'
+import { Badge } from '@/components/ui/badge'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useStatus } from '@/hooks/use-status'
+
+import {
+  buildRateLimits,
   buildSupportedParameters,
+  formatRateLimit,
   type SupportedParameter,
 } from '../lib/mock-stats'
 import { replaceModelInPath } from '../lib/model-helpers'
-import { inferApiInfo } from '../lib/model-metadata'
 import type { PricingModel } from '../types'
 
 // ---------------------------------------------------------------------------
@@ -83,29 +80,6 @@ type SampleContext = {
   modelName: string
   endpointType: string
   endpointPath: string
-}
-
-type EndpointOption = {
-  type: string
-  path: string
-  method: string
-}
-
-function buildEndpointOptions(
-  model: PricingModel,
-  endpointMap: Record<string, { path?: string; method?: string }>
-): EndpointOption[] {
-  const types = model.supported_endpoint_types || []
-  return types
-    .map((type) => {
-      const info = endpointMap[type] || {}
-      let path = info.path || ''
-      if (path && path.includes('{model}')) {
-        path = replaceModelInPath(path, model.model_name || '')
-      }
-      return { type, path, method: info.method || 'POST' }
-    })
-    .filter((e) => Boolean(e.path))
 }
 
 function buildChatSample(lang: Lang, ctx: SampleContext): string {
@@ -468,9 +442,7 @@ function buildSample(
 
 function CodeSamplesSection(props: {
   model: PricingModel
-  endpoints: EndpointOption[]
-  endpointType: string
-  onEndpointTypeChange: (endpointType: string) => void
+  endpointMap: Record<string, { path?: string; method?: string }>
 }) {
   const { t } = useTranslation()
   const { status } = useStatus()
@@ -488,16 +460,30 @@ function CodeSamplesSection(props: {
     return 'https://api.example.com'
   }, [status])
 
+  const endpoints = useMemo(() => {
+    const types = props.model.supported_endpoint_types || []
+    return types
+      .map((type) => {
+        const info = props.endpointMap[type] || {}
+        let path = info.path || ''
+        if (path && path.includes('{model}')) {
+          path = replaceModelInPath(path, props.model.model_name || '')
+        }
+        return { type, path, method: info.method || 'POST' }
+      })
+      .filter((e) => Boolean(e.path))
+  }, [props.model, props.endpointMap])
+
+  const [endpointType, setEndpointType] = useState<string>(
+    endpoints[0]?.type ?? ''
+  )
   const [lang, setLang] = useState<Lang>('curl')
 
   const activeEndpoint = useMemo(() => {
-    return (
-      props.endpoints.find((e) => e.type === props.endpointType) ??
-      props.endpoints[0]
-    )
-  }, [props.endpointType, props.endpoints])
+    return endpoints.find((e) => e.type === endpointType) ?? endpoints[0]
+  }, [endpointType, endpoints])
 
-  if (props.endpoints.length === 0 || !activeEndpoint) {
+  if (endpoints.length === 0 || !activeEndpoint) {
     return null
   }
 
@@ -514,13 +500,10 @@ function CodeSamplesSection(props: {
       <SectionTitle icon={ScrollText}>{t('Code samples')}</SectionTitle>
 
       <div className='flex flex-wrap items-center gap-2'>
-        {props.endpoints.length > 1 && (
-          <Tabs
-            value={activeEndpoint.type}
-            onValueChange={props.onEndpointTypeChange}
-          >
+        {endpoints.length > 1 && (
+          <Tabs value={endpointType} onValueChange={setEndpointType}>
             <TabsList className='bg-muted/40 h-8 p-0.5'>
-              {props.endpoints.map((ep) => (
+              {endpoints.map((ep) => (
                 <TabsTrigger
                   key={ep.type}
                   value={ep.type}
@@ -569,87 +552,74 @@ function CodeSamplesSection(props: {
 // Supported parameters table
 // ---------------------------------------------------------------------------
 
-function SupportedParametersSection(props: {
-  model: PricingModel
-  endpointType: string
-}) {
+function SupportedParametersSection(props: { model: PricingModel }) {
   const { t } = useTranslation()
   const params = useMemo(
-    () => buildSupportedParameters(props.model, props.endpointType),
-    [props.model, props.endpointType]
+    () => buildSupportedParameters(props.model),
+    [props.model]
   )
 
   if (params.length === 0) return null
 
   return (
     <section>
-      <SectionTitle icon={Sigma}>
-        <span>{t('Supported parameters')}</span>
-        {props.endpointType && (
-          <Badge
-            variant='secondary'
-            className='h-5 rounded-sm px-1.5 font-mono text-[10px] font-normal'
-          >
-            {props.endpointType}
-          </Badge>
-        )}
-      </SectionTitle>
-      <p className='text-muted-foreground mb-2 text-xs'>
-        {t(
-          'Shown for the selected endpoint; optional support can vary by upstream model.'
-        )}
-      </p>
-      <div className='border-border/60 overflow-hidden rounded-lg border'>
-        <Table>
-          <TableHeader>
-            <TableRow className='bg-muted/30 hover:bg-muted/30'>
-              <TableHead className='h-9 w-44 text-xs'>
-                {t('Parameter')}
-              </TableHead>
-              <TableHead className='h-9 w-24 text-xs'>{t('Type')}</TableHead>
-              <TableHead className='h-9 w-32 text-xs'>
-                {t('Default / range')}
-              </TableHead>
-              <TableHead className='h-9 text-xs'>{t('Description')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {params.map((p) => (
-              <TableRow key={p.name} className='hover:bg-muted/20'>
-                <TableCell className='py-2 align-top'>
-                  <div className='flex items-center gap-1.5'>
-                    <code className='font-mono text-xs font-medium'>
-                      {p.name}
-                    </code>
-                    {p.required && (
-                      <Badge
-                        variant='outline'
-                        className='h-4 border-rose-500/40 px-1 text-[9px] text-rose-600 dark:text-rose-400'
-                      >
-                        {t('required')}
-                      </Badge>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell className='py-2 align-top'>
+      <SectionTitle icon={Sigma}>{t('Supported parameters')}</SectionTitle>
+      <StaticDataTable
+        className={tableStyles.sectionContainer}
+        headerRowClassName={tableStyles.mutedHeaderRow}
+        data={params}
+        getRowKey={(param) => param.name}
+        getRowClassName={() => 'hover:bg-muted/20'}
+        columns={[
+          {
+            id: 'parameter',
+            header: t('Parameter'),
+            className: 'h-9 w-44',
+            cellClassName: tableStyles.topCell,
+            cell: (p) => (
+              <div className='flex items-center gap-1.5'>
+                <code className='font-mono text-sm font-medium'>{p.name}</code>
+                {p.required && (
                   <Badge
-                    variant='secondary'
-                    className='h-5 rounded-sm px-1.5 font-mono text-[10px] font-normal'
+                    variant='outline'
+                    className='h-6 border-rose-500/40 px-2 text-sm text-rose-600 dark:text-rose-400'
                   >
-                    {p.type}
+                    {t('required')}
                   </Badge>
-                </TableCell>
-                <TableCell className='py-2 align-top'>
-                  <ParamRangeCell param={p} />
-                </TableCell>
-                <TableCell className='text-muted-foreground py-2 align-top text-xs'>
-                  {t(p.descriptionKey)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+                )}
+              </div>
+            ),
+          },
+          {
+            id: 'type',
+            header: t('Type'),
+            className: 'h-9 w-24',
+            cellClassName: tableStyles.topCell,
+            cell: (p) => (
+              <Badge
+                variant='secondary'
+                className='h-7 rounded-full px-2.5 font-mono text-sm font-normal'
+              >
+                {p.type}
+              </Badge>
+            ),
+          },
+          {
+            id: 'range',
+            header: t('Default / range'),
+            className: 'h-9 w-32',
+            cellClassName: tableStyles.topCell,
+            cell: (p) => <ParamRangeCell param={p} />,
+          },
+          {
+            id: 'description',
+            header: t('Description'),
+            className: 'h-9',
+            cellClassName: tableStyles.topMutedCell,
+            cell: (p) => t(p.descriptionKey),
+          },
+        ]}
+      />
     </section>
   )
 }
@@ -659,21 +629,19 @@ function ParamRangeCell(props: { param: SupportedParameter }) {
   if (defaultValue !== undefined) {
     return (
       <div className='flex flex-wrap items-center gap-1'>
-        <span className='text-muted-foreground text-[11px]'>=</span>
-        <code className='bg-muted rounded px-1 py-0.5 font-mono text-[11px]'>
+        <span className='text-muted-foreground text-sm'>=</span>
+        <code className='bg-muted rounded px-1.5 py-0.5 font-mono text-sm'>
           {String(defaultValue)}
         </code>
         {range && (
-          <span className='text-muted-foreground text-[11px]'>{range}</span>
+          <span className='text-muted-foreground text-sm'>{range}</span>
         )}
       </div>
     )
   }
   if (range) {
     return (
-      <span className='text-muted-foreground font-mono text-[11px]'>
-        {range}
-      </span>
+      <span className='text-muted-foreground font-mono text-sm'>{range}</span>
     )
   }
   if (enumValues && enumValues.length > 0) {
@@ -682,7 +650,7 @@ function ParamRangeCell(props: { param: SupportedParameter }) {
         {enumValues.map((v) => (
           <code
             key={v}
-            className='bg-muted text-muted-foreground rounded px-1 py-0.5 font-mono text-[10px]'
+            className='bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-mono text-sm'
           >
             {v}
           </code>
@@ -690,106 +658,65 @@ function ParamRangeCell(props: { param: SupportedParameter }) {
       </div>
     )
   }
-  return <span className='text-muted-foreground/60 text-[11px]'>—</span>
+  return <span className='text-muted-foreground/60 text-sm'>—</span>
 }
 
 // ---------------------------------------------------------------------------
-// Provider info card (vendor / tokenizer / license / privacy)
+// Rate-limits table
 // ---------------------------------------------------------------------------
-//
-// Exported separately so the Overview tab can render it alongside capabilities
-// and modalities (i.e. "what is this model?" rather than "how do I call it?").
 
-export function ModelDetailsProviderInfo(props: { model: PricingModel }) {
+function RateLimitsSection(props: { model: PricingModel }) {
   const { t } = useTranslation()
-  const info = useMemo(() => inferApiInfo(props.model), [props.model])
+  const limits = useMemo(() => buildRateLimits(props.model), [props.model])
+
+  if (limits.length === 0) return null
 
   return (
     <section>
-      <SectionTitle icon={ShieldCheck}>
-        {t('Provider & data privacy')}
-      </SectionTitle>
-
-      <div className='border-border/60 bg-border/60 grid grid-cols-1 gap-px overflow-hidden rounded-lg border sm:grid-cols-2'>
-        <InfoCell label={t('Provider')}>
-          <div className='flex items-center gap-1.5'>
-            <span className='text-sm font-medium'>{info.vendor_label}</span>
-            {info.homepage && (
-              <a
-                href={info.homepage}
-                target='_blank'
-                rel='noopener noreferrer'
-                className='text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5 text-[11px]'
-              >
-                {t('Docs')}
-                <ExternalLink className='size-3' />
-              </a>
-            )}
-          </div>
-        </InfoCell>
-
-        <InfoCell label={t('Tokenizer')}>
-          <div className='flex flex-col gap-0.5'>
-            <code className='font-mono text-xs'>{info.tokenizer}</code>
-            {info.tokenizer_note && (
-              <span className='text-muted-foreground text-[10px]'>
-                {info.tokenizer_note}
-              </span>
-            )}
-          </div>
-        </InfoCell>
-
-        <InfoCell label={t('License')}>
-          <div className='flex flex-col gap-1'>
-            <span className='text-sm'>{info.license}</span>
-            <Badge
-              variant='outline'
-              className={cn(
-                'h-4 w-fit px-1.5 text-[9px] font-medium',
-                info.license_kind === 'open' &&
-                  'border-emerald-500/40 text-emerald-600 dark:text-emerald-400',
-                info.license_kind === 'open-weight' &&
-                  'border-sky-500/40 text-sky-600 dark:text-sky-400',
-                info.license_kind === 'proprietary' &&
-                  'border-amber-500/40 text-amber-600 dark:text-amber-400'
-              )}
-            >
-              {info.license_kind === 'open'
-                ? t('Open source')
-                : info.license_kind === 'open-weight'
-                  ? t('Open weights')
-                  : info.license_kind === 'proprietary'
-                    ? t('Proprietary')
-                    : t('Unknown')}
-            </Badge>
-          </div>
-        </InfoCell>
-
-        <InfoCell label={t('Data retention')}>
-          <span className='text-sm'>
-            {info.data_retention_days === 0
-              ? t('Zero retention')
-              : `${info.data_retention_days} ${t('days')}`}
-          </span>
-          <span className='text-muted-foreground text-[10px]'>
-            {info.training_opt_out
-              ? t('Not used for upstream training by default')
-              : t('May be used for training by upstream provider')}
-          </span>
-        </InfoCell>
-      </div>
+      <SectionTitle icon={Gauge}>{t('Rate limits')}</SectionTitle>
+      <StaticDataTable
+        className={tableStyles.sectionContainer}
+        headerRowClassName={tableStyles.mutedHeaderRow}
+        data={limits}
+        getRowKey={(limit) => limit.group}
+        getRowClassName={() => 'hover:bg-muted/20'}
+        columns={[
+          {
+            id: 'group',
+            header: t('Group'),
+            className: 'h-9',
+            cellClassName: 'py-2 font-mono',
+            cell: (limit) => limit.group,
+          },
+          {
+            id: 'rpm',
+            header: 'RPM',
+            className: 'h-9 text-right',
+            cellClassName: tableStyles.topNumericCell,
+            cell: (limit) => formatRateLimit(limit.rpm),
+          },
+          {
+            id: 'tpm',
+            header: 'TPM',
+            className: 'h-9 text-right',
+            cellClassName: tableStyles.topNumericCell,
+            cell: (limit) => formatRateLimit(limit.tpm),
+          },
+          {
+            id: 'rpd',
+            header: 'RPD',
+            className: 'h-9 text-right',
+            cellClassName: tableStyles.topNumericCell,
+            cell: (limit) => formatRateLimit(limit.rpd),
+          },
+        ]}
+      />
+      <p className='text-muted-foreground mt-2 text-[11px] leading-relaxed'>
+        {t(
+          'RPM = requests per minute, TPM = tokens per minute, RPD = requests per day. Limits apply per token group.'
+        )}
+      </p>
     </section>
-  )
-}
-
-function InfoCell(props: { label: string; children: React.ReactNode }) {
-  return (
-    <div className='bg-card flex flex-col gap-1 px-3 py-2.5'>
-      <span className='text-muted-foreground text-[10px] font-medium tracking-wider uppercase'>
-        {props.label}
-      </span>
-      {props.children}
-    </div>
   )
 }
 
@@ -818,7 +745,7 @@ function AuthSection() {
           </p>
           <p className='text-muted-foreground'>
             {t(
-              'Generate tokens from the Tokens page; you can scope them to specific models, groups, and IPs.'
+              'Generate tokens from the Tokens page; you can scope them to specific models, groups, IPs, and rate-limits.'
             )}
           </p>
         </div>
@@ -835,32 +762,12 @@ export function ModelDetailsApi(props: {
   model: PricingModel
   endpointMap: Record<string, { path?: string; method?: string }>
 }) {
-  const endpoints = useMemo(
-    () => buildEndpointOptions(props.model, props.endpointMap),
-    [props.model, props.endpointMap]
-  )
-  const [endpointType, setEndpointType] = useState<string>(
-    endpoints[0]?.type ?? ''
-  )
-  const activeEndpoint = useMemo(() => {
-    return endpoints.find((e) => e.type === endpointType) ?? endpoints[0]
-  }, [endpointType, endpoints])
-  const selectedEndpointType = activeEndpoint?.type ?? endpointType
-
   return (
     <div className='space-y-6'>
-      <CodeSamplesSection
-        model={props.model}
-        endpoints={endpoints}
-        endpointType={selectedEndpointType}
-        onEndpointTypeChange={setEndpointType}
-      />
+      <CodeSamplesSection model={props.model} endpointMap={props.endpointMap} />
       <AuthSection />
-      <SupportedParametersSection
-        model={props.model}
-        endpointType={selectedEndpointType}
-      />
-      {/* Rate limits are hidden until they can be sourced from enforced backend configuration. */}
+      <SupportedParametersSection model={props.model} />
+      <RateLimitsSection model={props.model} />
     </div>
   )
 }
