@@ -1,6 +1,7 @@
 package model
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"net/url"
@@ -178,6 +179,59 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, common.DatabaseType, error)
 	return db, common.DatabaseTypeSQLite, err
 }
 
+func configureConnectionPool(sqlDB *sql.DB) {
+	sqlDB.SetMaxOpenConns(common.GetEnvOrDefault("SQL_MAX_OPEN_CONNS", 1000))
+	sqlDB.SetMaxIdleConns(common.GetEnvOrDefault("SQL_MAX_IDLE_CONNS", 100))
+	sqlDB.SetConnMaxLifetime(
+		time.Second * time.Duration(common.GetEnvOrDefault("SQL_MAX_LIFETIME", 60)),
+	)
+}
+
+func prepareMigrationConnection(
+	db *gorm.DB,
+	sqlDB *sql.DB,
+	dbType common.DatabaseType,
+) (func() error, error) {
+	maxOpen := common.GetEnvOrDefault("SQL_MAX_OPEN_CONNS", 1000)
+	maxIdle := common.GetEnvOrDefault("SQL_MAX_IDLE_CONNS", 100)
+	sqlDB.SetMaxIdleConns(1)
+	sqlDB.SetMaxOpenConns(1)
+
+	restorePool := func() {
+		sqlDB.SetMaxOpenConns(maxOpen)
+		sqlDB.SetMaxIdleConns(maxIdle)
+	}
+
+	if dbType != common.DatabaseTypePostgreSQL {
+		return func() error {
+			restorePool()
+			return nil
+		}, nil
+	}
+
+	if err := db.Exec("SET lock_timeout = '2s'").Error; err != nil {
+		restorePool()
+		return nil, fmt.Errorf("failed to set PostgreSQL migration lock timeout: %w", err)
+	}
+	if err := db.Exec("SET statement_timeout = '300s'").Error; err != nil {
+		_ = db.Exec("RESET lock_timeout").Error
+		restorePool()
+		return nil, fmt.Errorf("failed to set PostgreSQL migration statement timeout: %w", err)
+	}
+
+	return func() error {
+		var resetErr error
+		if err := db.Exec("RESET statement_timeout").Error; err != nil {
+			resetErr = fmt.Errorf("failed to reset PostgreSQL statement timeout: %w", err)
+		}
+		if err := db.Exec("RESET lock_timeout").Error; err != nil && resetErr == nil {
+			resetErr = fmt.Errorf("failed to reset PostgreSQL lock timeout: %w", err)
+		}
+		restorePool()
+		return resetErr
+	}, nil
+}
+
 func InitDB() (err error) {
 	db, dbType, err := chooseDB("SQL_DSN", false)
 	if err == nil {
@@ -200,21 +254,26 @@ func InitDB() (err error) {
 		if err != nil {
 			return err
 		}
-		sqlDB.SetMaxIdleConns(common.GetEnvOrDefault("SQL_MAX_IDLE_CONNS", 100))
-		sqlDB.SetMaxOpenConns(common.GetEnvOrDefault("SQL_MAX_OPEN_CONNS", 1000))
-		sqlDB.SetConnMaxLifetime(time.Second * time.Duration(common.GetEnvOrDefault("SQL_MAX_LIFETIME", 60)))
+		configureConnectionPool(sqlDB)
 
 		if !common.IsMasterNode {
 			return nil
 		}
+		restore, err := prepareMigrationConnection(DB, sqlDB, dbType)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if restoreErr := restore(); err == nil && restoreErr != nil {
+				err = restoreErr
+			}
+		}()
 		if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
 			//_, _ = sqlDB.Exec("ALTER TABLE channels MODIFY model_mapping TEXT;") // TODO: delete this line when most users have upgraded
 		}
 		common.SysLog("database migration started")
 		err = migrateDB()
 		return err
-	} else {
-		common.FatalLog(err)
 	}
 	return err
 }
@@ -244,25 +303,32 @@ func InitLogDB() (err error) {
 		if err != nil {
 			return err
 		}
-		sqlDB.SetMaxIdleConns(common.GetEnvOrDefault("SQL_MAX_IDLE_CONNS", 100))
-		sqlDB.SetMaxOpenConns(common.GetEnvOrDefault("SQL_MAX_OPEN_CONNS", 1000))
-		sqlDB.SetConnMaxLifetime(time.Second * time.Duration(common.GetEnvOrDefault("SQL_MAX_LIFETIME", 60)))
+		configureConnectionPool(sqlDB)
 
 		if !common.IsMasterNode {
 			return nil
 		}
+		restore, err := prepareMigrationConnection(LOG_DB, sqlDB, dbType)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if restoreErr := restore(); err == nil && restoreErr != nil {
+				err = restoreErr
+			}
+		}()
 		common.SysLog("database migration started")
 		err = migrateLOGDB()
 		return err
-	} else {
-		common.FatalLog(err)
 	}
 	return err
 }
 
 func migrateDB() error {
 	// Migrate price_amount column from float/double to decimal for existing tables
-	migrateSubscriptionPlanPriceAmount()
+	if err := migrateSubscriptionPlanPriceAmount(); err != nil {
+		return err
+	}
 	// Migrate model_limits column from varchar to text for existing tables
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
@@ -601,7 +667,7 @@ func migrateTokenModelLimitsToText() error {
 		if err := DB.Raw(`SELECT data_type FROM information_schema.columns
 			WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?`,
 			tableName, columnName).Scan(&dataType).Error; err != nil {
-			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
+			return fmt.Errorf("failed to query metadata for %s.%s: %w", tableName, columnName, err)
 		} else if dataType == "text" {
 			return nil
 		}
@@ -611,7 +677,7 @@ func migrateTokenModelLimitsToText() error {
 		if err := DB.Raw(`SELECT COLUMN_TYPE FROM information_schema.columns
 				WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
 			tableName, columnName).Scan(&columnType).Error; err != nil {
-			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
+			return fmt.Errorf("failed to query metadata for %s.%s: %w", tableName, columnName, err)
 		} else if strings.ToLower(columnType) == "text" {
 			return nil
 		}
@@ -631,11 +697,11 @@ func migrateTokenModelLimitsToText() error {
 
 // migrateSubscriptionPlanPriceAmount migrates price_amount column from float/double to decimal(10,6)
 // This is safe to run multiple times - it checks the column type first
-func migrateSubscriptionPlanPriceAmount() {
+func migrateSubscriptionPlanPriceAmount() error {
 	// SQLite doesn't support ALTER COLUMN, and its type affinity handles this automatically
 	// Skip early to avoid GORM parsing the existing table DDL which may cause issues
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
-		return
+		return nil
 	}
 
 	tableName := "subscription_plans"
@@ -643,12 +709,12 @@ func migrateSubscriptionPlanPriceAmount() {
 
 	// Check if table exists first
 	if !DB.Migrator().HasTable(tableName) {
-		return
+		return nil
 	}
 
 	// Check if column exists
 	if !DB.Migrator().HasColumn(&SubscriptionPlan{}, columnName) {
-		return
+		return nil
 	}
 
 	var alterSQL string
@@ -658,9 +724,9 @@ func migrateSubscriptionPlanPriceAmount() {
 		if err := DB.Raw(`SELECT data_type FROM information_schema.columns
 			WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?`,
 			tableName, columnName).Scan(&dataType).Error; err != nil {
-			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
+			return fmt.Errorf("failed to query metadata for %s.%s: %w", tableName, columnName, err)
 		} else if dataType == "numeric" {
-			return // Already decimal/numeric
+			return nil // Already decimal/numeric
 		}
 		alterSQL = fmt.Sprintf(`ALTER TABLE %s ALTER COLUMN %s TYPE decimal(10,6) USING %s::decimal(10,6)`,
 			tableName, columnName, columnName)
@@ -670,23 +736,23 @@ func migrateSubscriptionPlanPriceAmount() {
 		if err := DB.Raw(`SELECT COLUMN_TYPE FROM information_schema.columns
 				WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
 			tableName, columnName).Scan(&columnType).Error; err != nil {
-			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
+			return fmt.Errorf("failed to query metadata for %s.%s: %w", tableName, columnName, err)
 		} else if strings.HasPrefix(strings.ToLower(columnType), "decimal") {
-			return // Already decimal
+			return nil // Already decimal
 		}
 		alterSQL = fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s decimal(10,6) NOT NULL DEFAULT 0",
 			tableName, columnName)
 	} else {
-		return
+		return nil
 	}
 
 	if alterSQL != "" {
 		if err := DB.Exec(alterSQL).Error; err != nil {
-			common.SysLog(fmt.Sprintf("Warning: failed to migrate %s.%s to decimal: %v", tableName, columnName, err))
-		} else {
-			common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to decimal(10,6)", tableName, columnName))
+			return fmt.Errorf("failed to migrate %s.%s to decimal: %w", tableName, columnName, err)
 		}
+		common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to decimal(10,6)", tableName, columnName))
 	}
+	return nil
 }
 
 func closeDB(db *gorm.DB) error {
@@ -699,7 +765,10 @@ func closeDB(db *gorm.DB) error {
 }
 
 func CloseDB() error {
-	if LOG_DB != DB {
+	if DB == nil {
+		return nil
+	}
+	if LOG_DB != nil && LOG_DB != DB {
 		err := closeDB(LOG_DB)
 		if err != nil {
 			return err

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -53,12 +54,21 @@ var classicBuildFS embed.FS
 var classicIndexPage []byte
 
 func main() {
+	if err := run(); err != nil {
+		common.SysError(err.Error())
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	startTime := time.Now()
+	if migrationOnlyRequested() {
+		return runMigrationsOnly()
+	}
 
 	err := InitResources()
 	if err != nil {
-		common.FatalLog("failed to initialize resources: " + err.Error())
-		return
+		return fmt.Errorf("failed to initialize resources: %w", err)
 	}
 
 	common.SysLog("New API " + common.Version + " started")
@@ -72,7 +82,7 @@ func main() {
 	defer func() {
 		err := model.CloseDB()
 		if err != nil {
-			common.FatalLog("failed to close database: " + err.Error())
+			common.SysError("failed to close database: " + err.Error())
 		}
 	}()
 
@@ -219,33 +229,109 @@ func main() {
 		Handler: server,
 	}
 
+	listener, err := net.Listen("tcp", srv.Addr)
+	if err != nil {
+		return fmt.Errorf("failed to bind HTTP server on %s: %w", srv.Addr, err)
+	}
+
+	serveErr := make(chan error, 1)
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			common.FatalLog("failed to start HTTP server: " + err.Error())
-		}
+		serveErr <- srv.Serve(listener)
 	}()
 
-	time.Sleep(100 * time.Millisecond)
-
+	common.SetProcessReady(true)
+	defer common.SetProcessReady(false)
 	common.LogStartupSuccess(startTime, port)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	sig := <-quit
-	common.SysLog(fmt.Sprintf("received signal: %v, shutting down...", sig))
+	defer signal.Stop(quit)
+
+	select {
+	case sig := <-quit:
+		common.SetProcessReady(false)
+		drainSeconds := common.GetEnvOrDefault("PRE_SHUTDOWN_DRAIN_SECONDS", 15)
+		common.SysLog(fmt.Sprintf("received signal: %v, draining for %d seconds...", sig, drainSeconds))
+		if drainSeconds > 0 {
+			time.Sleep(time.Duration(drainSeconds) * time.Second)
+		}
+	case err := <-serveErr:
+		common.SetProcessReady(false)
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("HTTP server stopped unexpectedly: %w", err)
+		}
+		return nil
+	}
 
 	// SSE streams may run for minutes; give them time to finish before forced exit
-	shutdownTimeout := time.Duration(common.GetEnvOrDefault("SHUTDOWN_TIMEOUT_SECONDS", 120)) * time.Second
+	shutdownTimeout := time.Duration(common.GetEnvOrDefault("SHUTDOWN_TIMEOUT_SECONDS", 900)) * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		common.SysError(fmt.Sprintf("server forced to shutdown: %v", err))
+		return fmt.Errorf("server forced to shutdown after %s: %w", shutdownTimeout, err)
+	}
+	if err := <-serveErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("HTTP server shutdown failed: %w", err)
 	}
 	// 内存中的看板数据保存入库，避免重启丢失未落库数据 (issue #5679)
 	if common.DataExportEnabled {
 		model.SaveQuotaDataCache()
 	}
 	common.SysLog("server exited")
+	return nil
+}
+
+func migrationOnlyRequested() bool {
+	for _, arg := range os.Args[1:] {
+		if arg == "--migrate-only" || arg == "-migrate-only" {
+			return true
+		}
+	}
+	return false
+}
+
+func runMigrationsOnly() (err error) {
+	defer func() {
+		if model.DB == nil {
+			return
+		}
+		if closeErr := model.CloseDB(); closeErr != nil && err == nil {
+			err = fmt.Errorf("failed to close database after migration: %w", closeErr)
+		}
+	}()
+
+	if err = InitMigrationResources(); err != nil {
+		return err
+	}
+	common.SysLog("database migrations completed")
+	return nil
+}
+
+func InitMigrationResources() error {
+	if err := godotenv.Load(".env"); err != nil && common.DebugEnabled {
+		common.SysLog("No .env file found, using default environment variables.")
+	}
+
+	common.InitEnv()
+	logger.SetupLogger()
+
+	if err := validateMigrationNode(); err != nil {
+		return err
+	}
+	if err := model.InitDB(); err != nil {
+		return fmt.Errorf("failed to initialize primary database: %w", err)
+	}
+	if err := model.InitLogDB(); err != nil {
+		return fmt.Errorf("failed to initialize log database: %w", err)
+	}
+	return nil
+}
+
+func validateMigrationNode() error {
+	if !common.IsMasterNode {
+		return errors.New("--migrate-only cannot run with NODE_TYPE=slave")
+	}
+	return nil
 }
 
 func InjectUmamiAnalytics() {
