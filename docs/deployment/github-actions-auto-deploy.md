@@ -6,11 +6,14 @@
 
 ## 工作流行为
 
-`.github/workflows/deploy-image.yml` 包含三个任务：
+`.github/workflows/deploy-image.yml` 包含构建校验、生产审批和生产操作任务：
 
 1. Pull Request 和 push 到 `aivrae/main`：阻断执行全量 Go 测试、default typecheck、i18n 同步、default/classic production build、部署工具校验和容器镜像构建。
 2. Pull Request 只验证镜像可构建，不推送；push 会推送 SHA 标签到 GHCR，并在工作流摘要中输出 digest。
-3. `workflow_dispatch`：经过 `production` Environment 后，人工选择 `deploy`、`preflight-upgrade`、`start-upgrade`、`finalize-upgrade` 或 `rollback-upgrade`。
+3. `workflow_dispatch`：可选择 `deploy`、`preflight-upgrade`、`start-upgrade`、
+   `finalize-upgrade` 或 `rollback-upgrade`。只有真正开始对外发布的 `deploy` 和
+   `start-upgrade` 会等待 `production` Environment 人工批准；其余操作在校验通过后
+   直接执行。
 
 `.github/workflows/migration-compatibility.yml` 另外在 SQLite、MySQL 5.7、PostgreSQL
 9.6 和 PostgreSQL 15 上运行两次 `--migrate-only`，并验证两项批准的列类型变化和
@@ -102,8 +105,20 @@ docker-compose.slots.yml  blue、green、master
 | `DEPLOY_PORT` | `22` | SSH 端口 |
 | `DEPLOY_SMOKE_MODEL` | 空 | 非流式和流式真实中转测试模型 |
 
-仓库需创建 `production` Environment。生产任务使用固定并发组且
-`cancel-in-progress: false`；服务器脚本还会使用 `flock`，防止两个发布同时执行。
+以上 SSH、镜像仓库和冒烟测试 Secrets 必须配置为仓库级 Secrets。仓库需创建
+`production` Environment，并为其配置人工审批；该 Environment 只挂在独立的生产
+审批任务上，实际生产操作在审批成功后继续执行。所有操作使用固定并发组且
+`cancel-in-progress: false`；服务器脚本还会使用 `flock`，防止两个操作同时执行。
+
+审批规则固定如下：
+
+| Operation | 是否需要人工批准 | 原因 |
+| --- | --- | --- |
+| `deploy` | 是 | 重建非活动槽并切换对外流量 |
+| `preflight-upgrade` | 否 | 隔离环境预演，不修改生产数据库和线上槽位 |
+| `start-upgrade` | 是 | 执行生产迁移、替换 master 并切换对外流量 |
+| `finalize-upgrade` | 否 | 由 24 小时保留期和零连接检查阻断不安全执行 |
+| `rollback-upgrade` | 否 | 回滚必须能够立即执行，不应等待人工审批门禁 |
 
 `aivrae/main` 的分支保护应要求升级 PR 通过 `Validate application`、
 `Build immutable image`、SQLite、MySQL 5.7、PostgreSQL 9.6 和 PostgreSQL 15
@@ -130,7 +145,8 @@ docker-compose.slots.yml  blue、green、master
 
 ## 跨版本升级
 
-升级必须按以下五次独立、人工批准的 workflow dispatch 执行：
+升级仍按以下独立的 workflow dispatch 阶段执行。准备、收尾和回滚由维护者或 Codex
+直接触发；只有 `start-upgrade` 在真正修改生产并切流前需要用户确认一次：
 
 1. `preflight-upgrade <digest>`：生成最新生产备份，在无宿主机端口的隔离 PostgreSQL
    15 + Redis 中恢复；旧 slave 持续读、数据库持续写时，候选镜像执行两次
