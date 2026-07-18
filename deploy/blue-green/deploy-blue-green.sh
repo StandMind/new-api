@@ -25,6 +25,7 @@ UPGRADE_OBSERVE_INTERVAL="${UPGRADE_OBSERVE_INTERVAL:-5}"
 UPGRADE_RETAIN_SECONDS="${UPGRADE_RETAIN_SECONDS:-86400}"
 UPGRADE_ZERO_CONNECTION_SECONDS="${UPGRADE_ZERO_CONNECTION_SECONDS:-600}"
 UPGRADE_EXTERNAL_PROBE_SECONDS="${UPGRADE_EXTERNAL_PROBE_SECONDS:-$((UPGRADE_OBSERVE_SECONDS + 7200))}"
+CONNECTION_WAIT_SECONDS="${CONNECTION_WAIT_SECONDS:-180}"
 CAPTURE_CADDY_BACKUP_TO_STATE="false"
 DRAIN_SSE_PID=""
 DRAIN_SSE_FILE=""
@@ -298,6 +299,30 @@ connection_count() {
   nsenter -t "${pid}" -n ss -Htn state established '( sport = :3000 )' | wc -l
 }
 
+wait_until_no_connections() {
+  local container="$1"
+  local timeout_seconds="${2:-${CONNECTION_WAIT_SECONDS}}"
+  local attempt
+  local count
+  local zero_streak=0
+
+  log "waiting up to ${timeout_seconds} seconds for ${container} connections to drain"
+  for attempt in $(seq 0 "${timeout_seconds}"); do
+    count="$(connection_count "${container}")"
+    if [ "${count}" -eq 0 ]; then
+      zero_streak=$((zero_streak + 1))
+      if [ "${zero_streak}" -ge 2 ]; then
+        log "${container} has no established connections in two consecutive checks"
+        return
+      fi
+    else
+      zero_streak=0
+    fi
+    [ "${attempt}" -ge "${timeout_seconds}" ] || sleep 1
+  done
+  fatal "${container} still has established connections after ${timeout_seconds} seconds"
+}
+
 wait_healthy() {
   local container="$1"
   local attempt
@@ -413,6 +438,9 @@ render_caddy_candidate() {
       print "        reverse_proxy " primary ":3000 " fallback ":3000 {"
       print "            lb_policy first"
       print "            health_uri " health_path
+      print "            health_headers {"
+      print "                Connection close"
+      print "            }"
       print "            health_interval 5s"
       print "            health_timeout 2s"
       print "            health_fails 2"
@@ -571,7 +599,6 @@ deploy_inactive() {
   local inactive_slot
   local inactive_service
   local active_service
-  local connections
 
   validate_image_ref "${image_ref}"
 
@@ -580,8 +607,11 @@ deploy_inactive() {
   inactive_service="$(service_for_slot "${inactive_slot}")"
   active_service="$(service_for_slot "${active_slot}")"
   container_running "${active_service}" || fatal "active service ${active_service} is not running"
-  connections="$(connection_count "${inactive_service}")"
-  [ "${connections}" -eq 0 ] || fatal "${inactive_service} still has ${connections} established connection(s)"
+  switch_caddy \
+    "${active_slot}" \
+    "${inactive_slot}" \
+    "$(caddy_health_path_for_slots "${active_slot}" "${inactive_slot}")"
+  wait_until_no_connections "${inactive_service}"
 
   if [ -x "${DEPLOY_PATH}/backup-db.sh" ]; then
     "${DEPLOY_PATH}/backup-db.sh"
@@ -929,14 +959,14 @@ start_upgrade() {
   inactive_service="$(service_for_slot "${inactive_slot}")"
   [ "$(container_image "${inactive_service}")" = "$(state_get original_fallback_image)" ] \
     || fatal "fallback image changed after preflight"
-  [ "$(connection_count "${inactive_service}")" -eq 0 ] \
-    || fatal "${inactive_service} still has established connections"
   [ -n "${SMOKE_TOKEN}" ] || fatal "SMOKE_TOKEN is required for start-upgrade"
   [ -n "${SMOKE_MODEL}" ] || fatal "SMOKE_MODEL is required for start-upgrade"
   caddy_has_upstream_order "${active_service}" "${inactive_service}" \
     || fatal "Caddy runtime upstream order does not match active-slot"
 
   wait_healthy "${active_service}"
+  switch_caddy "${active_slot}" "${inactive_slot}" /api/status
+  wait_until_no_connections "${inactive_service}"
   smoke_slot "${active_slot}"
   start_external_probe
   assert_external_probe_clean || fatal "initial public probe failed before production changes"
@@ -969,8 +999,7 @@ start_upgrade() {
   fi
 
   if ! (
-    [ "$(connection_count "${inactive_service}")" -eq 0 ] \
-      || fatal "${inactive_service} received fallback traffic before rebuild"
+    wait_until_no_connections "${inactive_service}"
     update_slot_image "${inactive_slot}" "${image_ref}"
     update_slot_health_path "${inactive_slot}" /readyz
     compose pull "${inactive_service}"

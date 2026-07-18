@@ -168,6 +168,9 @@ Caddyfile 使用标记块，由部署脚本只替换该块：
 reverse_proxy new-api-green:3000 new-api-blue:3000 {
     lb_policy first
     health_uri /readyz
+    health_headers {
+        Connection close
+    }
     health_interval 5s
     health_timeout 2s
     health_fails 2
@@ -181,6 +184,9 @@ reverse_proxy new-api-green:3000 new-api-blue:3000 {
 两个槽都升级后使用 `/readyz`；首次混合版本阶段仍使用 `/api/status`。不配置 POST
 自动重试，避免已到达上游的调用被代理重放并产生重复计费。配置先在
 `aivrae-caddy` 容器内验证，之后使用 `caddy reload` 热加载，不重启 Caddy。
+主动健康检查显式使用 `Connection: close`，避免 Caddy 的健康检查 keep-alive 被误判
+为尚未完成的用户请求。部署脚本在同 upstream 顺序 reload 后最多等待 180 秒，让旧
+transport 的空闲连接退出；真实长请求在此期间仍会保持连接并阻断槽位重建。
 
 生产 Caddyfile 是只读单文件 bind mount。部署脚本会先把候选配置复制到容器
 `/tmp/Caddyfile.candidate` 并执行校验，再用同目录临时文件和原子 `mv` 更新宿主机

@@ -65,6 +65,8 @@ CANDIDATE_CADDY="${TEST_DIR}/Caddyfile.candidate"
 render_caddy_candidate new-api-blue new-api-green "${CANDIDATE_CADDY}" /readyz
 grep -q 'reverse_proxy new-api-blue:3000 new-api-green:3000' "${CANDIDATE_CADDY}"
 grep -q 'health_uri /readyz' "${CANDIDATE_CADDY}"
+grep -q 'health_headers {' "${CANDIDATE_CADDY}"
+grep -q 'Connection close' "${CANDIDATE_CADDY}"
 
 ATOMIC_DESTINATION="${TEST_DIR}/atomic-destination"
 ATOMIC_SOURCE="${TEST_DIR}/atomic-source"
@@ -105,6 +107,25 @@ EXPECTED_OLD_MASTER='example.invalid/new-api@sha256:cccccccccccccccccccccccccccc
 [ "$(sed -n '2p' "${EVENTS_FILE}")" = 'active:green' ]
 [ "$(sed -n '3p' "${EVENTS_FILE}")" = "master:${EXPECTED_OLD_MASTER}:/api/status" ]
 [ "$(state_get phase)" = 'rolled-back' ]
+
+CONNECTION_COUNTS_FILE="${TEST_DIR}/connection-counts"
+connection_count() {
+  sed -n '1p' "${CONNECTION_COUNTS_FILE}"
+  sed -i '1d' "${CONNECTION_COUNTS_FILE}"
+}
+sleep() {
+  :
+}
+
+printf '1\n0\n0\n' > "${CONNECTION_COUNTS_FILE}"
+wait_until_no_connections new-api-blue 2
+[ ! -s "${CONNECTION_COUNTS_FILE}" ]
+
+printf '1\n1\n' > "${CONNECTION_COUNTS_FILE}"
+if (wait_until_no_connections new-api-blue 1); then
+  printf 'connection drain timeout unexpectedly passed\n' >&2
+  exit 1
+fi
 
 (
   export PREFLIGHT_LIB_ONLY=true
