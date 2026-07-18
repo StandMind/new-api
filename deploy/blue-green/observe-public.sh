@@ -42,7 +42,7 @@ write_summary() {
 trap write_summary EXIT
 
 while [ "$(date +%s)" -lt "${DEADLINE_EPOCH}" ]; do
-  TIMESTAMP="$(date -Ins)"
+  TIMESTAMP="$(date '+%Y-%m-%dT%H:%M:%S%:z')"
   RESULT="$(curl --silent --show-error --max-time 10 \
     -o /dev/null \
     -w '%{http_code},%{time_total}' \
