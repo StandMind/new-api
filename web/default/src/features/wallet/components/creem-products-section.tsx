@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+
 import { formatCreemPrice } from '../lib/format'
 import type { CreemProduct } from '../types'
 
@@ -51,13 +52,14 @@ export function CreemProductsSection({
       {products.map((product) => (
         <Card
           key={product.productId}
-          className='hover:border-foreground/50 cursor-pointer transition-all hover:shadow-md'
+          data-card-hover='false'
+          className='cursor-pointer'
           onClick={() => onProductSelect(product)}
         >
           <CardContent className='p-3 text-center sm:p-4'>
             <div className='mb-2 text-lg font-medium'>{product.name}</div>
-            {/* Creem quota is an internal crediting value, so users only see the product and price. */}
-            <div className='text-lg font-semibold text-indigo-600'>
+            {/* Quota is an internal crediting value, so users only see the product and price. */}
+            <div className='text-primary text-lg font-semibold'>
               {formatCreemPrice(product.price, product.currency)}
             </div>
           </CardContent>

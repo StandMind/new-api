@@ -1,3 +1,6 @@
+import { useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
+import { ArrowRight, CalendarDays, Search, SearchX } from 'lucide-react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -17,17 +20,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo, useState, type FormEvent } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
-import { ArrowRight, CalendarDays, Search, SearchX } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { normalizeInterfaceLanguage } from '@/i18n/languages'
-import { cn } from '@/lib/utils'
+
+import { PublicLayout } from '@/components/layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import { PublicLayout } from '@/components/layout'
+import { normalizeInterfaceLanguage } from '@/i18n/languages'
+
 import { getBlogPosts } from './api'
 import type { BlogPost } from './types'
 
@@ -45,7 +46,7 @@ function BlogCard({ post, locale }: { post: BlogPost; locale: string }) {
   const publishedAt = formatBlogDate(post.published_time, locale)
 
   return (
-    <article className='group border-border bg-card text-card-foreground overflow-hidden rounded-lg border transition-colors hover:border-primary/40'>
+    <article className='group border-border bg-card text-card-foreground hover:border-primary/40 overflow-hidden rounded-lg border transition-colors'>
       {post.cover_image ? (
         <Link
           to='/blog/$slug'
