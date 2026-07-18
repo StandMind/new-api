@@ -190,12 +190,44 @@ jobs:
         if: github.event_name == 'pull_request'
         run: echo 'Container image build completed without pushing an image.' >> "${GITHUB_STEP_SUMMARY}"
 
-  deploy:
-    name: Deploy production
-    if: github.event_name == 'workflow_dispatch'
+  production_approval:
+    name: Approve production deployment
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      (inputs.operation == 'deploy' || inputs.operation == 'start-upgrade')
     needs: validate
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: read
+    steps:
+      - name: Record approved operation
+        run: |
+          echo '### Production approval' >> "${GITHUB_STEP_SUMMARY}"
+          echo "Operation: ${{ inputs.operation }}" >> "${GITHUB_STEP_SUMMARY}"
+          echo 'The production deployment may now proceed.' >> "${GITHUB_STEP_SUMMARY}"
+
+  deploy:
+    name: Run production operation
+    if: >-
+      always() &&
+      github.event_name == 'workflow_dispatch' &&
+      needs.validate.result == 'success' &&
+      (
+        (
+          (inputs.operation == 'deploy' || inputs.operation == 'start-upgrade') &&
+          needs.production_approval.result == 'success'
+        ) ||
+        (
+          inputs.operation != 'deploy' &&
+          inputs.operation != 'start-upgrade' &&
+          needs.production_approval.result == 'skipped'
+        )
+      )
+    needs:
+      - validate
+      - production_approval
+    runs-on: ubuntu-latest
     concurrency:
       group: production-deploy
       cancel-in-progress: false
