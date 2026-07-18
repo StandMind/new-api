@@ -14,17 +14,20 @@ services:
       - CRYPTO_SECRET=${CRYPTO_SECRET}
       - NODE_TYPE=slave
       - NODE_NAME=new-api-blue
+      - PRE_SHUTDOWN_DRAIN_SECONDS=15
+      - SHUTDOWN_TIMEOUT_SECONDS=900
     expose:
       - "3000"
     volumes:
       - /opt/new-api-stack/data-blue:/data
       - /opt/new-api-stack/logs-blue:/app/logs
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3000/api/status | grep -q '\"success\"[[:space:]]*:[[:space:]]*true'"]
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3000${BLUE_HEALTH_PATH:-/readyz} | grep -q '\"success\"[[:space:]]*:[[:space:]]*true'"]
       interval: 5s
       timeout: 3s
       retries: 12
       start_period: 10s
+    stop_grace_period: 16m
     networks:
       - new-api-net
 
@@ -41,17 +44,20 @@ services:
       - CRYPTO_SECRET=${CRYPTO_SECRET}
       - NODE_TYPE=slave
       - NODE_NAME=new-api-green
+      - PRE_SHUTDOWN_DRAIN_SECONDS=15
+      - SHUTDOWN_TIMEOUT_SECONDS=900
     expose:
       - "3000"
     volumes:
       - /opt/new-api-stack/data-green:/data
       - /opt/new-api-stack/logs-green:/app/logs
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3000/api/status | grep -q '\"success\"[[:space:]]*:[[:space:]]*true'"]
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3000${GREEN_HEALTH_PATH:-/readyz} | grep -q '\"success\"[[:space:]]*:[[:space:]]*true'"]
       interval: 5s
       timeout: 3s
       retries: 12
       start_period: 10s
+    stop_grace_period: 16m
     networks:
       - new-api-net
 
@@ -68,17 +74,20 @@ services:
       - CRYPTO_SECRET=${CRYPTO_SECRET}
       - NODE_TYPE=master
       - NODE_NAME=new-api-master
+      - PRE_SHUTDOWN_DRAIN_SECONDS=15
+      - SHUTDOWN_TIMEOUT_SECONDS=900
     expose:
       - "3000"
     volumes:
       - /opt/new-api-stack/data-master:/data
       - /opt/new-api-stack/logs-master:/app/logs
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3000/api/status | grep -q '\"success\"[[:space:]]*:[[:space:]]*true'"]
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3000${MASTER_HEALTH_PATH:-/readyz} | grep -q '\"success\"[[:space:]]*:[[:space:]]*true'"]
       interval: 10s
       timeout: 3s
       retries: 12
       start_period: 15s
+    stop_grace_period: 16m
     networks:
       - new-api-net
 

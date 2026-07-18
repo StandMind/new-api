@@ -8,15 +8,14 @@
 
 `.github/workflows/deploy-image.yml` 包含三个任务：
 
-1. Pull Request 和 push 到 `aivrae/main`：运行 Go 测试、默认前端类型检查、部署工具校验和容器镜像构建。
+1. Pull Request 和 push 到 `aivrae/main`：阻断执行全量 Go 测试、default typecheck、i18n 同步、default/classic production build、部署工具校验和容器镜像构建。
 2. Pull Request 只验证镜像可构建，不推送；push 会推送 SHA 标签到 GHCR，并在工作流摘要中输出 digest。
-3. `workflow_dispatch`：经过 `production` Environment 后，将指定 digest 部署到非活动槽。
+3. `workflow_dispatch`：经过 `production` Environment 后，人工选择 `deploy`、`preflight-upgrade`、`start-upgrade`、`finalize-upgrade` 或 `rollback-upgrade`。
 
-当前 fork 的全量 Go 测试和默认前端类型检查存在本次部署改造之前就有的失败，
-因此两者仍会执行并在工作流摘要中报告，但暂不阻断部署基础设施工作流。部署脚本
-语法、Compose 展开和完整生产 Docker 镜像构建均为阻断式检查；Docker 构建会
-实际构建 default/classic 两套前端并编译 Go 二进制。修复应用测试与类型检查基线
-属于后续应用代码计划，不在本次部署改造中处理。
+`.github/workflows/migration-compatibility.yml` 另外在 SQLite、MySQL 5.7、PostgreSQL
+9.6 和 PostgreSQL 15 上运行两次 `--migrate-only`，并验证两项批准的列类型变化和
+博客、系统任务、实例、权限表均存在。所有检查均为阻断式，不再使用
+`continue-on-error`。
 
 以下内容变更不会触发生产镜像构建：
 
@@ -65,14 +64,19 @@ docker-compose.slots.yml  blue、green、master
 ```text
 /opt/new-api-stack/docker-compose.slots.yml
 /opt/new-api-stack/deploy-blue-green.sh
+/opt/new-api-stack/upgrade-preflight.sh
 /opt/new-api-stack/observe-public.sh
 /opt/new-api-stack/slots.env
 /opt/new-api-stack/active-slot
+/opt/new-api-stack/upgrade-state
+/opt/new-api-stack/preflight-reports/
 /opt/new-api-stack/deployment-history.log
 ```
 
-`active-slot` 只能包含 `blue` 或 `green`。`slots.env` 保存每个槽位与主节点当前使用
-的不可变镜像引用，不保存数据库密码或 API Key。
+`active-slot` 只能包含 `blue` 或 `green`。`slots.env` 保存每个槽位、主节点当前使用
+的不可变镜像引用和服务级健康路径，不保存数据库密码或 API Key。`upgrade-state`
+以原子替换方式记录候选镜像、旧 master 镜像、原活动槽、备份、Caddy 备份、持续
+公网探测文件和当前阶段，权限为 `0600`。
 
 ## GitHub 配置
 
@@ -101,7 +105,12 @@ docker-compose.slots.yml  blue、green、master
 仓库需创建 `production` Environment。生产任务使用固定并发组且
 `cancel-in-progress: false`；服务器脚本还会使用 `flock`，防止两个发布同时执行。
 
-## 发布流程
+`aivrae/main` 的分支保护应要求升级 PR 通过 `Validate application`、
+`Build immutable image`、SQLite、MySQL 5.7、PostgreSQL 9.6 和 PostgreSQL 15
+迁移检查后才能合并。工作流本身不使用 `continue-on-error`；是否真正禁止绕过合并
+仍由 GitHub Required status checks 配置决定。
+
+## 常规同架构发布
 
 1. 从 push 工作流摘要复制完整镜像 digest。
 2. 打开 `Build image and blue-green deploy` 工作流。
@@ -112,9 +121,43 @@ docker-compose.slots.yml  blue、green、master
 7. Caddy 候选配置通过校验后执行 reload，将新槽设为第一 upstream。
 8. 原活动槽保持运行，不会被部署任务自动停止。
 
-应用当前没有优雅关闭，因此脚本拒绝重建仍有已建立 HTTP 连接的非活动槽。
-真实中转冒烟遇到临时上游错误时最多重试 5 次；流式请求必须收到 SSE 数据和
-`[DONE]` 才视为通过。
+应用收到 SIGTERM 后立即将 `/readyz` 置为 503，默认等待 15 秒让 Caddy 摘除节点，
+再执行最长 900 秒的 `http.Server.Shutdown`。Compose 的 `stop_grace_period` 为
+16 分钟。脚本仍拒绝重建存在已建立 HTTP 连接的非活动槽；真实中转冒烟最多重试
+5 次，流式请求必须收到 SSE 数据和 `[DONE]`。
+
+## 跨版本升级
+
+升级必须按以下五次独立、人工批准的 workflow dispatch 执行：
+
+1. `preflight-upgrade <digest>`：生成最新生产备份，在无宿主机端口的隔离 PostgreSQL
+   15 + Redis 中恢复；旧 slave 持续读、数据库持续写时，候选镜像执行两次
+   `--migrate-only`。随后依次验证候选 master/slave 和旧 master/slave，并拒绝包含
+   未批准删除或既有对象变化的 catalog diff。原始 schema diff 和表、列、约束、
+   索引、触发器、视图、序列快照一并写入 `preflight-reports/`。
+2. `start-upgrade <digest>`：重新备份并校验，先启动独立的持续公网状态探测并在生产
+   执行一次 `--migrate-only`；再停止旧 master、启动候选 master，确保任何时刻只有
+   一个 master。随后再次确认非活动槽零连接，重建并执行 readiness、状态、模型、
+   非流式和流式冒烟。长 SSE 必须通过 `aivrae.com` 建立，确认已经由旧活动槽返回
+   首个数据帧且连接仍存活后才 reload Caddy。混合版本健康检查保持 `/api/status`。
+3. `start-upgrade` 切流后持续观察 60 分钟。候选槽 unhealthy/restart，或公共状态与
+   模型列表连续两次失败时，脚本立即按固定顺序回滚；全程公网探测出现非 2xx 也会
+   阻断升级。成功后状态进入 `observing-complete`，旧槽仍保留原镜像。
+4. `finalize-upgrade`：从切流时间起至少保留旧槽 24 小时，并确认旧槽连续 10 分钟
+   零连接；随后才以候选 digest 重建旧槽作为 fallback，并把 Caddy 健康检查原子
+   切换为 `/readyz`。
+5. `rollback-upgrade`：仅允许在 finalize 前执行。先恢复 Caddy 到旧活动槽，再恢复
+   旧 master；不会恢复数据库备份，也不会删除候选槽日志。
+
+`upgrade-state` 的主要阶段为：
+
+```text
+preflight-complete -> starting -> switched -> observing-complete -> finalized
+                                             \-> rolled-back
+```
+
+候选镜像必须是完整 `image@sha256:digest`。`start-upgrade` 还强制要求低额度
+`DEPLOY_SMOKE_TOKEN` 和 `DEPLOY_SMOKE_MODEL`，否则不会进入生产迁移。
 
 ## Caddy 配置
 
@@ -124,7 +167,7 @@ Caddyfile 使用标记块，由部署脚本只替换该块：
 # BEGIN NEW_API_UPSTREAM
 reverse_proxy new-api-green:3000 new-api-blue:3000 {
     lb_policy first
-    health_uri /api/status
+    health_uri /readyz
     health_interval 5s
     health_timeout 2s
     health_fails 2
@@ -135,18 +178,21 @@ reverse_proxy new-api-green:3000 new-api-blue:3000 {
 # END NEW_API_UPSTREAM
 ```
 
-不配置 POST 自动重试，避免已到达上游的调用被代理重放并产生重复计费。配置先在
+两个槽都升级后使用 `/readyz`；首次混合版本阶段仍使用 `/api/status`。不配置 POST
+自动重试，避免已到达上游的调用被代理重放并产生重复计费。配置先在
 `aivrae-caddy` 容器内验证，之后使用 `caddy reload` 热加载，不重启 Caddy。
 
 生产 Caddyfile 是只读单文件 bind mount。部署脚本会先把候选配置复制到容器
-`/tmp/Caddyfile.candidate`，再直接从该文件 reload，并通过 Caddy Admin API 确认
-目标槽和回退槽已经进入运行时配置。这样不会依赖容器内 `/etc/caddy/Caddyfile`
-是否仍指向宿主机文件的最新 inode。
+`/tmp/Caddyfile.candidate` 并执行校验，再用同目录临时文件和原子 `mv` 更新宿主机
+Caddyfile，然后直接从容器内候选文件 reload，并通过 Caddy Admin API 确认目标槽和
+回退槽已经进入运行时配置。这样既不会暴露部分写入状态，也不依赖容器内
+`/etc/caddy/Caddyfile` 是否仍指向宿主机文件的最新 inode。
 
 ## 回滚
 
 部署脚本在每次切换前保留 Caddyfile 备份。若 reload 或公网状态检查失败，会恢复
-上一份配置并再次 reload。数据库不会自动回滚，原活动槽也不会被自动删除。
+上一份配置并再次 reload。跨版本回滚固定先恢复 Caddy、再恢复旧 master。数据库
+不会自动回滚，原活动槽和候选日志也不会被自动删除。
 成功切换会追加写入 `deployment-history.log`，记录新活动槽、当前镜像、上一槽位和
 上一镜像引用。
 
@@ -164,7 +210,10 @@ cd /opt/new-api-stack
 ./deploy-blue-green.sh switch green
 ```
 
-## 24 小时观察
+## 首次建槽观察（历史流程）
+
+以下内容只用于从旧单容器首次迁移到蓝绿拓扑，不适用于跨版本升级。跨版本升级的
+24 小时旧槽保留由 `finalize-upgrade` 强制校验，不允许用本节的人工批准缩短。
 
 首次切入新槽后，默认建议从切流时刻开始观察至少 24 小时。可用独立 systemd
 transient service 持续记录公共状态码和延迟：
@@ -189,7 +238,7 @@ systemd-run \
 
 没有明确批准时，观察期未满不得创建正式 blue/master、停止旧容器或关闭旧端口。
 
-## 首次迁移完成条件
+## 首次蓝绿迁移完成条件（历史流程）
 
 首次从单容器迁移到正式蓝绿拓扑时，必须同时满足：
 
