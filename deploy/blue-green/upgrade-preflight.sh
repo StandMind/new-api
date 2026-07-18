@@ -12,10 +12,10 @@ POSTGRES_CONTAINER="${PREFIX}-postgres"
 REDIS_CONTAINER="${PREFIX}-redis"
 OLD_SLAVE_CONTAINER="${PREFIX}-old-slave"
 
-CANDIDATE_IMAGE="${1:?candidate image is required}"
-OLD_MASTER_IMAGE="${2:?old master image is required}"
-OLD_SLAVE_IMAGE="${3:?old slave image is required}"
-BACKUP_FILE="${4:?backup file is required}"
+CANDIDATE_IMAGE="${1:-}"
+OLD_MASTER_IMAGE="${2:-}"
+OLD_SLAVE_IMAGE="${3:-}"
+BACKUP_FILE="${4:-}"
 
 REPORT_DIR="$(dirname "${REPORT_FILE}")"
 SCHEMA_BEFORE="${REPORT_FILE%.txt}.schema-before.sql"
@@ -78,11 +78,27 @@ cleanup() {
   docker network rm "${NETWORK}" >/dev/null 2>&1 || true
 }
 
+# The image entrypoint briefly exposes an init-time server before PID 1 becomes postgres.
+postgres_is_ready() {
+  local container="$1"
+
+  docker exec "${container}" sh -c \
+    '[ "$(cat /proc/1/comm)" = postgres ]' >/dev/null 2>&1 \
+    && docker exec "${container}" psql \
+      -X -v ON_ERROR_STOP=1 -At \
+      -U "${POSTGRES_USER}" \
+      -d "${POSTGRES_DB}" \
+      -c 'SELECT 1' >/dev/null 2>&1
+}
+
 wait_postgres() {
   for _ in $(seq 1 60); do
-    if docker exec "${POSTGRES_CONTAINER}" pg_isready \
-      -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" >/dev/null 2>&1; then
+    if postgres_is_ready "${POSTGRES_CONTAINER}"; then
       return
+    fi
+    if [ "$(docker inspect -f '{{.State.Running}}' "${POSTGRES_CONTAINER}" 2>/dev/null || true)" != "true" ]; then
+      docker logs "${POSTGRES_CONTAINER}" >> "${REPORT_FILE}" 2>&1 || true
+      fatal "isolated PostgreSQL exited before becoming ready"
     fi
     sleep 1
   done
@@ -301,6 +317,11 @@ validate_expand_only_diff() {
 }
 
 main() {
+  [ -n "${CANDIDATE_IMAGE}" ] || fatal "candidate image is required"
+  [ -n "${OLD_MASTER_IMAGE}" ] || fatal "old master image is required"
+  [ -n "${OLD_SLAVE_IMAGE}" ] || fatal "old slave image is required"
+  [ -n "${BACKUP_FILE}" ] || fatal "backup file is required"
+
   require_command awk
   require_command comm
   require_command diff
@@ -436,4 +457,6 @@ main() {
   log "result=success"
 }
 
-main "$@"
+if [ "${PREFLIGHT_LIB_ONLY:-false}" != "true" ]; then
+  main "$@"
+fi

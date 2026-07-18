@@ -106,4 +106,50 @@ EXPECTED_OLD_MASTER='example.invalid/new-api@sha256:cccccccccccccccccccccccccccc
 [ "$(sed -n '3p' "${EVENTS_FILE}")" = "master:${EXPECTED_OLD_MASTER}:/api/status" ]
 [ "$(state_get phase)" = 'rolled-back' ]
 
+(
+  export PREFLIGHT_LIB_ONLY=true
+  export PREFLIGHT_REPORT_FILE="${TEST_DIR}/preflight-report.txt"
+  # shellcheck source=deploy/blue-green/upgrade-preflight.sh
+  source "${ROOT_DIR}/deploy/blue-green/upgrade-preflight.sh"
+
+  POSTGRES_USER=test_user
+  POSTGRES_DB=test_db
+  MOCK_PID1=bash
+  MOCK_QUERY_READY=false
+  MOCK_QUERY_CALLS=0
+
+  docker() {
+    [ "$1" = exec ] || return 1
+    case "$3" in
+      sh)
+        [ "${MOCK_PID1}" = postgres ]
+        ;;
+      psql)
+        MOCK_QUERY_CALLS=$((MOCK_QUERY_CALLS + 1))
+        [ "${MOCK_QUERY_READY}" = true ]
+        ;;
+      *)
+        return 1
+        ;;
+    esac
+  }
+
+  if postgres_is_ready test-postgres; then
+    printf 'temporary PostgreSQL entrypoint unexpectedly passed readiness\n' >&2
+    exit 1
+  fi
+  [ "${MOCK_QUERY_CALLS}" -eq 0 ]
+
+  MOCK_PID1=postgres
+  if postgres_is_ready test-postgres; then
+    printf 'PostgreSQL with a failing query unexpectedly passed readiness\n' >&2
+    exit 1
+  fi
+  [ "${MOCK_QUERY_CALLS}" -eq 1 ]
+
+  MOCK_QUERY_READY=true
+  postgres_is_ready test-postgres
+  [ "${MOCK_QUERY_CALLS}" -eq 2 ]
+)
+
 printf 'blue-green deployment helper tests passed\n'
