@@ -50,6 +50,16 @@ new-api-master  NODE_TYPE=master，不加入 Caddy upstream
 独立的日志与 `/data` 目录。API 槽位不映射宿主机端口，只通过 external network
 `new-api-net` 供 Caddy 访问。
 
+基础 Compose 与槽位 Compose 分工如下：
+
+```text
+docker-compose.yml        PostgreSQL、Redis
+docker-compose.slots.yml  blue、green、master
+```
+
+完成首次迁移后，旧单容器服务必须从基础 Compose 中移除。若暂时保留停止容器用于
+人工回滚，其 restart policy 必须设置为 `no`，防止宿主机重启后重新开放旧端口。
+
 部署文件：
 
 ```text
@@ -156,8 +166,8 @@ cd /opt/new-api-stack
 
 ## 24 小时观察
 
-首次切入绿槽后，从切流时刻开始至少观察 24 小时。可用独立 systemd transient
-service 持续记录公共状态码和延迟：
+首次切入新槽后，默认建议从切流时刻开始观察至少 24 小时。可用独立 systemd
+transient service 持续记录公共状态码和延迟：
 
 ```bash
 systemd-run \
@@ -167,13 +177,39 @@ systemd-run \
 ```
 
 逐次结果保存在 `/opt/new-api-stack/observations/*.csv`，完成摘要保存在同名
-`.summary` 文件。观察期未满前，不得创建正式 blue/master、停止旧容器或关闭
-`16980`。
+`.summary` 文件。
+
+缩短观察期不是默认流程，只能由生产负责人明确批准，并在本地运维记录中写明：
+
+1. 实际观察时长、样本数、失败数和最大延迟。
+2. Caddy、应用、PostgreSQL 和 Redis 的错误及重启统计。
+3. 最新有效数据库备份。
+4. 缩短观察期的批准时间和批准人。
+5. 后续旧容器零连接排空结果。
+
+没有明确批准时，观察期未满不得创建正式 blue/master、停止旧容器或关闭旧端口。
+
+## 首次迁移完成条件
+
+首次从单容器迁移到正式蓝绿拓扑时，必须同时满足：
+
+1. blue、green、master 使用同一个已验证的不可变 digest。
+2. blue/green 均为 slave，master 为 master，且密钥、数据库、Redis 配置一致。
+3. Caddy Admin API 中只有 blue/green 两个 upstream，顺序与 `active-slot` 一致。
+4. 旧容器连续至少 10 分钟零连接，并覆盖至少一个数据刷新周期。
+5. 停止旧容器后公共域名保持正常，旧宿主机端口不再监听。
+6. 旧服务已从正式 Compose 移除，停止容器不会自动重启。
+7. master 健康且不在 Caddy upstream 中。
+8. 使用同 digest 完成 blue -> green 和 green -> blue 往返切换。
+9. reload 前已建立的 SSE 请求能够完整收到 `[DONE]`。
+10. Caddy、PostgreSQL 和 Redis 在整个迁移过程中没有重启。
 
 ## 旧端口
 
 首次部署使用的公网 `16980` 仅用于阶段性测试。正式蓝绿槽位不映射宿主机 API
-端口；旧单容器在连接排空并停止后，该端口随之关闭。公开 API 始终使用：
+端口；旧单容器在连接排空并停止后，该端口随之关闭。随后还必须从基础 Compose
+删除旧服务并禁用停止容器的自动重启，避免端口在 Docker 或宿主机重启后恢复。
+公开 API 始终使用：
 
 ```text
 https://aivrae.com
