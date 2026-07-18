@@ -1,134 +1,147 @@
-# GitHub Actions 自动构建与部署
+# GitHub Actions 构建与蓝绿部署
 
-本项目新增了 `.github/workflows/deploy-image.yml`。推送到 `aivrae/main`
-或 `aivrae` 分支后，GitHub Actions 会构建 Docker 镜像并推送到 GHCR，然后
-通过 SSH 登录服务器，拉取新镜像并重启 `new-api` 服务。
+生产发布采用 Docker Compose + Caddy 蓝绿切换。提交代码不再直接重建线上
+`new-api` 容器：push 只运行检查并构建不可变镜像，生产部署必须手工触发并输入
+完整的 `image@sha256:digest`。
 
-## 服务器要求
+## 工作流行为
 
-- 已安装 Docker。
-- 已安装 `docker compose` v2，或旧版 `docker-compose`。
-- 部署目录里已有 compose 文件，默认文件名是 `docker-compose.yml`。
-- compose 文件里后端服务名必须是 `new-api`。
+`.github/workflows/deploy-image.yml` 包含三个任务：
 
-服务器上的 compose 文件可以继续使用原项目的 `docker-compose.yml`。工作流会
-上传 `content/documentation/config.docker.json` 并写入数据库 Option
-`DocumentationSettings`，然后临时写入一个 `docker-compose.image.override.yml`，只覆盖 `new-api` 服务的
-镜像地址。重启命令使用 `up -d --no-deps --force-recreate new-api`，因此只替换
-`new-api` 容器，不会重启或重建 PostgreSQL、Redis、端口、卷等配置。
+1. Pull Request 和 push 到 `aivrae/main`：运行 Go 测试与默认前端类型检查。
+2. push 到 `aivrae/main`：构建镜像并推送 SHA 标签到 GHCR，在工作流摘要中输出 digest。
+3. `workflow_dispatch`：经过 `production` Environment 后，将指定 digest 部署到非活动槽。
 
-## GitHub Secrets
+以下内容变更不会触发生产镜像构建：
 
-在仓库的 `Settings -> Secrets and variables -> Actions -> Secrets` 中配置：
+```text
+data/blog-drafts/**
+docs/**
+仓库根目录的 Markdown 文件
+```
 
-| 名称 | 必填 | 说明 |
-| --- | --- | --- |
-| `DEPLOY_HOST` | 是 | 服务器 IP 或域名；也兼容现有 `VPS_HOST` |
-| `DEPLOY_USER` | 否 | SSH 用户；也兼容现有 `VPS_USER`，默认 `root` |
-| `DEPLOY_SSH_PRIVATE_KEY` | 是 | 可登录服务器的私钥；也兼容现有 `VPS_SSH_KEY` |
-| `DEPLOY_PATH` | 否 | 服务器上的部署目录，默认 `/opt/new-api-stack`；也兼容 `VPS_NEW_API_PATH` |
-| `DEPLOY_PORT` | 否 | SSH 端口，默认 `22` |
-| `DEPLOY_COMPOSE_FILE` | 否 | compose 文件名，默认 `docker-compose.yml` |
-| `DEPLOY_SSH_KNOWN_HOSTS` | 否 | 固定服务器 host key；不填时工作流会用 `ssh-keyscan` 生成 |
-| `DEPLOY_REGISTRY_USERNAME` | 否 | 拉取私有 GHCR 镜像时使用的用户名 |
-| `DEPLOY_REGISTRY_TOKEN` | 否 | 拉取私有 GHCR 镜像时使用的 token，需要 `read:packages` |
+运行时文档位于 `content/documentation/**`，不在忽略范围内。应用部署不会再自动
+写入数据库 `DocumentationSettings`；内容发布需要单独执行，避免应用切换前修改
+仍由旧版本读取的配置。
 
-如果 GHCR 镜像是私有的，必须配置 `DEPLOY_REGISTRY_USERNAME` 和
-`DEPLOY_REGISTRY_TOKEN`，否则服务器无法拉取镜像。token 可以使用 GitHub PAT，
-权限至少包含 `read:packages`。
+## 生产拓扑
 
-## GitHub Variables
-
-在 `Settings -> Secrets and variables -> Actions -> Variables` 中可选配置：
-
-| 名称 | 默认值 | 说明 |
-| --- | --- | --- |
-| `DEPLOY_IMAGE_PLATFORMS` | `linux/amd64` | 构建平台，例如 `linux/amd64,linux/arm64` |
-| `DEPLOY_PORT` | `22` | SSH 端口，也可以作为 Secret 配置 |
-| `DEPLOY_COMPOSE_FILE` | `docker-compose.yml` | compose 文件名，也可以作为 Secret 配置 |
-
-## 镜像标签
-
-工作流会推送以下标签：
-
-- `ghcr.io/<owner>/<repo>:aivrae-main`
-- `ghcr.io/<owner>/<repo>:deploy-aivrae-main-<short-sha>`
-- `ghcr.io/<owner>/<repo>:sha-<short-sha>`
-
-服务器部署默认使用稳定分支标签，例如 `aivrae-main`。
-
-## Aivrae 当前线上环境
-
-当前 Aivrae 生产环境的 New API stack 位于：
+生产目录：
 
 ```text
 /opt/new-api-stack
 ```
 
-compose 文件为：
+应用服务：
 
 ```text
-/opt/new-api-stack/docker-compose.yml
+new-api-blue    NODE_TYPE=slave，API 槽位
+new-api-green   NODE_TYPE=slave，API 槽位
+new-api-master  NODE_TYPE=master，不加入 Caddy upstream
 ```
 
-后端服务名是 `new-api`，与自动部署工作流匹配。工作流上线前会尝试执行：
+三个服务共享现有 PostgreSQL、Redis、`SESSION_SECRET` 和 `CRYPTO_SECRET`，但使用
+独立的日志与 `/data` 目录。API 槽位不映射宿主机端口，只通过 external network
+`new-api-net` 供 Caddy 访问。
 
-```bash
-/opt/new-api-stack/backup-db.sh
+部署文件：
+
+```text
+/opt/new-api-stack/docker-compose.slots.yml
+/opt/new-api-stack/deploy-blue-green.sh
+/opt/new-api-stack/slots.env
+/opt/new-api-stack/active-slot
 ```
 
-然后只覆盖 `new-api` 服务镜像并重启该服务，不会改动 PostgreSQL、Redis、卷挂载。
-部署脚本会等待 `/api/status` 健康检查通过，并尝试删除不再使用的
-`calciumion/new-api:latest` 旧镜像标签。
+`active-slot` 只能包含 `blue` 或 `green`。`slots.env` 保存每个槽位与主节点当前使用
+的不可变镜像引用，不保存数据库密码或 API Key。
 
-当前线上 Caddy 仍会把 `/docs`、政策页和静态资源交给 `/opt/aivrae-site`，
-并把多条 New API 前端页面路由交给 `/opt/aivrae-site/newapi-overrides`。如果要
-让新镜像内置的 New API 前端页面生效，需要同步调整 Caddy 路由或移除对应
-`newapi-overrides` 覆盖规则。
+## GitHub 配置
 
-目标切换状态下，Caddy 只需要反代到 `new-api:3000`，并保留必要的旧路径跳转：
+### Secrets
+
+| 名称 | 必填 | 说明 |
+| --- | --- | --- |
+| `DEPLOY_HOST` | 是 | 生产服务器 IP 或域名 |
+| `DEPLOY_USER` | 否 | SSH 用户，默认 `root` |
+| `DEPLOY_SSH_PRIVATE_KEY` | 是 | SSH 私钥 |
+| `DEPLOY_PATH` | 否 | 默认 `/opt/new-api-stack` |
+| `DEPLOY_PORT` | 否 | SSH 端口，默认 `22` |
+| `DEPLOY_SSH_KNOWN_HOSTS` | 否 | 固定服务器 host key |
+| `DEPLOY_REGISTRY_USERNAME` | 私有镜像必填 | GHCR 用户名 |
+| `DEPLOY_REGISTRY_TOKEN` | 私有镜像必填 | 至少具有 `read:packages` |
+| `DEPLOY_SMOKE_TOKEN` | 推荐 | 低额度、受限模型的部署测试 Token |
+
+### Variables
+
+| 名称 | 默认值 | 说明 |
+| --- | --- | --- |
+| `DEPLOY_IMAGE_PLATFORMS` | `linux/amd64` | 构建平台 |
+| `DEPLOY_PORT` | `22` | SSH 端口 |
+| `DEPLOY_SMOKE_MODEL` | 空 | 非流式和流式真实中转测试模型 |
+
+仓库需创建 `production` Environment。生产任务使用固定并发组且
+`cancel-in-progress: false`；服务器脚本还会使用 `flock`，防止两个发布同时执行。
+
+## 发布流程
+
+1. 从 push 工作流摘要复制完整镜像 digest。
+2. 打开 `Build image and blue-green deploy` 工作流。
+3. 选择 `Run workflow`，输入 `ghcr.io/...@sha256:...`。
+4. 工作流确认非活动槽无残留连接，然后只重建该槽。
+5. 执行 `/api/status`、Caddy 内网访问和 Token 模型列表检查。
+6. 配置了 `DEPLOY_SMOKE_MODEL` 时，再执行真实非流式和流式请求。
+7. Caddy 候选配置通过校验后执行 reload，将新槽设为第一 upstream。
+8. 原活动槽保持运行，不会被部署任务自动停止。
+
+应用当前没有优雅关闭，因此脚本拒绝重建仍有已建立 HTTP 连接的非活动槽。
+
+## Caddy 配置
+
+Caddyfile 使用标记块，由部署脚本只替换该块：
 
 ```caddyfile
-aivrae.com {
-    encode gzip zstd
-
-    @legacy_plans path /plans /plans.html
-    redir @legacy_plans /wallet 302
-
-    handle {
-        reverse_proxy new-api:3000
-    }
+# BEGIN NEW_API_UPSTREAM
+reverse_proxy new-api-green:3000 new-api-blue:3000 {
+    lb_policy first
+    health_uri /api/status
+    health_interval 5s
+    health_timeout 2s
+    health_fails 2
+    health_passes 2
+    fail_duration 30s
+    max_fails 1
 }
+# END NEW_API_UPSTREAM
 ```
 
-## 文档与公开页面配置
+不配置 POST 自动重试，避免已到达上游的调用被代理重放并产生重复计费。配置先在
+`aivrae-caddy` 容器内验证，之后使用 `caddy reload` 热加载，不重启 Caddy。
 
-本仓库已经包含从旧静态站迁移过来的多语言文档与公开页面内容：
+## 回滚
+
+部署脚本在每次切换前保留 Caddyfile 备份。若 reload 或公网状态检查失败，会恢复
+上一份配置并再次 reload。数据库不会自动回滚，原活动槽也不会被自动删除。
+
+手工查看状态：
+
+```bash
+cd /opt/new-api-stack
+./deploy-blue-green.sh status
+```
+
+手工切换到已健康的槽位：
+
+```bash
+./deploy-blue-green.sh switch blue
+./deploy-blue-green.sh switch green
+```
+
+## 旧端口
+
+首次部署使用的公网 `16980` 仅用于阶段性测试。正式蓝绿槽位不映射宿主机 API
+端口；旧单容器在连接排空并停止后，该端口随之关闭。公开 API 始终使用：
 
 ```text
-content/documentation/docs
-content/documentation/config.local.json
-content/documentation/config.docker.json
+https://aivrae.com
 ```
-
-- 配置仍按原项目的 Option 机制保存到数据库，key 为 `DocumentationSettings`。
-- 本地开发：在“系统设置 -> 内容 -> Documentation”中粘贴
-  `content/documentation/config.local.json`。
-- Docker 部署：Markdown 内容会随镜像放到 `/app/documentation/docs`，在后台粘贴
-  `content/documentation/config.docker.json` 后即可启用。当前 GitHub Actions 部署会自动把
-  `content/documentation/config.docker.json` 写入线上 PostgreSQL 的 `DocumentationSettings`。
-- 后端不会读取 `/data/docs/config.json`，也不会用文件配置覆盖数据库配置。
-
-新镜像可以直接提供这些公开路由：
-
-```text
-/docs
-/docs/<slug>
-/terms
-/privacy-policy
-/refund-policy
-/acceptable-use
-/contact
-```
-
-因此正式切换时，Caddy 中这些路径不应再继续指向旧的 `/opt/aivrae-site` 静态站。

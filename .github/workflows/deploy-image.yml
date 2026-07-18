@@ -1,28 +1,75 @@
-name: Build image and deploy
+name: Build image and blue-green deploy
 
 on:
+  pull_request:
+    branches:
+      - aivrae/main
+    paths-ignore:
+      - 'data/blog-drafts/**'
+      - 'docs/**'
+      - '*.md'
   push:
     branches:
       - aivrae/main
-      - aivrae
+    paths-ignore:
+      - 'data/blog-drafts/**'
+      - 'docs/**'
+      - '*.md'
   workflow_dispatch:
-
-concurrency:
-  group: deploy-${{ github.ref }}
-  cancel-in-progress: true
+    inputs:
+      image_ref:
+        description: 'Immutable production image, for example ghcr.io/owner/repo@sha256:...'
+        required: true
+        type: string
 
 env:
   REGISTRY: ghcr.io
 
 jobs:
-  build:
-    name: Build and push image
+  validate:
+    name: Validate application
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test backend
+        run: go test ./...
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install frontend dependencies
+        working-directory: web/default
+        run: bun install --frozen-lockfile
+
+      - name: Type-check frontend
+        working-directory: web/default
+        run: bun run typecheck
+
+  build:
+    name: Build immutable image
+    if: github.event_name == 'push'
+    needs: validate
+    runs-on: ubuntu-latest
+    concurrency:
+      group: build-${{ github.ref }}
+      cancel-in-progress: true
     permissions:
       contents: read
       packages: write
     outputs:
-      image-ref: ${{ steps.image.outputs.image-ref }}
+      image-ref: ${{ steps.image.outputs.repository }}@${{ steps.build.outputs.digest }}
 
     steps:
       - name: Check out
@@ -35,19 +82,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          repository="${GITHUB_REPOSITORY,,}"
-          safe_ref="$(echo "${GITHUB_REF_NAME}" | tr '/_' '--' | tr -cd '[:alnum:].-')"
+          repository="${REGISTRY}/${GITHUB_REPOSITORY,,}"
+          safe_ref="$(printf '%s' "${GITHUB_REF_NAME}" | tr '/_' '--' | tr -cd '[:alnum:].-')"
           short_sha="$(git rev-parse --short=12 HEAD)"
           version="deploy-${safe_ref}-${short_sha}"
-          image="${REGISTRY}/${repository}:${safe_ref}"
 
-          echo "${version}" > VERSION
+          printf '%s\n' "${version}" > VERSION
           echo "repository=${repository}" >> "${GITHUB_OUTPUT}"
-          echo "safe-ref=${safe_ref}" >> "${GITHUB_OUTPUT}"
           echo "short-sha=${short_sha}" >> "${GITHUB_OUTPUT}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
-          echo "image-ref=${image}" >> "${GITHUB_OUTPUT}"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
@@ -63,57 +106,76 @@ jobs:
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
-          images: ${{ env.REGISTRY }}/${{ steps.image.outputs.repository }}
+          images: ${{ steps.image.outputs.repository }}
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           platforms: ${{ vars.DEPLOY_IMAGE_PLATFORMS || 'linux/amd64' }}
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ steps.image.outputs.repository }}:${{ steps.image.outputs.safe-ref }}
-            ${{ env.REGISTRY }}/${{ steps.image.outputs.repository }}:${{ steps.image.outputs.version }}
-            ${{ env.REGISTRY }}/${{ steps.image.outputs.repository }}:sha-${{ steps.image.outputs.short-sha }}
+            ${{ steps.image.outputs.repository }}:${{ steps.image.outputs.version }}
+            ${{ steps.image.outputs.repository }}:sha-${{ steps.image.outputs.short-sha }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Build summary
         run: |
-          echo "### Image" >> "${GITHUB_STEP_SUMMARY}"
+          echo '### Immutable image' >> "${GITHUB_STEP_SUMMARY}"
           echo '```' >> "${GITHUB_STEP_SUMMARY}"
-          echo "${{ steps.image.outputs.image-ref }}" >> "${GITHUB_STEP_SUMMARY}"
-          echo "${{ env.REGISTRY }}/${{ steps.image.outputs.repository }}:${{ steps.image.outputs.version }}" >> "${GITHUB_STEP_SUMMARY}"
+          echo '${{ steps.image.outputs.repository }}@${{ steps.build.outputs.digest }}' >> "${GITHUB_STEP_SUMMARY}"
           echo '```' >> "${GITHUB_STEP_SUMMARY}"
 
   deploy:
-    name: Deploy to server
+    name: Deploy production
+    if: github.event_name == 'workflow_dispatch'
+    needs: validate
     runs-on: ubuntu-latest
-    needs: build
+    environment: production
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    permissions:
+      contents: read
     env:
-      IMAGE_REF: ${{ needs.build.outputs.image-ref }}
+      IMAGE_REF: ${{ inputs.image_ref }}
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || secrets.VPS_HOST }}
       DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || vars.DEPLOY_PORT || '22' }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER || secrets.VPS_USER || 'root' }}
       DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY || secrets.VPS_SSH_KEY }}
       DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || secrets.VPS_NEW_API_PATH || '/opt/new-api-stack' }}
-      DEPLOY_COMPOSE_FILE: ${{ secrets.DEPLOY_COMPOSE_FILE || vars.DEPLOY_COMPOSE_FILE || 'docker-compose.yml' }}
       DEPLOY_REGISTRY_USERNAME: ${{ secrets.DEPLOY_REGISTRY_USERNAME }}
       DEPLOY_REGISTRY_TOKEN: ${{ secrets.DEPLOY_REGISTRY_TOKEN }}
+      SMOKE_TOKEN: ${{ secrets.DEPLOY_SMOKE_TOKEN }}
+      SMOKE_MODEL: ${{ vars.DEPLOY_SMOKE_MODEL }}
 
     steps:
-      - name: Check out
+      - name: Validate immutable image
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${IMAGE_REF}" in
+            *@sha256:????????????????????????????????????????????????????????????????) ;;
+            *)
+              echo '::error::image_ref must be an immutable image@sha256:digest reference'
+              exit 1
+              ;;
+          esac
+
+      - name: Check out deployment files
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          fetch-depth: 1
+          sparse-checkout: |
+            deploy/blue-green
 
       - name: Validate deploy settings
         shell: bash
         run: |
           set -euo pipefail
-
           missing=0
           for name in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_PRIVATE_KEY DEPLOY_PATH; do
             if [ -z "${!name:-}" ]; then
@@ -121,16 +183,12 @@ jobs:
               missing=1
             fi
           done
-
-          if [ "${missing}" -ne 0 ]; then
-            exit 1
-          fi
+          [ "${missing}" -eq 0 ]
 
       - name: Configure SSH
         shell: bash
         run: |
           set -euo pipefail
-
           install -d -m 700 "${HOME}/.ssh"
           printf '%s\n' "${DEPLOY_SSH_PRIVATE_KEY}" > "${HOME}/.ssh/deploy_key"
           chmod 600 "${HOME}/.ssh/deploy_key"
@@ -142,59 +200,39 @@ jobs:
           fi
           chmod 600 "${HOME}/.ssh/known_hosts"
 
-      - name: Prepare documentation config
+      - name: Upload deployment tooling
         shell: bash
         run: |
           set -euo pipefail
-
-          install -d .deploy-docs
-          cp content/documentation/config.docker.json .deploy-docs/documentation-config.docker.json
-
-          python3 - <<'PY'
-          from pathlib import Path
-
-          config = Path("content/documentation/config.docker.json").read_text(encoding="utf-8")
-          escaped = config.replace("'", "''")
-          sql = (
-              "INSERT INTO options (key, value) "
-              "VALUES ('DocumentationSettings', '" + escaped + "') "
-              "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;\n"
-          )
-          Path(".deploy-docs/documentation-config.update-postgres.sql").write_text(sql, encoding="utf-8")
-          PY
-
-      - name: Upload documentation config
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          quote() {
-            printf '%q' "$1"
-          }
-
           ssh \
             -i "${HOME}/.ssh/deploy_key" \
             -p "${DEPLOY_PORT}" \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "mkdir -p $(quote "${DEPLOY_PATH}")"
+            "install -d -m 700 '${DEPLOY_PATH}'"
 
-          remote_dir="$(quote "${DEPLOY_PATH}")"
           scp \
             -i "${HOME}/.ssh/deploy_key" \
             -P "${DEPLOY_PORT}" \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
-            .deploy-docs/documentation-config.docker.json \
-            .deploy-docs/documentation-config.update-postgres.sql \
-            "${DEPLOY_USER}@${DEPLOY_HOST}:${remote_dir}/"
+            deploy/blue-green/docker-compose.slots.yml \
+            deploy/blue-green/deploy-blue-green.sh \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
 
-      - name: Pull image and restart service
+          ssh \
+            -i "${HOME}/.ssh/deploy_key" \
+            -p "${DEPLOY_PORT}" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "chmod 700 '${DEPLOY_PATH}/deploy-blue-green.sh' && chmod 600 '${DEPLOY_PATH}/docker-compose.slots.yml'"
+
+      - name: Deploy inactive slot
         shell: bash
         run: |
           set -euo pipefail
-
           quote() {
             printf '%q' "$1"
           }
@@ -205,109 +243,11 @@ jobs:
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "IMAGE_REF=$(quote "${IMAGE_REF}") DEPLOY_PATH=$(quote "${DEPLOY_PATH}") DEPLOY_COMPOSE_FILE=$(quote "${DEPLOY_COMPOSE_FILE}") DEPLOY_REGISTRY_USERNAME=$(quote "${DEPLOY_REGISTRY_USERNAME}") DEPLOY_REGISTRY_TOKEN=$(quote "${DEPLOY_REGISTRY_TOKEN}") bash -s" <<'REMOTE'
-          set -euo pipefail
+            "DEPLOY_PATH=$(quote "${DEPLOY_PATH}") SMOKE_TOKEN=$(quote "${SMOKE_TOKEN}") SMOKE_MODEL=$(quote "${SMOKE_MODEL}") DEPLOY_REGISTRY_USERNAME=$(quote "${DEPLOY_REGISTRY_USERNAME}") DEPLOY_REGISTRY_TOKEN=$(quote "${DEPLOY_REGISTRY_TOKEN}") bash $(quote "${DEPLOY_PATH}/deploy-blue-green.sh") deploy $(quote "${IMAGE_REF}")"
 
-          cd "${DEPLOY_PATH}"
-
-          compose() {
-            if docker compose version >/dev/null 2>&1; then
-              docker compose "$@"
-            elif command -v docker-compose >/dev/null 2>&1; then
-              docker-compose "$@"
-            else
-              echo "docker compose or docker-compose is required" >&2
-              return 1
-            fi
-          }
-
-          update_documentation_settings() {
-            local sql_file="${DEPLOY_PATH}/documentation-config.update-postgres.sql"
-            if [ ! -s "${sql_file}" ]; then
-              echo "Documentation config SQL not found; skipping DocumentationSettings update"
-              return 0
-            fi
-
-            local sql_dsn=""
-            if docker ps --filter name='^/new-api$' --format '{{.Names}}' | grep -qx new-api; then
-              sql_dsn="$(
-                docker inspect new-api --format '{{range .Config.Env}}{{println .}}{{end}}' \
-                  | awk -F= '$1=="SQL_DSN"{print substr($0, index($0,"=")+1); exit}'
-              )"
-            fi
-
-            if [ -z "${sql_dsn}" ]; then
-              echo "SQL_DSN was not found on the current new-api container; cannot update DocumentationSettings" >&2
-              return 1
-            fi
-
-            case "${sql_dsn}" in
-              postgres://*|postgresql://*) ;;
-              *)
-                echo "Automatic DocumentationSettings update currently supports PostgreSQL SQL_DSN only" >&2
-                return 1
-                ;;
-            esac
-
-            local psql_container=""
-            psql_container="$(compose -f "${DEPLOY_COMPOSE_FILE}" ps -q postgres 2>/dev/null || true)"
-            if [ -z "${psql_container}" ]; then
-              psql_container="$(docker ps --format '{{.Names}} {{.Image}}' | awk 'tolower($0) ~ /postgres/ {print $1; exit}')"
-            fi
-            if [ -z "${psql_container}" ]; then
-              echo "PostgreSQL container was not found; cannot update DocumentationSettings" >&2
-              return 1
-            fi
-
-            docker cp "${sql_file}" "${psql_container}:/tmp/documentation-config.update-postgres.sql"
-            docker exec -e SQL_DSN="${sql_dsn}" "${psql_container}" \
-              sh -c 'psql "$SQL_DSN" -v ON_ERROR_STOP=1 -f /tmp/documentation-config.update-postgres.sql >/dev/null'
-            echo "DocumentationSettings updated from documentation-config.docker.json"
-          }
-
-          if [ -n "${DEPLOY_REGISTRY_TOKEN:-}" ]; then
-            if [ -z "${DEPLOY_REGISTRY_USERNAME:-}" ]; then
-              echo "DEPLOY_REGISTRY_USERNAME is required when DEPLOY_REGISTRY_TOKEN is set" >&2
-              exit 1
-            fi
-            printf '%s' "${DEPLOY_REGISTRY_TOKEN}" | docker login ghcr.io -u "${DEPLOY_REGISTRY_USERNAME}" --password-stdin
-          fi
-
-          if [ -x ./backup-db.sh ]; then
-            ./backup-db.sh
-          fi
-
-          update_documentation_settings
-
-          echo "Current new-api container:"
-          docker ps --filter name='^/new-api$' --format '  {{.Names}} {{.Image}} {{.Status}}' || true
-
-          cat > docker-compose.image.override.yml <<'EOF'
-          services:
-            new-api:
-              image: ${NEW_API_IMAGE:?NEW_API_IMAGE is required}
-          EOF
-
-          export NEW_API_IMAGE="${IMAGE_REF}"
-          compose -f "${DEPLOY_COMPOSE_FILE}" -f docker-compose.image.override.yml pull new-api
-          compose -f "${DEPLOY_COMPOSE_FILE}" -f docker-compose.image.override.yml up -d --no-deps --force-recreate new-api
-
-          for i in $(seq 1 60); do
-            if docker exec new-api wget -q -O - http://127.0.0.1:3000/api/status | grep -q '"success"[[:space:]]*:[[:space:]]*true'; then
-              echo "new-api health check passed"
-              break
-            fi
-            if [ "${i}" -eq 60 ]; then
-              echo "new-api health check failed" >&2
-              docker logs --tail 200 new-api >&2 || true
-              exit 1
-            fi
-            sleep 2
-          done
-
-          echo "Deployed new-api container:"
-          docker ps --filter name='^/new-api$' --format '  {{.Names}} {{.Image}} {{.Status}}'
-
-          docker image rm calciumion/new-api:latest >/dev/null 2>&1 || true
-          docker image prune -f
-          REMOTE
+      - name: Deployment summary
+        run: |
+          echo '### Production deployment' >> "${GITHUB_STEP_SUMMARY}"
+          echo '```' >> "${GITHUB_STEP_SUMMARY}"
+          echo "${IMAGE_REF}" >> "${GITHUB_STEP_SUMMARY}"
+          echo '```' >> "${GITHUB_STEP_SUMMARY}"
