@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reddit Promotion Planner"
+  short_description: "Discover worthwhile subreddits and draft tailored posts"
+  default_prompt: "Use $draft-reddit-promotion to rank suitable subreddits and draft compliant, community-specific promotion posts."

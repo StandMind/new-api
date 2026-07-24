@@ -1,0 +1,49 @@
+{
+  "id": 0,
+  "slug": "__replace_with_ascii_slug__",
+  "status": "draft",
+  "tags": [
+    "ai",
+    "llm"
+  ],
+  "cover_image": "",
+  "author": "__REPLACE_AUTHOR__",
+  "published_time": 0,
+  "translations": {
+    "zh": {
+      "title": "__REPLACE_ZH_TITLE__",
+      "summary": "__REPLACE_ZH_SUMMARY__",
+      "content": "## __REPLACE_ZH_SECTION__\n\n__REPLACE_ZH_CONTENT__\n\n## 资料来源\n\n- [__REPLACE_SOURCE__](https://example.com/source)"
+    },
+    "en": {
+      "title": "__REPLACE_EN_TITLE__",
+      "summary": "__REPLACE_EN_SUMMARY__",
+      "content": "## __REPLACE_EN_SECTION__\n\n__REPLACE_EN_CONTENT__\n\n## Sources\n\n- [__REPLACE_SOURCE__](https://example.com/source)"
+    },
+    "es": {
+      "title": "__REPLACE_ES_TITLE__",
+      "summary": "__REPLACE_ES_SUMMARY__",
+      "content": "## __REPLACE_ES_SECTION__\n\n__REPLACE_ES_CONTENT__\n\n## Fuentes\n\n- [__REPLACE_SOURCE__](https://example.com/source)"
+    },
+    "fr": {
+      "title": "__REPLACE_FR_TITLE__",
+      "summary": "__REPLACE_FR_SUMMARY__",
+      "content": "## __REPLACE_FR_SECTION__\n\n__REPLACE_FR_CONTENT__\n\n## Sources\n\n- [__REPLACE_SOURCE__](https://example.com/source)"
+    },
+    "ru": {
+      "title": "__REPLACE_RU_TITLE__",
+      "summary": "__REPLACE_RU_SUMMARY__",
+      "content": "## __REPLACE_RU_SECTION__\n\n__REPLACE_RU_CONTENT__\n\n## Источники\n\n- [__REPLACE_SOURCE__](https://example.com/source)"
+    },
+    "ja": {
+      "title": "__REPLACE_JA_TITLE__",
+      "summary": "__REPLACE_JA_SUMMARY__",
+      "content": "## __REPLACE_JA_SECTION__\n\n__REPLACE_JA_CONTENT__\n\n## 参考資料\n\n- [__REPLACE_SOURCE__](https://example.com/source)"
+    },
+    "vi": {
+      "title": "__REPLACE_VI_TITLE__",
+      "summary": "__REPLACE_VI_SUMMARY__",
+      "content": "## __REPLACE_VI_SECTION__\n\n__REPLACE_VI_CONTENT__\n\n## Nguồn\n\n- [__REPLACE_SOURCE__](https://example.com/source)"
+    }
+  }
+}
