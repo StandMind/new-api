@@ -109,7 +109,7 @@ function buildChatSample(lang: Lang, ctx: SampleContext): string {
       `curl ${url} \\`,
       `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\`,
       `  -H "Content-Type: application/json" \\`,
-      `  -d '${bodyJson.replace(/\n/g, '\n     ')}'`,
+      `  -d '${bodyJson.replaceAll('\n', '\n     ')}'`,
     ].join('\n')
   }
 
@@ -177,7 +177,7 @@ function buildAnthropicSample(lang: Lang, ctx: SampleContext): string {
       `  -H "x-api-key: $${ctx.apiKeyEnv}" \\`,
       `  -H "anthropic-version: 2023-06-01" \\`,
       `  -H "Content-Type: application/json" \\`,
-      `  -d '${body.replace(/\n/g, '\n     ')}'`,
+      `  -d '${body.replaceAll('\n', '\n     ')}'`,
     ].join('\n')
   }
   if (lang === 'python') {
@@ -249,7 +249,7 @@ function buildGeminiSample(lang: Lang, ctx: SampleContext): string {
     return [
       `curl '${url}' \\`,
       `  -H 'Content-Type: application/json' \\`,
-      `  -d '${body.replace(/\n/g, '\n     ')}'`,
+      `  -d '${body.replaceAll('\n', '\n     ')}'`,
     ].join('\n')
   }
   if (lang === 'python') {
@@ -299,7 +299,7 @@ function buildEmbeddingSample(lang: Lang, ctx: SampleContext): string {
       `curl ${url} \\`,
       `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\`,
       `  -H "Content-Type: application/json" \\`,
-      `  -d '${body.replace(/\n/g, '\n     ')}'`,
+      `  -d '${body.replaceAll('\n', '\n     ')}'`,
     ].join('\n')
   }
   if (lang === 'python') {
@@ -365,7 +365,7 @@ function buildImageSample(lang: Lang, ctx: SampleContext): string {
       `curl ${url} \\`,
       `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\`,
       `  -H "Content-Type: application/json" \\`,
-      `  -d '${body.replace(/\n/g, '\n     ')}'`,
+      `  -d '${body.replaceAll('\n', '\n     ')}'`,
     ].join('\n')
   }
   if (lang === 'python') {
@@ -423,6 +423,80 @@ function buildImageSample(lang: Lang, ctx: SampleContext): string {
   ].join('\n')
 }
 
+function buildImageEditSample(lang: Lang, ctx: SampleContext): string {
+  const url = `${ctx.baseUrl}${ctx.endpointPath}`
+  const prompt = 'Turn the background into a serene koi pond at sunset.'
+
+  if (lang === 'curl') {
+    return [
+      `curl ${url} \\`,
+      `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\`,
+      `  -F "model=${ctx.modelName}" \\`,
+      `  -F "image=@reference.png" \\`,
+      `  -F "prompt=${prompt}" \\`,
+      `  -F "size=1024x1024"`,
+    ].join('\n')
+  }
+  if (lang === 'python') {
+    return [
+      'from openai import OpenAI',
+      '',
+      `client = OpenAI(base_url="${ctx.baseUrl}/v1", api_key="<YOUR_API_KEY>")`,
+      '',
+      'with open("reference.png", "rb") as image:',
+      '    response = client.images.edit(',
+      `        model="${ctx.modelName}",`,
+      '        image=image,',
+      `        prompt="${prompt}",`,
+      '        size="1024x1024",',
+      '    )',
+      '',
+      'print(response.data[0].b64_json or response.data[0].url)',
+    ].join('\n')
+  }
+  if (lang === 'typescript') {
+    return [
+      `import { createReadStream } from 'node:fs'`,
+      `import OpenAI from 'openai'`,
+      '',
+      `const client = new OpenAI({`,
+      `  baseURL: '${ctx.baseUrl}/v1',`,
+      `  apiKey: process.env.${ctx.apiKeyEnv},`,
+      `})`,
+      '',
+      `const response = await client.images.edit({`,
+      `  model: '${ctx.modelName}',`,
+      `  image: createReadStream('reference.png'),`,
+      `  prompt: '${prompt}',`,
+      `  size: '1024x1024',`,
+      `})`,
+      '',
+      `console.log(response.data[0].b64_json ?? response.data[0].url)`,
+    ].join('\n')
+  }
+  return [
+    `import { readFile } from 'node:fs/promises'`,
+    '',
+    `const form = new FormData()`,
+    `const image = await readFile('reference.png')`,
+    `form.append('model', '${ctx.modelName}')`,
+    `form.append('image', new Blob([image], { type: 'image/png' }), 'reference.png')`,
+    `form.append('prompt', '${prompt}')`,
+    `form.append('size', '1024x1024')`,
+    '',
+    `const response = await fetch('${url}', {`,
+    `  method: 'POST',`,
+    `  headers: {`,
+    `    Authorization: \`Bearer \${process.env.${ctx.apiKeyEnv}}\`,`,
+    `  },`,
+    `  body: form,`,
+    `})`,
+    '',
+    `const data = await response.json()`,
+    `console.log(data.data[0].b64_json ?? data.data[0].url)`,
+  ].join('\n')
+}
+
 function buildSample(
   lang: Lang,
   endpointType: string,
@@ -430,9 +504,11 @@ function buildSample(
 ): string {
   if (endpointType === 'anthropic') return buildAnthropicSample(lang, ctx)
   if (endpointType === 'gemini') return buildGeminiSample(lang, ctx)
-  if (endpointType === 'embeddings' || endpointType === 'jina-rerank')
+  if (endpointType === 'embeddings' || endpointType === 'jina-rerank') {
     return buildEmbeddingSample(lang, ctx)
+  }
   if (endpointType === 'image-generation') return buildImageSample(lang, ctx)
+  if (endpointType === 'image-edit') return buildImageEditSample(lang, ctx)
   return buildChatSample(lang, ctx)
 }
 
