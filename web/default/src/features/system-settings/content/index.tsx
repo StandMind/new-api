@@ -34,13 +34,6 @@ const defaultContentSettings: ContentSettings = {
   "support_email": "",
   "templates": {}
 }`,
-  DocumentationSettings: `{
-  "enabled": false,
-  "content_dir": "data/docs",
-  "default_locale": "en",
-  "default_slug": "",
-  "nav": []
-}`,
   'console_setting.api_info_enabled': true,
   'console_setting.announcements_enabled': true,
   'console_setting.faq_enabled': true,

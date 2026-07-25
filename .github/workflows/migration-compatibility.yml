@@ -127,7 +127,7 @@ jobs:
         run: |
           test "$(docker exec "${{ job.services.postgres.id }}" psql -At -U test -d newapi -c "SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='subscription_plans' AND column_name='price_amount'")" = numeric
           test "$(docker exec "${{ job.services.postgres.id }}" psql -At -U test -d newapi -c "SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='tokens' AND column_name='model_limits'")" = text
-          docker exec "${{ job.services.postgres.id }}" psql -At -U test -d newapi -c "SELECT to_regclass('public.blog_posts'), to_regclass('public.system_tasks'), to_regclass('public.system_instances'), to_regclass('public.casbin_rule')" | grep -q 'blog_posts|system_tasks|system_instances|casbin_rule'
+          docker exec "${{ job.services.postgres.id }}" psql -At -U test -d newapi -c "SELECT to_regclass('public.system_tasks'), to_regclass('public.system_instances'), to_regclass('public.casbin_rule')" | grep -q 'system_tasks|system_instances|casbin_rule'
 
   mysql:
     name: MySQL 5.7 migration
@@ -194,4 +194,4 @@ jobs:
         run: |
           test "$(docker exec "${{ job.services.mysql.id }}" mysql -N -uroot -ptest -e "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='newapi' AND TABLE_NAME='subscription_plans' AND COLUMN_NAME='price_amount'")" = 'decimal(10,6)'
           test "$(docker exec "${{ job.services.mysql.id }}" mysql -N -uroot -ptest -e "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='newapi' AND TABLE_NAME='tokens' AND COLUMN_NAME='model_limits'")" = text
-          docker exec "${{ job.services.mysql.id }}" mysql -N -uroot -ptest -e "SELECT GROUP_CONCAT(TABLE_NAME ORDER BY TABLE_NAME SEPARATOR '|') FROM information_schema.TABLES WHERE TABLE_SCHEMA='newapi' AND TABLE_NAME IN ('blog_posts','system_tasks','system_instances','casbin_rule')" | grep -q 'blog_posts|casbin_rule|system_instances|system_tasks'
+          docker exec "${{ job.services.mysql.id }}" mysql -N -uroot -ptest -e "SELECT GROUP_CONCAT(TABLE_NAME ORDER BY TABLE_NAME SEPARATOR '|') FROM information_schema.TABLES WHERE TABLE_SCHEMA='newapi' AND TABLE_NAME IN ('system_tasks','system_instances','casbin_rule')" | grep -q 'casbin_rule|system_instances|system_tasks'

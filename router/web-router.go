@@ -8,9 +8,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service/bloghtml"
-	"github.com/QuantumNous/new-api/service/seo"
 	"github.com/QuantumNous/new-api/service/webbranding"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-contrib/static"
@@ -46,23 +43,6 @@ func SetWebRouter(router *gin.Engine, assets ThemeAssets) {
 	router.HEAD("/index.html", func(c *gin.Context) {
 		serveIndexPage(c, assets)
 	})
-	router.GET("/blog", func(c *gin.Context) {
-		serveBlogIndexPage(c, assets)
-	})
-	router.HEAD("/blog", func(c *gin.Context) {
-		serveBlogIndexPage(c, assets)
-	})
-	router.GET("/blog/*path", func(c *gin.Context) {
-		serveBlogPostPage(c, assets)
-	})
-	router.HEAD("/blog/*path", func(c *gin.Context) {
-		serveBlogPostPage(c, assets)
-	})
-	router.GET("/bolg", redirectBolgToBlog)
-	router.HEAD("/bolg", redirectBolgToBlog)
-	router.GET("/bolg/*path", redirectBolgToBlog)
-	router.HEAD("/bolg/*path", redirectBolgToBlog)
-
 	router.Use(static.Serve("/", themeFS))
 	router.NoRoute(func(c *gin.Context) {
 		c.Set(middleware.RouteTagKey, "web")
@@ -72,17 +52,6 @@ func SetWebRouter(router *gin.Engine, assets ThemeAssets) {
 		}
 		serveIndexPage(c, assets)
 	})
-}
-
-func redirectBolgToBlog(c *gin.Context) {
-	target := "/blog"
-	if value := strings.TrimPrefix(c.Param("path"), "/"); value != "" {
-		target += "/" + value
-	}
-	if c.Request.URL.RawQuery != "" {
-		target += "?" + c.Request.URL.RawQuery
-	}
-	c.Redirect(http.StatusMovedPermanently, target)
 }
 
 func serveIndexPage(c *gin.Context, assets ThemeAssets) {
@@ -97,48 +66,4 @@ func serveIndexPageWithMeta(c *gin.Context, assets ThemeAssets, meta webbranding
 		return
 	}
 	c.Data(status, "text/html; charset=utf-8", webbranding.ApplyIndexPageBrandingWithMeta(assets.DefaultIndexPage, meta))
-}
-
-func serveBlogIndexPage(c *gin.Context, assets ThemeAssets) {
-	if model.DB == nil {
-		serveIndexPageWithMeta(c, assets, bloghtml.BuildBlogIndexMeta(blogRenderOptions(c), nil), http.StatusOK)
-		return
-	}
-	options := blogRenderOptions(c)
-	posts, _, err := model.ListPublishedBlogPosts(options.Locale, "", "", 0, 12)
-	if err != nil {
-		posts = nil
-	}
-	serveIndexPageWithMeta(c, assets, bloghtml.BuildBlogIndexMeta(options, posts), http.StatusOK)
-}
-
-func serveBlogPostPage(c *gin.Context, assets ThemeAssets) {
-	options := blogRenderOptions(c)
-	slug := strings.Trim(strings.TrimSpace(c.Param("path")), "/")
-	if slug == "" {
-		c.Redirect(http.StatusMovedPermanently, "/blog")
-		return
-	}
-	if strings.Contains(slug, "/") {
-		serveIndexPageWithMeta(c, assets, bloghtml.BuildBlogNotFoundMeta(options), http.StatusNotFound)
-		return
-	}
-	if model.DB == nil {
-		serveIndexPageWithMeta(c, assets, bloghtml.BuildBlogNotFoundMeta(options), http.StatusNotFound)
-		return
-	}
-	post, err := model.GetPublishedBlogPostBySlug(slug, options.Locale)
-	if err != nil || post == nil {
-		serveIndexPageWithMeta(c, assets, bloghtml.BuildBlogNotFoundMeta(options), http.StatusNotFound)
-		return
-	}
-	serveIndexPageWithMeta(c, assets, bloghtml.BuildBlogPostMeta(options, *post), http.StatusOK)
-}
-
-func blogRenderOptions(c *gin.Context) bloghtml.RenderOptions {
-	return bloghtml.RenderOptions{
-		BaseURL:  seo.ResolveBaseURL(c.Request),
-		Locale:   model.ResolveLocalizedTextLocale(c.Query("lang"), c.GetHeader("Accept-Language")),
-		SiteName: strings.TrimSpace(common.SystemName),
-	}
 }

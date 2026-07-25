@@ -5,14 +5,12 @@ on:
     branches:
       - aivrae/main
     paths-ignore:
-      - 'data/blog-drafts/**'
       - 'docs/**'
       - '*.md'
   push:
     branches:
       - aivrae/main
     paths-ignore:
-      - 'data/blog-drafts/**'
       - 'docs/**'
       - '*.md'
   workflow_dispatch:

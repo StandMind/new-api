@@ -1,4 +1,0 @@
-interface:
-  display_name: "发布 AI 多语言博文"
-  short_description: "研究可信来源，撰写独立深入的七语言 AI 博文并安全发布"
-  default_prompt: "Use $publish-ai-blog to research a current AI topic, write a standalone evidence-rich long-form post in every supported locale, prepare an original cover when needed, and stop before publishing unless I explicitly authorize it."

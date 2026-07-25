@@ -16,60 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  Children,
-  cloneElement,
-  isValidElement,
-  useEffect,
-  useState,
-  type HTMLAttributes,
-  type ReactElement,
-  type ReactNode,
-} from 'react'
-import {
-  Braces,
-  Check,
-  Clipboard,
-  Code2,
-  Hash,
-  Info,
-  Lightbulb,
-  OctagonAlert,
-  Rows3,
-  SquareTerminal,
-  TriangleAlert,
-} from 'lucide-react'
-import { useTranslation } from 'react-i18next'
-import ReactMarkdown, { type Components } from 'react-markdown'
-import rehypeRaw from 'rehype-raw'
-import remarkBreaks from 'remark-breaks'
-import remarkDirective from 'remark-directive'
-import remarkGfm from 'remark-gfm'
-import { createHighlighterCore, type HighlighterCore } from 'shiki/core'
-import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
-import bash from 'shiki/langs/bash.mjs'
-import css from 'shiki/langs/css.mjs'
-import go from 'shiki/langs/go.mjs'
-import html from 'shiki/langs/html.mjs'
-import javascript from 'shiki/langs/javascript.mjs'
-import json from 'shiki/langs/json.mjs'
-import jsx from 'shiki/langs/jsx.mjs'
-import markdown from 'shiki/langs/markdown.mjs'
-import python from 'shiki/langs/python.mjs'
-import tsx from 'shiki/langs/tsx.mjs'
-import typescript from 'shiki/langs/typescript.mjs'
-import yaml from 'shiki/langs/yaml.mjs'
-import githubDark from 'shiki/themes/github-dark.mjs'
-import githubLight from 'shiki/themes/github-light.mjs'
+import DOMPurify from 'dompurify'
+import * as katex from 'katex'
+
+import 'katex/dist/katex.min.css'
+import { Marked, Renderer, type MarkedExtension, type Tokens } from 'marked'
+import { useMemo } from 'react'
+
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
-import { remarkApiDirectives } from '@/components/ui/markdown-directives'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 
 interface MarkdownProps {
   breaks?: boolean
@@ -77,872 +31,759 @@ interface MarkdownProps {
   className?: string
 }
 
-export type MarkdownHeading = {
-  depth: number
-  id: string
-  title: string
+const markdownOptions = {
+  async: false,
+  breaks: false,
+  gfm: true,
+} as const
+
+const emojiShortcodes: Record<string, string> = {
+  ':fa-gear:': '\u2699\ufe0f',
+  ':fa-star:': '\u2b50',
+  ':smiley:': '\ud83d\ude03',
+  ':star:': '\u2b50',
 }
 
-const calloutKinds = ['note', 'tip', 'important', 'warning', 'caution'] as const
+const allowedAttributes = [
+  'checked',
+  'class',
+  'd',
+  'data-diagram',
+  'disabled',
+  'fill',
+  'height',
+  'id',
+  'marker-end',
+  'markerheight',
+  'markerHeight',
+  'markerUnits',
+  'markerunits',
+  'markerWidth',
+  'markerwidth',
+  'offset',
+  'orient',
+  'points',
+  'preserveAspectRatio',
+  'preserveaspectratio',
+  'r',
+  'refX',
+  'refx',
+  'refY',
+  'refy',
+  'rx',
+  'ry',
+  'stroke',
+  'stroke-dasharray',
+  'stroke-width',
+  'style',
+  'target',
+  'text-anchor',
+  'dominant-baseline',
+  'dy',
+  'viewBox',
+  'viewbox',
+  'width',
+  'x',
+  'x1',
+  'x2',
+  'y',
+  'y1',
+  'y2',
+]
 
-type CalloutKind = (typeof calloutKinds)[number]
-
-const calloutPattern = /^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/i
-const endpointPattern =
-  /^(?:Endpoint|接口|端点):\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(.+)$/i
-
-type EndpointInfo = {
-  method: string
-  path: string
-  description?: string
-  title?: string
-}
-
-type TableKind = 'default' | 'parameters' | 'status' | 'comparison' | 'clients'
-
-type ApiDirectiveProps = HTMLAttributes<HTMLElement> & {
-  description?: string
-  method?: string
-  path?: string
-  status?: string
-  title?: string
-}
-
-const languageAliases: Record<string, string> = {
-  bash: 'shellscript',
-  cjs: 'javascript',
-  console: 'shellscript',
-  js: 'javascript',
-  jsonc: 'json',
-  jsx: 'jsx',
-  md: 'markdown',
-  plaintext: 'text',
-  py: 'python',
-  rb: 'ruby',
-  sh: 'shellscript',
-  shell: 'shellscript',
-  ts: 'typescript',
-  tsx: 'tsx',
-  yml: 'yaml',
-}
-
-const highlightedLanguages = new Set([
-  'bash',
-  'css',
-  'go',
-  'html',
-  'javascript',
-  'json',
-  'jsx',
-  'markdown',
-  'python',
-  'shell',
-  'shellscript',
-  'sh',
+const allowedTags = [
+  'annotation',
+  'circle',
+  'defs',
+  'ellipse',
+  'line',
+  'math',
+  'marker',
+  'mfrac',
+  'mi',
+  'mn',
+  'mo',
+  'mover',
+  'mpadded',
+  'mrow',
+  'mspace',
+  'msqrt',
+  'mstyle',
+  'msub',
+  'msubsup',
+  'msup',
+  'mtable',
+  'mtd',
+  'mtext',
+  'mtr',
+  'path',
+  'polygon',
+  'rect',
+  'semantics',
+  'stop',
+  'svg',
   'text',
-  'tsx',
-  'typescript',
-  'yaml',
-  'zsh',
-])
+  'tspan',
+]
 
-let highlighterPromise: Promise<HighlighterCore> | undefined
+const sanitizeOptions = {
+  ADD_ATTR: allowedAttributes,
+  ADD_TAGS: allowedTags,
+} as const
 
-function getHighlighter() {
-  highlighterPromise ??= createHighlighterCore({
-    engine: createJavaScriptRegexEngine(),
-    langs: [
-      bash,
-      css,
-      go,
-      html,
-      javascript,
-      json,
-      jsx,
-      markdown,
-      python,
-      tsx,
-      typescript,
-      yaml,
-    ],
-    themes: [githubLight, githubDark],
+type FlowNode = {
+  id: string
+  label: string
+  type: string
+}
+
+type FlowEdge = {
+  from: string
+  label?: string
+  to: string
+}
+
+type FlowNodeLayout = {
+  height: number
+  labelLines: string[]
+  node: FlowNode
+  width: number
+  x: number
+  y: number
+}
+
+type SequenceMessage = {
+  from?: string
+  isNote?: boolean
+  label: string
+  lineStyle?: 'solid' | 'dashed'
+  noteSide?: 'left' | 'right'
+  target: string
+  to?: string
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
+function normalizeMathSource(source: string): string {
+  return source
+    .trim()
+    .replace(/^\\\(/, '')
+    .replace(/\\\)$/, '')
+    .replace(/^\\\[/, '')
+    .replace(/\\\]$/, '')
+}
+
+function renderMath(source: string, displayMode: boolean): string {
+  return katex.renderToString(normalizeMathSource(source), {
+    displayMode,
+    output: 'htmlAndMathml',
+    throwOnError: false,
+  })
+}
+
+function replaceEmojiShortcodes(value: string): string {
+  return value.replaceAll(/:(?:smiley|star|fa-star|fa-gear):/g, (shortcode) => {
+    return emojiShortcodes[shortcode] ?? shortcode
+  })
+}
+
+function getTextUnits(value: string): number {
+  return [...value].reduce((total, character) => {
+    if (/\s/.test(character)) {
+      return total + 0.5
+    }
+
+    if (/[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]/.test(character)) {
+      return total + 2
+    }
+
+    return total + 1
+  }, 0)
+}
+
+function splitFlowLabel(label: string, maxUnits: number): string[] {
+  const words = label.trim().split(/(\s+)/).filter(Boolean)
+  const lines: string[] = []
+  let currentLine = ''
+
+  words.forEach((word) => {
+    const candidate = `${currentLine}${word}`
+
+    if (currentLine && getTextUnits(candidate) > maxUnits) {
+      lines.push(currentLine.trim())
+      currentLine = word.trimStart()
+      return
+    }
+
+    currentLine = candidate
   })
 
-  return highlighterPromise
+  if (currentLine.trim()) {
+    lines.push(currentLine.trim())
+  }
+
+  return lines.length > 0 ? lines : [label]
 }
 
-function stripMarkdownInline(value: string) {
-  return value
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/[*_~]/g, '')
-    .replace(/<[^>]+>/g, '')
-    .trim()
-}
+function renderFlowText(layout: FlowNodeLayout): string {
+  const lineHeight = 18
+  const firstLineY =
+    layout.y - ((layout.labelLines.length - 1) * lineHeight) / 2 + 5
 
-function slugifyHeading(value: string) {
-  const slug = stripMarkdownInline(value)
-    .normalize('NFKD')
-    .toLowerCase()
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^\p{L}\p{N}\s-]/gu, '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-
-  return slug || 'section'
-}
-
-function uniqueHeadingId(title: string, counts: Map<string, number>) {
-  const base = slugifyHeading(title)
-  const count = counts.get(base) ?? 0
-  counts.set(base, count + 1)
-  return count === 0 ? base : `${base}-${count + 1}`
-}
-
-export function extractMarkdownHeadings(markdown: string): MarkdownHeading[] {
-  const counts = new Map<string, number>()
-  const headings: MarkdownHeading[] = []
-  const headingPattern = /^(#{1,4})\s+(.+?)\s*#*\s*$/gm
-  const markdownWithoutCode = markdown.replace(/```[\s\S]*?```/g, '')
-  let match: RegExpExecArray | null
-
-  while ((match = headingPattern.exec(markdownWithoutCode)) !== null) {
-    const title = stripMarkdownInline(match[2] ?? '')
-    if (!title) continue
-    const id = uniqueHeadingId(title, counts)
-    const depth = match[1]?.length ?? 2
-    if (depth < 2) continue
-    headings.push({
-      depth,
-      id,
-      title,
+  return layout.labelLines
+    .map((line, index) => {
+      return `<text x="${layout.x}" y="${firstLineY + index * lineHeight}" text-anchor="middle" class="markdown-diagram-text">${escapeHtml(line)}</text>`
     })
-  }
-
-  return headings
+    .join('')
 }
 
-function extractNodeText(node: ReactNode): string {
-  if (typeof node === 'string' || typeof node === 'number') {
-    return String(node)
-  }
-  if (Array.isArray(node)) {
-    return node.map(extractNodeText).join('')
-  }
-  if (isValidElement<{ children?: ReactNode }>(node)) {
-    return extractNodeText(node.props.children)
-  }
-  return ''
-}
+function getFlowNodeLayout(
+  node: FlowNode,
+  index: number,
+  centerX: number
+): FlowNodeLayout {
+  const isCondition = node.type === 'condition'
+  const labelLines = splitFlowLabel(node.label, isCondition ? 14 : 18)
+  const labelWidth = Math.max(
+    ...labelLines.map((line) => getTextUnits(line) * 7.2)
+  )
+  const textHeight = labelLines.length * 18
 
-function parseEndpoint(children: ReactNode): EndpointInfo | undefined {
-  const text = extractNodeText(children).replace(/\s+/g, ' ').trim()
-  const match = text.match(endpointPattern)
-  if (!match) return undefined
+  if (isCondition) {
+    return {
+      height: Math.max(112, textHeight + 76),
+      labelLines,
+      node,
+      width: Math.max(190, labelWidth + 92),
+      x: centerX,
+      y: 64 + index * 132,
+    }
+  }
+
+  if (node.type === 'start' || node.type === 'end') {
+    return {
+      height: 38,
+      labelLines,
+      node,
+      width: Math.max(124, labelWidth + 44),
+      x: centerX,
+      y: 64 + index * 132,
+    }
+  }
 
   return {
-    method: (match[1] ?? '').toUpperCase(),
-    path: (match[2] ?? '').trim(),
+    height: Math.max(54, textHeight + 28),
+    labelLines,
+    node,
+    width: Math.max(166, labelWidth + 52),
+    x: centerX,
+    y: 64 + index * 132,
   }
 }
 
-function getMethodClassName(method: string) {
-  switch (method.toUpperCase()) {
-    case 'GET':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-300'
-    case 'POST':
-      return 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/70 dark:bg-sky-950/30 dark:text-sky-300'
-    case 'PUT':
-    case 'PATCH':
-      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-300'
-    case 'DELETE':
-      return 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-300'
-    default:
-      return 'border-border bg-muted text-muted-foreground'
+function getFlowAnchor(
+  layout: FlowNodeLayout,
+  side: 'bottom' | 'left' | 'right' | 'top'
+): {
+  x: number
+  y: number
+} {
+  if (side === 'top') {
+    return { x: layout.x, y: layout.y - layout.height / 2 }
   }
+
+  if (side === 'bottom') {
+    return { x: layout.x, y: layout.y + layout.height / 2 }
+  }
+
+  if (side === 'left') {
+    return { x: layout.x - layout.width / 2, y: layout.y }
+  }
+
+  return { x: layout.x + layout.width / 2, y: layout.y }
 }
 
-function getTableKind(children: ReactNode): TableKind {
-  const text = extractNodeText(children).toLowerCase()
+function renderFlowShape(layout: FlowNodeLayout): string {
+  const halfWidth = layout.width / 2
+  const halfHeight = layout.height / 2
+  const label = renderFlowText(layout)
 
-  if (
-    /parameter|required|description|header|请求头|参数|必填|说明/.test(text)
-  ) {
-    return 'parameters'
-  }
-  if (/status|meaning|handling|状态码|含义|建议处理/.test(text)) {
-    return 'status'
-  }
-  if (/client|provider|base url|客户端|填写|使用场景/.test(text)) {
-    return 'clients'
-  }
-  if (/comparison|recommended|项目|对比|建议/.test(text)) {
-    return 'comparison'
+  if (layout.node.type === 'condition') {
+    return `
+      <polygon points="${layout.x},${layout.y - halfHeight} ${layout.x + halfWidth},${layout.y} ${layout.x},${layout.y + halfHeight} ${layout.x - halfWidth},${layout.y}" class="markdown-diagram-node markdown-flow-condition" />
+      ${label}
+    `
   }
 
-  return 'default'
+  if (layout.node.type === 'start' || layout.node.type === 'end') {
+    return `
+      <rect x="${layout.x - halfWidth}" y="${layout.y - halfHeight}" width="${layout.width}" height="${layout.height}" rx="${halfHeight}" ry="${halfHeight}" class="markdown-diagram-node markdown-flow-terminal" />
+      ${label}
+    `
+  }
+
+  return `
+    <rect x="${layout.x - halfWidth}" y="${layout.y - halfHeight}" width="${layout.width}" height="${layout.height}" rx="6" ry="6" class="markdown-diagram-node markdown-flow-operation" />
+    ${label}
+  `
 }
 
-function getCodeBlockTitle(
-  code: string,
-  language: string,
-  t: ReturnType<typeof useTranslation>['t']
-) {
-  if (language === 'shellscript' && /^\s*curl\b/.test(code)) {
-    return t('Request')
-  }
-  if (language === 'json' && /"choices"|"usage"|"object"|"data"/.test(code)) {
-    return t('Response')
-  }
-  return displayLanguage(language)
-}
+function parseFlowDiagram(source: string): {
+  edges: FlowEdge[]
+  nodes: FlowNode[]
+} {
+  const lines = source
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const nodes: FlowNode[] = []
+  const edges: FlowEdge[] = []
 
-function stripCalloutMarker(children: ReactNode): ReactNode {
-  let stripped = false
+  lines.forEach((line) => {
+    const nodeMatch = /^([A-Za-z][\w-]*)=>([A-Za-z]+):\s*(.+)$/.exec(line)
 
-  function strip(node: ReactNode): ReactNode {
-    if (stripped) return node
-    if (typeof node === 'string') {
-      const next = node.replace(calloutPattern, '')
-      stripped = next !== node
-      return next
+    if (nodeMatch) {
+      const [, id, type, label] = nodeMatch
+      nodes.push({ id, label, type: type.toLowerCase() })
+      return
     }
-    if (Array.isArray(node)) {
-      return node.map(strip)
+
+    const edgeParts = line.split('->')
+
+    if (edgeParts.length < 2) {
+      return
     }
-    if (isValidElement<{ children?: ReactNode }>(node)) {
-      const element = node as ReactElement<{ children?: ReactNode }>
-      return cloneElement(element, undefined, strip(element.props.children))
-    }
-    return node
-  }
 
-  return strip(children)
-}
-
-function getCalloutKind(children: ReactNode): CalloutKind | undefined {
-  const match = extractNodeText(children).match(calloutPattern)
-  const value = match?.[1]?.toLowerCase()
-  return calloutKinds.find((kind) => kind === value)
-}
-
-function normalizeLanguage(value?: string) {
-  const raw =
-    value
-      ?.replace(/^language-/, '')
-      .trim()
-      .toLowerCase() ?? ''
-  const candidate = languageAliases[raw] ?? raw
-  if (candidate && highlightedLanguages.has(candidate)) return candidate
-  return 'text'
-}
-
-function inferLanguage(code: string) {
-  const value = code.trim()
-  if (!value) return 'text'
-  if (/^[\[{]/.test(value)) return 'json'
-  if (/^<[\w!/]/.test(value)) return 'html'
-  if (/^(curl|npm|pnpm|bun|yarn|pip|python|node|export)\b/m.test(value)) {
-    return 'shellscript'
-  }
-  if (/^(from|import)\s+\w+|def\s+\w+\(|print\(/m.test(value)) {
-    return 'python'
-  }
-  if (/\b(const|let|var|async function|fetch\(|console\.log)\b/.test(value)) {
-    return 'javascript'
-  }
-  return 'text'
-}
-
-function displayLanguage(value: string) {
-  const names: Record<string, string> = {
-    javascript: 'JavaScript',
-    json: 'JSON',
-    jsx: 'JSX',
-    markdown: 'Markdown',
-    python: 'Python',
-    shellscript: 'Shell',
-    text: 'Text',
-    tsx: 'TSX',
-    typescript: 'TypeScript',
-    yaml: 'YAML',
-  }
-  return names[value] ?? value.toUpperCase()
-}
-
-function CodeBlock({ code, language }: { code: string; language?: string }) {
-  const { t } = useTranslation()
-  const lang = language ? normalizeLanguage(language) : inferLanguage(code)
-  const title = getCodeBlockTitle(code, lang, t)
-  const [html, setHtml] = useState('')
-  const [copied, setCopied] = useState(false)
-
-  useEffect(() => {
-    let mounted = true
-
-    getHighlighter()
-      .then((highlighter) =>
-        highlighter.codeToHtml(code, {
-          lang,
-          themes: {
-            light: 'github-light',
-            dark: 'github-dark',
-          },
-        })
+    for (let index = 0; index < edgeParts.length - 1; index += 1) {
+      const fromMatch = /^([A-Za-z][\w-]*)(?:\(([^)]+)\))?$/.exec(
+        edgeParts[index]
       )
-      .then((highlighted) => {
-        if (mounted) setHtml(highlighted)
-      })
-      .catch(() => {
-        if (mounted) setHtml('')
-      })
+      const toMatch = /^([A-Za-z][\w-]*)(?:\(([^)]+)\))?$/.exec(
+        edgeParts[index + 1]
+      )
 
-    return () => {
-      mounted = false
+      if (!fromMatch || !toMatch) {
+        continue
+      }
+
+      const from = fromMatch[1]
+      const to = toMatch[1]
+      const edgeLabel = fromMatch[2]
+      edges.push({ from, label: edgeLabel, to })
     }
-  }, [code, lang])
-
-  const copyCode = async () => {
-    await navigator.clipboard?.writeText(code)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1600)
-  }
-
-  return (
-    <figure className='not-prose group bg-card my-7 overflow-hidden rounded-lg border shadow-sm'>
-      <figcaption className='bg-muted/45 text-muted-foreground flex h-11 items-center justify-between border-b px-3 text-xs'>
-        <div className='flex min-w-0 items-center gap-3'>
-          <span className='flex items-center gap-1.5' aria-hidden='true'>
-            <span className='size-2 rounded-full bg-red-400/80' />
-            <span className='size-2 rounded-full bg-amber-400/80' />
-            <span className='size-2 rounded-full bg-emerald-400/80' />
-          </span>
-          <span className='truncate font-medium'>{title}</span>
-          {title !== displayLanguage(lang) ? (
-            <span className='border-border/70 bg-background/70 hidden rounded border px-1.5 py-0.5 font-mono text-[0.6875rem] sm:inline'>
-              {displayLanguage(lang)}
-            </span>
-          ) : null}
-        </div>
-        <TooltipProvider delay={0}>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  type='button'
-                  variant='ghost'
-                  size='icon-sm'
-                  className='text-muted-foreground hover:text-foreground'
-                  aria-label={copied ? t('Copied') : t('Copy code')}
-                  onClick={copyCode}
-                />
-              }
-            >
-              {copied ? <Check /> : <Clipboard />}
-              <span className='sr-only'>
-                {copied ? t('Copied') : t('Copy code')}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{copied ? t('Copied') : t('Copy code')}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </figcaption>
-      <div
-        className={cn(
-          'bg-background overflow-x-auto',
-          '[&_.shiki]:m-0 [&_.shiki]:max-h-[34rem] [&_.shiki]:overflow-x-auto',
-          '[&_.shiki]:!bg-transparent [&_.shiki]:p-4 [&_.shiki]:text-[0.8125rem] [&_.shiki]:leading-relaxed'
-        )}
-      >
-        {html ? (
-          <div dangerouslySetInnerHTML={{ __html: html }} />
-        ) : (
-          <pre className='m-0 max-h-[34rem] overflow-x-auto p-4 text-[0.8125rem] leading-relaxed'>
-            <code>{code}</code>
-          </pre>
-        )}
-      </div>
-    </figure>
-  )
-}
-
-function MarkdownEndpoint({ method, path, title, description }: EndpointInfo) {
-  const { t } = useTranslation()
-  const [copied, setCopied] = useState(false)
-
-  const copyEndpoint = async () => {
-    await navigator.clipboard?.writeText(`${method} ${path}`)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1600)
-  }
-
-  return (
-    <section className='not-prose bg-card my-7 overflow-hidden rounded-lg border shadow-sm'>
-      <div className='bg-muted/35 text-muted-foreground flex items-center justify-between border-b px-4 py-2.5 text-xs font-medium'>
-        <div className='flex min-w-0 items-center gap-2'>
-          <SquareTerminal className='size-3.5 shrink-0' />
-          <span className='truncate'>{title || t('Endpoint')}</span>
-        </div>
-        <TooltipProvider delay={0}>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  type='button'
-                  variant='ghost'
-                  size='icon-sm'
-                  className='text-muted-foreground hover:text-foreground'
-                  aria-label={copied ? t('Copied') : t('Copy')}
-                  onClick={copyEndpoint}
-                />
-              }
-            >
-              {copied ? <Check /> : <Clipboard />}
-              <span className='sr-only'>
-                {copied ? t('Copied') : t('Copy')}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{copied ? t('Copied') : t('Copy')}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
-      <div className='flex min-w-0 flex-col gap-3 p-4 sm:flex-row sm:items-center'>
-        <span
-          className={cn(
-            'inline-flex h-7 w-fit items-center rounded-md border px-2.5 font-mono text-xs font-semibold',
-            getMethodClassName(method)
-          )}
-        >
-          {method}
-        </span>
-        <code className='bg-muted text-foreground min-w-0 overflow-x-auto rounded-md px-3 py-2 font-mono text-sm leading-none'>
-          {path}
-        </code>
-      </div>
-      {description ? (
-        <p className='text-muted-foreground m-0 border-t px-4 py-3 text-sm leading-6'>
-          {description}
-        </p>
-      ) : null}
-    </section>
-  )
-}
-
-function ApiDirectiveEndpoint({
-  description,
-  method,
-  path,
-  title,
-}: ApiDirectiveProps) {
-  if (!method || !path) return null
-
-  return (
-    <MarkdownEndpoint
-      method={method}
-      path={path}
-      title={title}
-      description={description}
-    />
-  )
-}
-
-function ApiDirectivePanel({
-  children,
-  title,
-  status,
-  variant = 'default',
-}: ApiDirectiveProps & {
-  variant?: 'default' | 'parameters' | 'request' | 'response'
-}) {
-  const { t } = useTranslation()
-  const labels = {
-    default: title || t('Details'),
-    parameters: title || t('Parameters'),
-    request: title || t('Request'),
-    response: title || t('Response'),
-  }
-  const icons = {
-    default: <Info className='size-4' />,
-    parameters: <Rows3 className='size-4' />,
-    request: <Code2 className='size-4' />,
-    response: <Braces className='size-4' />,
-  }
-
-  return (
-    <section className='not-prose bg-card my-7 overflow-hidden rounded-lg border shadow-sm'>
-      <header className='bg-muted/35 text-muted-foreground flex items-center justify-between border-b px-4 py-3 text-sm font-medium'>
-        <div className='flex min-w-0 items-center gap-2'>
-          {icons[variant]}
-          <span className='truncate'>{labels[variant]}</span>
-        </div>
-        {status ? (
-          <span
-            className={cn(
-              'rounded-md border px-2 py-0.5 font-mono text-xs',
-              status.startsWith('2')
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-300'
-                : 'border-border bg-background text-muted-foreground'
-            )}
-          >
-            {status}
-          </span>
-        ) : null}
-      </header>
-      <div className='api-doc-body px-4 py-4 text-sm leading-7 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0'>
-        {children}
-      </div>
-    </section>
-  )
-}
-
-function ApiDirectiveSection({
-  children,
-  description,
-  method,
-  path,
-  title,
-}: ApiDirectiveProps) {
-  return (
-    <section className='not-prose bg-card my-8 overflow-hidden rounded-lg border shadow-sm'>
-      {(title || description || method || path) && (
-        <header className='bg-muted/30 border-b px-5 py-4'>
-          {title ? (
-            <h3 className='text-foreground text-base font-semibold'>{title}</h3>
-          ) : null}
-          {description ? (
-            <p className='text-muted-foreground mt-1 text-sm leading-6'>
-              {description}
-            </p>
-          ) : null}
-          {method && path ? (
-            <div className='mt-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center'>
-              <span
-                className={cn(
-                  'inline-flex h-7 w-fit items-center rounded-md border px-2.5 font-mono text-xs font-semibold',
-                  getMethodClassName(method)
-                )}
-              >
-                {method}
-              </span>
-              <code className='bg-muted text-foreground min-w-0 overflow-x-auto rounded-md px-3 py-2 font-mono text-sm leading-none'>
-                {path}
-              </code>
-            </div>
-          ) : null}
-        </header>
-      )}
-      <div className='api-doc-body px-5 py-5 text-sm leading-7 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0'>
-        {children}
-      </div>
-    </section>
-  )
-}
-
-function ApiTab({ children }: ApiDirectiveProps) {
-  return <>{children}</>
-}
-
-function ApiTabs({ children, title }: ApiDirectiveProps) {
-  const { t } = useTranslation()
-  const tabs = Children.toArray(children).flatMap((child, index) => {
-    if (!isValidElement<ApiDirectiveProps>(child) || child.type !== ApiTab) {
-      return []
-    }
-
-    return [
-      {
-        content: child.props.children,
-        title: child.props.title || `${t('Example')} ${index + 1}`,
-      },
-    ]
   })
-  const [activeTab, setActiveTab] = useState(0)
-  const activeIndex = activeTab < tabs.length ? activeTab : 0
 
-  if (tabs.length === 0) {
-    return (
-      <div className='not-prose my-7 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0'>
-        {children}
-      </div>
-    )
-  }
-
-  return (
-    <section className='not-prose bg-card my-7 overflow-hidden rounded-lg border shadow-sm'>
-      <header className='bg-muted/35 border-b px-3 py-3'>
-        <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
-          <div className='text-muted-foreground flex items-center gap-2 text-sm font-medium'>
-            <Code2 className='size-4' />
-            <span>{title || t('Example')}</span>
-          </div>
-          <div className='bg-muted inline-flex w-fit max-w-full gap-1 overflow-x-auto rounded-md p-1'>
-            {tabs.map((tab, index) => (
-              <button
-                key={`${tab.title}-${index}`}
-                type='button'
-                className={cn(
-                  'text-muted-foreground hover:text-foreground h-7 rounded px-2.5 text-xs font-medium whitespace-nowrap transition-colors',
-                  index === activeIndex &&
-                    'bg-background text-foreground shadow-sm'
-                )}
-                onClick={() => setActiveTab(index)}
-              >
-                {tab.title}
-              </button>
-            ))}
-          </div>
-        </div>
-      </header>
-      <div className='api-doc-body [&>*:first-child]:mt-0 [&>*:last-child]:mb-0'>
-        {tabs[activeIndex]?.content}
-      </div>
-    </section>
-  )
+  return { edges, nodes }
 }
 
-function MarkdownTable({ children }: { children: ReactNode }) {
-  const kind = getTableKind(children)
+function renderFlowDiagram(source: string): string {
+  const { edges, nodes } = parseFlowDiagram(source)
+  const width = 660
+  const centerX = 300
+  const loopX = 520
+  const nodeIndex = new Map(nodes.map((node, index) => [node.id, index]))
+  const nodePositions = new Map(
+    nodes.map((node, index) => [
+      node.id,
+      getFlowNodeLayout(node, index, centerX),
+    ])
+  )
+  const lastNode =
+    nodes.length > 0 ? nodePositions.get(nodes.at(-1)?.id ?? '') : undefined
+  const height = Math.max(
+    180,
+    (lastNode?.y ?? 64) + (lastNode?.height ?? 40) / 2 + 54
+  )
+  const renderedEdges = edges
+    .map((edge) => {
+      const from = nodePositions.get(edge.from)
+      const to = nodePositions.get(edge.to)
+
+      if (!from || !to) {
+        return ''
+      }
+
+      const isBackward =
+        (nodeIndex.get(edge.to) ?? 0) <= (nodeIndex.get(edge.from) ?? 0)
+
+      if (isBackward) {
+        const fromAnchor = getFlowAnchor(from, 'right')
+        const toAnchor = getFlowAnchor(to, 'right')
+        const d = `M ${fromAnchor.x} ${fromAnchor.y} C ${loopX} ${fromAnchor.y}, ${loopX} ${toAnchor.y}, ${toAnchor.x} ${toAnchor.y}`
+        const label = edge.label
+          ? `<text x="${loopX - 38}" y="${(fromAnchor.y + toAnchor.y) / 2 - 8}" class="markdown-diagram-edge-label">${escapeHtml(edge.label)}</text>`
+          : ''
+
+        return `<path d="${d}" class="markdown-diagram-edge" marker-end="url(#markdown-diagram-arrow)" />${label}`
+      }
+
+      const fromAnchor = getFlowAnchor(from, 'bottom')
+      const toAnchor = getFlowAnchor(to, 'top')
+      const label = edge.label
+        ? `<text x="${fromAnchor.x + 38}" y="${(fromAnchor.y + toAnchor.y) / 2 - 8}" class="markdown-diagram-edge-label">${escapeHtml(edge.label)}</text>`
+        : ''
+
+      return `
+        <line x1="${fromAnchor.x}" y1="${fromAnchor.y}" x2="${toAnchor.x}" y2="${toAnchor.y}" class="markdown-diagram-edge" marker-end="url(#markdown-diagram-arrow)" />
+        ${label}
+      `
+    })
+    .join('')
+  const renderedNodes = nodes
+    .map((node) => {
+      const position = nodePositions.get(node.id)
+
+      if (!position) {
+        return ''
+      }
+
+      return renderFlowShape(position)
+    })
+    .join('')
+
+  return `
+    <div class="not-prose markdown-diagram">
+      <svg data-diagram="flow" viewBox="0 0 ${width} ${height}" width="100%" height="${height}" preserveAspectRatio="xMidYMin meet">
+        <defs>
+          <marker id="markdown-diagram-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+            <path d="M 0 0 L 8 4 L 0 8 z" class="markdown-diagram-arrow" />
+          </marker>
+        </defs>
+        ${renderedEdges}
+        ${renderedNodes}
+      </svg>
+    </div>
+  `
+}
+
+function parseSequenceDiagram(source: string): {
+  messages: SequenceMessage[]
+  participants: string[]
+} {
+  const lines = source
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const participants: string[] = []
+  const messages: SequenceMessage[] = []
+
+  function addParticipant(name: string): void {
+    if (!participants.includes(name)) {
+      participants.push(name)
+    }
+  }
+
+  lines.forEach((line) => {
+    const noteMatch = /^Note\s+(left|right)\s+of\s+([^:]+):\s*(.+)$/.exec(line)
+
+    if (noteMatch) {
+      const [, side, target, label] = noteMatch
+      const participant = target.trim()
+      addParticipant(participant)
+      messages.push({
+        isNote: true,
+        label: label.replaceAll('\\n', '\n'),
+        noteSide: side as 'left' | 'right',
+        target: participant,
+      })
+      return
+    }
+
+    const messageMatch = /^([^-\s]+)\s*(-{1,2}>>?|-->)\s*([^:]+):\s*(.+)$/.exec(
+      line
+    )
+
+    if (!messageMatch) {
+      return
+    }
+
+    const [, from, arrow, to, label] = messageMatch
+    const fromName = from.trim()
+    const toName = to.trim()
+    addParticipant(fromName)
+    addParticipant(toName)
+    messages.push({
+      from: fromName,
+      label,
+      lineStyle: arrow.startsWith('--') ? 'dashed' : 'solid',
+      target: toName,
+      to: toName,
+    })
+  })
+
+  return { messages, participants }
+}
+
+function renderSequenceDiagram(source: string): string {
+  const { messages, participants } = parseSequenceDiagram(source)
+  const laneGap = 190
+  const marginX = 80
+  const top = 42
+  const rowGap = 72
+  const width = Math.max(
+    360,
+    marginX * 2 + Math.max(0, participants.length - 1) * laneGap
+  )
+  const height = Math.max(180, 126 + messages.length * rowGap)
+  const positions = new Map(
+    participants.map((participant, index) => [
+      participant,
+      marginX + index * laneGap,
+    ])
+  )
+  const participantBoxes = participants
+    .map((participant) => {
+      const x = positions.get(participant) ?? marginX
+      const label = escapeHtml(participant)
+
+      return `
+        <rect x="${x - 64}" y="${top}" width="128" height="44" rx="4" ry="4" class="markdown-diagram-node" />
+        <text x="${x}" y="${top + 27}" text-anchor="middle" class="markdown-diagram-text">${label}</text>
+        <line x1="${x}" y1="${top + 44}" x2="${x}" y2="${height - 46}" class="markdown-sequence-lifeline" />
+        <rect x="${x - 64}" y="${height - 46}" width="128" height="44" rx="4" ry="4" class="markdown-diagram-node" />
+        <text x="${x}" y="${height - 19}" text-anchor="middle" class="markdown-diagram-text">${label}</text>
+      `
+    })
+    .join('')
+  const renderedMessages = messages
+    .map((message, index) => {
+      const y = top + 78 + index * rowGap
+
+      if (message.isNote) {
+        const targetX = positions.get(message.target) ?? marginX
+        const noteX = message.noteSide === 'left' ? targetX - 154 : targetX + 24
+        const lines = message.label.split('\n')
+        const noteHeight = 28 + Math.max(0, lines.length - 1) * 16
+        const textLines = lines
+          .map((line, lineIndex) => {
+            return `<text x="${noteX + 8}" y="${y + 18 + lineIndex * 16}" class="markdown-sequence-note-text">${escapeHtml(line)}</text>`
+          })
+          .join('')
+
+        return `
+          <rect x="${noteX}" y="${y}" width="132" height="${noteHeight}" rx="3" ry="3" class="markdown-sequence-note" />
+          ${textLines}
+        `
+      }
+
+      const fromX = positions.get(message.from ?? '') ?? marginX
+      const toX = positions.get(message.to ?? '') ?? marginX
+      const labelX = (fromX + toX) / 2
+      const label = escapeHtml(message.label)
+      const dash =
+        message.lineStyle === 'dashed' ? ' stroke-dasharray="4 4"' : ''
+
+      return `
+        <line x1="${fromX}" y1="${y}" x2="${toX}" y2="${y}" class="markdown-diagram-edge"${dash} marker-end="url(#markdown-diagram-arrow)" />
+        <text x="${labelX}" y="${y - 8}" text-anchor="middle" class="markdown-diagram-edge-label">${label}</text>
+      `
+    })
+    .join('')
+
+  return `
+    <div class="not-prose markdown-diagram">
+      <svg data-diagram="sequence" viewBox="0 0 ${width} ${height}" width="100%" height="${height}" preserveAspectRatio="xMidYMin meet">
+        <defs>
+          <marker id="markdown-diagram-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+            <path d="M 0 0 L 8 4 L 0 8 z" class="markdown-diagram-arrow" />
+          </marker>
+        </defs>
+        ${participantBoxes}
+        ${renderedMessages}
+      </svg>
+    </div>
+  `
+}
+
+const markdownRenderer = new Renderer()
+const renderDefaultCode = markdownRenderer.code.bind(markdownRenderer)
+
+markdownRenderer.code = (token: Tokens.Code): string => {
+  const language = token.lang?.toLowerCase()
+
+  if (language === 'math' || language === 'katex' || language === 'latex') {
+    return renderMath(token.text, true)
+  }
+
+  if (language === 'flow') {
+    return renderFlowDiagram(token.text)
+  }
+
+  if (language === 'seq') {
+    return renderSequenceDiagram(token.text)
+  }
+
+  return renderDefaultCode(token)
+}
+
+const markdownExtensions: MarkedExtension[] = [
+  {
+    walkTokens(token) {
+      if (token.type !== 'text') {
+        return
+      }
+
+      token.text = replaceEmojiShortcodes(token.text)
+    },
+    extensions: [
+      {
+        level: 'block',
+        name: 'pageBreak',
+        renderer() {
+          return '<hr class="markdown-page-break">'
+        },
+        start(source: string) {
+          return source.match(/^\[========\]/m)?.index
+        },
+        tokenizer(source: string) {
+          const match = /^\[========\](?:\n|$)/.exec(source)
+
+          if (!match) {
+            return undefined
+          }
+
+          return {
+            raw: match[0],
+            type: 'pageBreak',
+          }
+        },
+      },
+      {
+        level: 'block',
+        name: 'blockMath',
+        renderer(token) {
+          return renderMath(String(token.text), true)
+        },
+        start(source: string) {
+          return source.match(/^\$\$/m)?.index
+        },
+        tokenizer(source: string) {
+          const match = /^\$\$\n?([\s\S]+?)\n?\$\$(?:\n|$)/.exec(source)
+
+          if (!match) {
+            return undefined
+          }
+
+          return {
+            raw: match[0],
+            text: match[1],
+            type: 'blockMath',
+          }
+        },
+      },
+      {
+        level: 'inline',
+        name: 'inlineMath',
+        renderer(token) {
+          return renderMath(String(token.text), false)
+        },
+        start(source: string) {
+          const index = source.indexOf('$$')
+
+          if (index === -1) {
+            return undefined
+          }
+
+          return index
+        },
+        tokenizer(source: string) {
+          const match = /^\$\$([^\n$]+?)\$\$/.exec(source)
+
+          if (!match) {
+            return undefined
+          }
+
+          return {
+            raw: match[0],
+            text: match[1],
+            type: 'inlineMath',
+          }
+        },
+      },
+    ],
+  },
+]
+
+const markdownParser = new Marked({
+  ...markdownOptions,
+  renderer: markdownRenderer,
+})
+
+markdownParser.use(...markdownExtensions)
+
+function addExternalLinkAttributes(html: string): string {
+  if (typeof window === 'undefined') {
+    return html
+  }
+
+  const template = document.createElement('template')
+  template.innerHTML = html
+
+  template.content.querySelectorAll('a[href]').forEach((link) => {
+    link.setAttribute('target', '_blank')
+    link.setAttribute('rel', 'noopener noreferrer')
+  })
+
+  return template.innerHTML
+}
+
+function renderMarkdown(markdown: string, breaks = false): string {
+  const parsedHtml = markdownParser.parse(markdown, {
+    ...markdownOptions,
+    breaks,
+  })
+  const html = DOMPurify.sanitize(parsedHtml, sanitizeOptions)
+
+  return addExternalLinkAttributes(html)
+}
+
+export function Markdown(props: MarkdownProps) {
+  const html = useMemo(
+    () => renderMarkdown(props.children, props.breaks),
+    [props.breaks, props.children]
+  )
 
   return (
     <div
       className={cn(
-        'not-prose bg-card my-7 overflow-x-auto rounded-lg border shadow-sm',
-        kind !== 'default' && '[&_tbody_tr:hover]:bg-muted/45'
+        'prose prose-sm dark:prose-invert max-w-none',
+        '[&_h1]:mt-6 [&_h1]:mb-3 [&_h1]:text-2xl [&_h1]:font-semibold',
+        '[&_h2]:mt-5 [&_h2]:mb-3 [&_h2]:text-xl [&_h2]:font-semibold',
+        '[&_h3]:mt-4 [&_h3]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold',
+        '[&_h4]:mt-4 [&_h4]:mb-2 [&_h4]:font-semibold',
+        '[&_p]:my-2 [&_p]:leading-relaxed [&_strong]:font-semibold [&_em]:italic',
+        '[&_a]:text-primary [&_a]:underline hover:[&_a]:text-primary/80',
+        '[&_ol]:my-2 [&_ul]:my-2 [&_ol]:list-decimal [&_ul]:list-disc [&_ol]:pl-5 [&_ul]:pl-5 [&_li]:my-1 [&_li]:pl-1',
+        '[&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-primary [&_blockquote]:bg-muted/50 [&_blockquote]:py-1 [&_blockquote]:pl-4',
+        '[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono',
+        '[&_pre]:my-3 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:border [&_pre]:bg-muted [&_pre]:p-3 [&_table]:my-4 [&_table]:block [&_table]:w-full [&_table]:overflow-x-auto',
+        '[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-sm',
+        '[&_thead]:bg-muted [&_th]:border [&_td]:border [&_th]:px-3 [&_td]:px-3 [&_th]:py-2 [&_td]:py-2 [&_th]:text-left',
+        '[&_hr]:my-6 [&_img]:my-4 [&_img]:max-w-full [&_img]:rounded-lg',
+        '[&_.katex-display]:my-4 [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden',
+        '[&_.markdown-page-break]:my-6 [&_.markdown-page-break]:border-dashed',
+        '[&_.markdown-diagram]:my-4 [&_.markdown-diagram]:overflow-x-auto [&_.markdown-diagram]:rounded-md [&_.markdown-diagram]:border [&_.markdown-diagram]:bg-background [&_.markdown-diagram]:p-4',
+        '[&_.markdown-diagram_svg]:mx-auto [&_.markdown-diagram_svg]:max-w-full',
+        '[&_.markdown-diagram-node]:fill-[color-mix(in_oklch,var(--primary)_8%,var(--background))] [&_.markdown-diagram-node]:stroke-primary [&_.markdown-diagram-node]:stroke-[1.5]',
+        '[&_.markdown-diagram-text]:fill-foreground [&_.markdown-diagram-text]:text-sm [&_.markdown-diagram-text]:font-medium',
+        '[&_.markdown-diagram-edge]:stroke-muted-foreground [&_.markdown-diagram-edge]:stroke-[1.5] [&_.markdown-diagram-edge]:fill-none',
+        '[&_.markdown-diagram-arrow]:fill-muted-foreground',
+        '[&_.markdown-diagram-edge-label]:fill-muted-foreground [&_.markdown-diagram-edge-label]:text-xs',
+        '[&_.markdown-sequence-lifeline]:stroke-primary [&_.markdown-sequence-lifeline]:stroke-[1.5]',
+        '[&_.markdown-sequence-note]:fill-warning/20 [&_.markdown-sequence-note]:stroke-warning',
+        '[&_.markdown-sequence-note-text]:fill-foreground [&_.markdown-sequence-note-text]:text-xs',
+        '[&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
+        '[overflow-wrap:anywhere]',
+        props.className
       )}
-    >
-      <table
-        className={cn(
-          'w-full border-collapse text-sm',
-          kind === 'parameters' &&
-            '[&_td:first-child]:font-mono [&_td:first-child]:text-[0.8125rem] [&_td:first-child]:font-semibold',
-          kind === 'status' &&
-            '[&_td:first-child]:font-mono [&_td:first-child]:font-semibold',
-          kind === 'clients' && '[&_td:first-child]:font-semibold',
-          kind === 'comparison' && '[&_td:first-child]:font-semibold'
-        )}
-      >
-        {children}
-      </table>
-    </div>
-  )
-}
-
-function MarkdownHeading({
-  level,
-  id,
-  children,
-}: {
-  level: 1 | 2 | 3 | 4
-  id: string
-  children: ReactNode
-}) {
-  const Tag = `h${level}` as 'h1' | 'h2' | 'h3' | 'h4'
-
-  return (
-    <Tag id={id} className='group scroll-mt-24'>
-      <a
-        href={`#${id}`}
-        className='text-foreground hover:text-foreground inline-flex items-center gap-2 no-underline'
-      >
-        <span>{children}</span>
-        <Hash className='text-muted-foreground size-4 opacity-0 transition-opacity group-hover:opacity-100' />
-      </a>
-    </Tag>
-  )
-}
-
-function MarkdownCallout({
-  kind,
-  children,
-}: {
-  kind: CalloutKind
-  children: ReactNode
-}) {
-  const { t } = useTranslation()
-  const labels: Record<CalloutKind, string> = {
-    note: t('Note'),
-    tip: t('Tip'),
-    important: t('Important'),
-    warning: t('Warning'),
-    caution: t('Caution'),
-  }
-  const icons: Record<CalloutKind, ReactNode> = {
-    note: <Info className='size-4' />,
-    tip: <Lightbulb className='size-4' />,
-    important: <OctagonAlert className='size-4' />,
-    warning: <TriangleAlert className='size-4' />,
-    caution: <OctagonAlert className='size-4' />,
-  }
-  const styles: Record<CalloutKind, string> = {
-    note: 'border-sky-200 bg-sky-50/70 text-sky-950 dark:border-sky-900/70 dark:bg-sky-950/30 dark:text-sky-100',
-    tip: 'border-emerald-200 bg-emerald-50/70 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-100',
-    important:
-      'border-violet-200 bg-violet-50/70 text-violet-950 dark:border-violet-900/70 dark:bg-violet-950/30 dark:text-violet-100',
-    warning:
-      'border-amber-200 bg-amber-50/70 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-100',
-    caution:
-      'border-red-200 bg-red-50/70 text-red-950 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-100',
-  }
-
-  return (
-    <aside className={cn('not-prose my-6 rounded-lg border p-4', styles[kind])}>
-      <div className='mb-2 flex items-center gap-2 text-sm font-semibold'>
-        {icons[kind]}
-        <span>{labels[kind]}</span>
-      </div>
-      <div className='text-sm leading-6 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0'>
-        {children}
-      </div>
-    </aside>
-  )
-}
-
-export function Markdown({ breaks = false, children, className }: MarkdownProps) {
-  const headingCounts = new Map<string, number>()
-
-  const nextHeadingId = (content: ReactNode) =>
-    uniqueHeadingId(extractNodeText(content), headingCounts)
-
-  const components: Components = {
-    a: ({ href, ...props }) => {
-      const isExternal = href ? /^(https?:)?\/\//.test(href) : false
-      return (
-        <a
-          href={href}
-          target={isExternal ? '_blank' : undefined}
-          rel={isExternal ? 'noopener noreferrer' : undefined}
-          {...props}
-        />
-      )
-    },
-    blockquote: ({ children: blockquoteChildren }) => {
-      const kind = getCalloutKind(blockquoteChildren)
-      if (kind) {
-        return (
-          <MarkdownCallout kind={kind}>
-            {stripCalloutMarker(blockquoteChildren)}
-          </MarkdownCallout>
-        )
-      }
-
-      return (
-        <blockquote className='border-l-primary bg-muted/50 my-6 rounded-r-lg border-l-4 px-4 py-3 text-sm leading-6'>
-          {blockquoteChildren}
-        </blockquote>
-      )
-    },
-    code: ({ className: codeClassName, children: codeChildren, ...props }) => {
-      const value = String(codeChildren ?? '').replace(/\n$/, '')
-      const language = /language-([^\s]+)/.exec(codeClassName ?? '')?.[1]
-      const isBlock = Boolean(language || value.includes('\n'))
-
-      if (isBlock) {
-        return <CodeBlock code={value} language={language} />
-      }
-
-      return (
-        <code
-          className={cn(
-            'bg-muted text-foreground rounded px-1.5 py-0.5 text-[0.85em] font-medium before:content-none after:content-none',
-            codeClassName
-          )}
-          {...props}
-        >
-          {codeChildren}
-        </code>
-      )
-    },
-    h1: ({ children: headingChildren }) => (
-      <MarkdownHeading level={1} id={nextHeadingId(headingChildren)}>
-        {headingChildren}
-      </MarkdownHeading>
-    ),
-    h2: ({ children: headingChildren }) => (
-      <MarkdownHeading level={2} id={nextHeadingId(headingChildren)}>
-        {headingChildren}
-      </MarkdownHeading>
-    ),
-    h3: ({ children: headingChildren }) => (
-      <MarkdownHeading level={3} id={nextHeadingId(headingChildren)}>
-        {headingChildren}
-      </MarkdownHeading>
-    ),
-    h4: ({ children: headingChildren }) => (
-      <MarkdownHeading level={4} id={nextHeadingId(headingChildren)}>
-        {headingChildren}
-      </MarkdownHeading>
-    ),
-    hr: () => <hr className='my-8' />,
-    p: ({ children: paragraphChildren }) => {
-      const endpoint = parseEndpoint(paragraphChildren)
-      if (endpoint) {
-        return <MarkdownEndpoint {...endpoint} />
-      }
-
-      return <p>{paragraphChildren}</p>
-    },
-    pre: ({ children: preChildren }) => <>{preChildren}</>,
-    table: ({ children: tableChildren }) => (
-      <MarkdownTable>{tableChildren}</MarkdownTable>
-    ),
-    tbody: ({ children: tableChildren }) => <tbody>{tableChildren}</tbody>,
-    td: ({ children: tableChildren }) => (
-      <td className='border-t px-4 py-3.5 align-top leading-6'>
-        {tableChildren}
-      </td>
-    ),
-    th: ({ children: tableChildren }) => (
-      <th className='bg-muted/55 text-foreground px-4 py-3 text-left text-xs font-semibold tracking-wide uppercase'>
-        {tableChildren}
-      </th>
-    ),
-    thead: ({ children: tableChildren }) => (
-      <thead className='border-b'>{tableChildren}</thead>
-    ),
-    tr: ({ children: tableChildren }) => (
-      <tr className='even:bg-muted/20 transition-colors'>{tableChildren}</tr>
-    ),
-  }
-
-  Object.assign(components, {
-    'api-endpoint': (props: ApiDirectiveProps) => (
-      <ApiDirectiveEndpoint {...props} />
-    ),
-    'api-parameters': (props: ApiDirectiveProps) => (
-      <ApiDirectivePanel {...props} variant='parameters' />
-    ),
-    'api-request': (props: ApiDirectiveProps) => (
-      <ApiDirectivePanel {...props} variant='request' />
-    ),
-    'api-response': (props: ApiDirectiveProps) => (
-      <ApiDirectivePanel {...props} variant='response' />
-    ),
-    'api-section': (props: ApiDirectiveProps) => (
-      <ApiDirectiveSection {...props} />
-    ),
-    'api-tab': ApiTab,
-    'api-tabs': ApiTabs,
-  })
-
-  return (
-    <div className={cn('markdown-content', className)}>
-      <ReactMarkdown
-        remarkPlugins={[
-          remarkGfm,
-          ...(breaks ? [remarkBreaks] : []),
-          remarkDirective,
-          remarkApiDirectives,
-        ]}
-        rehypePlugins={[rehypeRaw]}
-        components={components}
-      >
-        {children}
-      </ReactMarkdown>
-    </div>
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
   )
 }

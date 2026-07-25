@@ -17,20 +17,19 @@
 
 `.github/workflows/migration-compatibility.yml` 另外在 SQLite、MySQL 5.7、PostgreSQL
 9.6 和 PostgreSQL 15 上运行两次 `--migrate-only`，并验证两项批准的列类型变化和
-博客、系统任务、实例、权限表均存在。所有检查均为阻断式，不再使用
+系统任务、实例、权限表均存在。所有检查均为阻断式，不再使用
 `continue-on-error`。
 
 以下内容变更不会触发生产镜像构建：
 
 ```text
-data/blog-drafts/**
 docs/**
 仓库根目录的 Markdown 文件
 ```
 
-运行时文档位于 `content/documentation/**`，不在忽略范围内。应用部署不会再自动
-写入数据库 `DocumentationSettings`；内容发布需要单独执行，避免应用切换前修改
-仍由旧版本读取的配置。
+文档、博客和公共内容已迁移到独立的 `aivrae-portal` 项目。修改
+`aivrae-portal` 不会触发本仓库的镜像构建或主站部署；主站通过
+`general_setting.docs_link` 和同源反向代理连接内容站。
 
 ## 生产拓扑
 
