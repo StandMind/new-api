@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-
 export const INTERFACE_LANGUAGE_OPTIONS = [
   { code: 'zhCN', label: '简体中文' },
   { code: 'en', label: 'English' },
@@ -25,7 +24,7 @@ export const INTERFACE_LANGUAGE_OPTIONS = [
   { code: 'ru', label: 'Русский' },
   { code: 'ja', label: '日本語' },
   { code: 'vi', label: 'Tiếng Việt' },
-  { code: 'zhTW', label: '繁體中文' }
+  { code: 'zhTW', label: '繁體中文' },
 ] as const
 
 export type InterfaceLanguageCode =
@@ -35,14 +34,10 @@ export function normalizeInterfaceLanguage(value?: string | null): string {
   if (!value) return 'en'
 
   const normalized = convertDetectedLanguage(value)
-
-  return INTERFACE_LANGUAGE_OPTIONS.some(
+  const language = INTERFACE_LANGUAGE_OPTIONS.find(
     (lang) => lang.code.toLowerCase() === normalized.toLowerCase()
   )
-    ? INTERFACE_LANGUAGE_OPTIONS.find(
-        (lang) => lang.code.toLowerCase() === normalized.toLowerCase()
-      )!.code
-    : 'en'
+  return language?.code ?? 'en'
 }
 
 /**
@@ -59,6 +54,7 @@ export function convertDetectedLanguage(value: string): string {
   const lower = value.trim().replaceAll('_', '-').toLowerCase()
   if (!lower.startsWith('zh')) return value
   if (
+    lower === 'zhtw' ||
     lower === 'zh-tw' ||
     lower === 'zh-hk' ||
     lower === 'zh-mo' ||

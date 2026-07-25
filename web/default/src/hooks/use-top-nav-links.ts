@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
 import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
+import { getDocumentNavigation } from '@/lib/top-nav-navigation'
 import { useAuthStore } from '@/stores/auth-store'
 
 export type TopNavLink = {
@@ -29,6 +30,7 @@ export type TopNavLink = {
   disabled?: boolean
   requiresAuth?: boolean
   external?: boolean
+  reloadDocument?: boolean
 }
 
 /**
@@ -89,15 +91,27 @@ export function useTopNavLinks(): TopNavLink[] {
   // Docs (supports external links)
   if (modules?.docs !== false) {
     if (docsLink) {
-      links.push({ title: t('Docs'), href: docsLink, external: true })
+      links.push({
+        title: t('Docs'),
+        href: docsLink,
+        ...getDocumentNavigation(docsLink),
+      })
     } else {
-      links.push({ title: t('Docs'), href: '/docs' })
+      links.push({
+        title: t('Docs'),
+        href: '/docs',
+        ...getDocumentNavigation('/docs'),
+      })
     }
   }
 
   // Blog
   if (modules?.blog !== false) {
-    links.push({ title: t('Blog'), href: '/blog' })
+    links.push({
+      title: t('Blog'),
+      href: '/blog',
+      ...getDocumentNavigation('/blog'),
+    })
   }
 
   // About

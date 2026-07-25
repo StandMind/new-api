@@ -1,4 +1,0 @@
-interface:
-  display_name: "Aivrae 上游模型同步"
-  short_description: "发现、定价、验证并安全同步上游模型到 Aivrae"
-  default_prompt: "Use $sync-aivrae-models to compare an upstream catalog with Aivrae, calculate prices, prepare a rollback-safe sync, and verify production routing."
