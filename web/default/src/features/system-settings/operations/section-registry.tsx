@@ -97,7 +97,15 @@ const OPERATIONS_SECTIONS = [
     titleKey: 'Log Maintenance',
     build: (settings: OperationsSettings) => (
       <LogSettingsSection
-        defaultEnabled={Boolean(settings.LogConsumeEnabled)}
+        defaultValues={{
+          LogConsumeEnabled: Boolean(settings.LogConsumeEnabled),
+          'request_detail_setting.mode':
+            settings['request_detail_setting.mode'] ?? 'failed',
+          'request_detail_setting.retention_days':
+            settings['request_detail_setting.retention_days'] ?? 7,
+          'request_detail_setting.max_storage_mb':
+            settings['request_detail_setting.max_storage_mb'] ?? 5120,
+        }}
       />
     ),
   },

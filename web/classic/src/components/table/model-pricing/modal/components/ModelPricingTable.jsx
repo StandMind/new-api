@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Avatar, Table, Tag, Typography } from '@douyinfe/semi-ui';
+import { Avatar, Table, Tag, Tooltip, Typography } from '@douyinfe/semi-ui';
 import { IconCoinMoneyStroked } from '@douyinfe/semi-icons';
 
 import { BILLING_PRICING_VARS } from '../../../../../constants';
@@ -34,9 +34,12 @@ import OfficialPriceTag, {
 
 const { Text } = Typography;
 
-function formatTokenHint(value) {
+function formatTokenHint(value, compact = true) {
   const number = Number(value);
   if (!Number.isFinite(number) || number <= 0) return String(value ?? '');
+  if (!compact) {
+    return number.toLocaleString(undefined, { maximumFractionDigits: 20 });
+  }
   if (number >= 1000000) {
     return `${Number((number / 1000000).toFixed(1))}M`;
   }
@@ -44,6 +47,72 @@ function formatTokenHint(value) {
     return `${Number((number / 1000).toFixed(1))}K`;
   }
   return String(number);
+}
+
+function getInputTokenTierRanges(tiers) {
+  if (!Array.isArray(tiers) || tiers.length === 0) return null;
+
+  const ranges = [];
+  let previousUpperBound = null;
+  let previousUpperInclusive = false;
+
+  for (let index = 0; index < tiers.length; index += 1) {
+    const conditions = Array.isArray(tiers[index]?.conditions)
+      ? tiers[index].conditions
+      : [];
+    const isLastTier = index === tiers.length - 1;
+
+    if (isLastTier) {
+      if (conditions.length !== 0) return null;
+      ranges.push({
+        lowerBound: previousUpperBound,
+        lowerInclusive: previousUpperBound !== null && !previousUpperInclusive,
+        upperBound: null,
+        upperInclusive: false,
+      });
+      continue;
+    }
+
+    if (conditions.length !== 1) return null;
+    const condition = conditions[0];
+    if (
+      condition.var !== 'len' ||
+      !['<', '<='].includes(condition.op) ||
+      !Number.isFinite(condition.value) ||
+      condition.value <= 0 ||
+      (previousUpperBound !== null && condition.value <= previousUpperBound)
+    ) {
+      return null;
+    }
+
+    ranges.push({
+      lowerBound: previousUpperBound,
+      lowerInclusive: previousUpperBound !== null && !previousUpperInclusive,
+      upperBound: condition.value,
+      upperInclusive: condition.op === '<=',
+    });
+    previousUpperBound = condition.value;
+    previousUpperInclusive = condition.op === '<=';
+  }
+
+  return ranges;
+}
+
+function formatInputTokenTierRange(range, compact) {
+  const lowerOperator = range.lowerInclusive ? '≥' : '>';
+  const upperOperator = range.upperInclusive ? '≤' : '<';
+  const formatValue = (value) => formatTokenHint(value, compact);
+
+  if (range.lowerBound === null && range.upperBound !== null) {
+    return `${upperOperator} ${formatValue(range.upperBound)}`;
+  }
+  if (range.lowerBound !== null && range.upperBound === null) {
+    return `${lowerOperator} ${formatValue(range.lowerBound)}`;
+  }
+  if (range.lowerBound !== null && range.upperBound !== null) {
+    return `${lowerOperator} ${formatValue(range.lowerBound)} · ${upperOperator} ${formatValue(range.upperBound)}`;
+  }
+  return '-';
 }
 
 function formatTierCondition(conditions, t) {
@@ -115,6 +184,7 @@ const ModelPricingTable = ({
   usableGroup,
   t,
 }) => {
+  const [hoveredPricingGroup, setHoveredPricingGroup] = React.useState(null);
   const modelEnableGroups = Array.isArray(modelData?.enable_groups)
     ? modelData.enable_groups
     : [];
@@ -143,6 +213,9 @@ const ModelPricingTable = ({
     );
     tiers = sortPricingTiersByInputThreshold(parseTiersFromExpr(billingExpr));
   }
+  const inputTokenTierRanges =
+    isTiered && tiers.length > 1 ? getInputTokenTierRanges(tiers) : null;
+  const usesInputTokenTiers = inputTokenTierRanges !== null;
 
   if (isTiered && tiers.length === 0) {
     return (
@@ -220,10 +293,16 @@ const ModelPricingTable = ({
     activeFields = rows[0]?.fields || [];
   }
 
+  const getGroupCellRowSpan = (row) => {
+    if (!isTiered || tiers.length <= 1) return 1;
+    return row.tierIndex === 0 ? tiers.length : 0;
+  };
+
   const groupColumn = {
     title: t('分组'),
     dataIndex: 'group',
     width: 230,
+    onCell: (row) => ({ rowSpan: getGroupCellRowSpan(row) }),
     render: (group, row) => (
       <div className='flex flex-wrap items-center gap-1.5 min-w-[200px]'>
         <Tag color='white' size='small'>
@@ -244,6 +323,7 @@ const ModelPricingTable = ({
     title: t('分组倍率'),
     dataIndex: 'ratio',
     width: 90,
+    onCell: (row) => ({ rowSpan: getGroupCellRowSpan(row) }),
     render: (ratio) => (
       <Tag color='blue' size='small'>
         {ratio}x
@@ -254,19 +334,40 @@ const ModelPricingTable = ({
   const columns = [groupColumn, ratioColumn];
   if (isTiered && tiers.length > 1) {
     columns.push({
-      title: t('档位'),
+      title: usesInputTokenTiers ? t('单次请求输入 Token') : t('档位'),
       dataIndex: 'tier',
-      width: 150,
-      render: (tier) => (
-        <div className='min-w-[120px]'>
-          <div>{tier.label || t('默认')}</div>
-          {formatTierCondition(tier.conditions, t) && (
-            <div className='text-xs text-gray-500 mt-1'>
-              {formatTierCondition(tier.conditions, t)}
+      width: usesInputTokenTiers ? 190 : 150,
+      render: (tier, row) => {
+        const range = inputTokenTierRanges?.[row.tierIndex];
+        if (!range) {
+          return (
+            <div className='min-w-[120px]'>
+              <div>{tier.label || t('默认')}</div>
+              {formatTierCondition(tier.conditions, t) && (
+                <div className='text-xs text-gray-500 mt-1'>
+                  {formatTierCondition(tier.conditions, t)}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      ),
+          );
+        }
+
+        return (
+          <div className='min-w-[150px]'>
+            <Tooltip
+              content={`${t('输入 Token')} ${formatInputTokenTierRange(range, false)}`}
+              position='top'
+            >
+              <span className='inline-flex cursor-help font-medium tabular-nums'>
+                {formatInputTokenTierRange(range, true)}
+              </span>
+            </Tooltip>
+            <div className='text-xs text-gray-500 mt-1'>
+              {tier.label || t('默认')}
+            </div>
+          </div>
+        );
+      },
     });
   }
 
@@ -310,14 +411,32 @@ const ModelPricingTable = ({
         <div>
           <Text className='text-lg font-medium'>{t('分组价格')}</Text>
           <div className='text-xs text-gray-600'>
-            {t('不同用户分组的价格信息')}
+            {usesInputTokenTiers
+              ? t(
+                  '价格档位根据单次请求的完整输入上下文 Token 数确定，不按账户累计用量计算。',
+                )
+              : t('不同用户分组的价格信息')}
           </div>
         </div>
       </div>
-      <div className='overflow-x-auto max-w-full'>
+      <div
+        className='overflow-x-auto max-w-full'
+        onMouseOver={(event) => {
+          const row = event.target?.closest?.('tr[data-pricing-group]');
+          setHoveredPricingGroup(row?.dataset.pricingGroup ?? null);
+        }}
+        onMouseLeave={() => setHoveredPricingGroup(null)}
+      >
         <Table
           dataSource={rows}
           columns={columns}
+          onRow={(row) => ({
+            'data-pricing-group': row.group,
+            className:
+              hoveredPricingGroup === row.group
+                ? 'semi-table-row-hovered'
+                : undefined,
+          })}
           pagination={false}
           size='small'
           bordered={false}

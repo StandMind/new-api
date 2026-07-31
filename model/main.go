@@ -12,6 +12,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/setting/request_detail_setting"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/driver/clickhouse"
@@ -344,6 +345,7 @@ func migrateDB() error {
 		&Ability{},
 		&GroupModelRoute{},
 		&Log{},
+		&RequestDetail{},
 		&Midjourney{},
 		&TopUp{},
 		&QuotaData{},
@@ -399,6 +401,7 @@ func migrateDBFast() error {
 		{&Ability{}, "Ability"},
 		{&GroupModelRoute{}, "GroupModelRoute"},
 		{&Log{}, "Log"},
+		{&RequestDetail{}, "RequestDetail"},
 		{&Midjourney{}, "Midjourney"},
 		{&TopUp{}, "TopUp"},
 		{&QuotaData{}, "QuotaData"},
@@ -460,7 +463,7 @@ func migrateLOGDB() error {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		return migrateClickHouseLogDB()
 	}
-	return LOG_DB.AutoMigrate(&Log{})
+	return LOG_DB.AutoMigrate(&Log{}, &RequestDetail{})
 }
 
 func migrateClickHouseLogDB() error {
@@ -468,7 +471,14 @@ func migrateClickHouseLogDB() error {
 	if err := LOG_DB.Exec(clickHouseLogCreateTableSQL(ttlDays)).Error; err != nil {
 		return err
 	}
-	return syncClickHouseLogTTL(ttlDays)
+	if err := syncClickHouseLogTTL(ttlDays); err != nil {
+		return err
+	}
+	requestDetailRetentionDays := request_detail_setting.GetSetting().RetentionDays
+	if err := LOG_DB.Exec(requestDetailClickHouseCreateTableSQL(requestDetailRetentionDays)).Error; err != nil {
+		return err
+	}
+	return SyncRequestDetailClickHouseTTL(requestDetailRetentionDays)
 }
 
 func clickHouseLogTTLDays() int {

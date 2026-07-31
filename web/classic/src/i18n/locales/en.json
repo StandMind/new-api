@@ -3917,6 +3917,24 @@
     "计价单位": "Billing unit",
     "输入上限": "Input token limit",
     "请选择有效的计价单位": "Select a valid billing unit",
-    "高于官方 {{percent}}%": "Higher than official by {{percent}}%"
+    "高于官方 {{percent}}%": "Higher than official by {{percent}}%",
+    "单次请求输入 Token": "Input tokens per request",
+    "价格档位根据单次请求的完整输入上下文 Token 数确定，不按账户累计用量计算。": "Pricing tiers are determined by the total input context tokens in each request, not by cumulative account usage.",
+    "请求详情记录模式": "Request detail recording mode",
+    "记录全部请求": "Record all requests",
+    "仅记录最终失败": "Record final failures only",
+    "不记录请求详情": "Do not record request details",
+    "失败以完整渠道重试后的最终结果为准": "Failures are determined by the final result after all channel retries",
+    "请求详情保留天数": "Request detail retention days",
+    "请求详情最大容量（MB）": "Maximum request detail storage (MB)",
+    "请求详情会在后台异步压缩写入；凭据、响应正文和文件内容不会保存，单条请求体最多保存 64 KB。容量达到 90% 后优先清理最旧的成功记录。": "Request details are compressed and written asynchronously. Credentials, response bodies, and file contents are not stored. Each request body is capped at 64 KB. At 90% capacity, the oldest successful records are removed first.",
+    "当前详情存储": "Current detail storage",
+    "已保存 {{count}} 条；丢弃失败详情 {{dropped}} 条": "{{count}} stored; {{dropped}} failed details dropped",
+    "请求详情": "Request details",
+    "加载请求详情失败": "Failed to load request details",
+    "请求详情已过期": "Request details have expired",
+    "查看请求详情": "View request details",
+    "脱敏后的请求内容": "Sanitized request content",
+    "全部结果": "All results"
   }
 }

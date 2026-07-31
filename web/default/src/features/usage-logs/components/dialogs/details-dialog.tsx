@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { TFunction } from 'i18next'
 import {
   Copy,
   Check,
@@ -30,8 +31,9 @@ import {
   UserCog,
   Info,
   LogIn,
+  FileSearch,
 } from 'lucide-react'
-import type { TFunction } from 'i18next'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
@@ -64,6 +66,7 @@ import {
   isTimingLogType,
 } from '../../lib/utils'
 import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
+import { RequestDetailDialog } from './request-detail-dialog'
 
 // Maps a channel-update changed-field token (as recorded by the backend audit)
 // to its i18n label key for display in the audit details.
@@ -179,7 +182,9 @@ function getUsageBillingPathLabel(
   }
 }
 
-function isUsageBillingPathLocal(adminInfo: LogOtherData['admin_info']): boolean {
+function isUsageBillingPathLocal(
+  adminInfo: LogOtherData['admin_info']
+): boolean {
   if (adminInfo?.usage_billing_path) {
     return adminInfo.usage_billing_path === USAGE_BILLING_PATH.LOCAL
   }
@@ -458,6 +463,7 @@ interface DetailsDialogProps {
 
 export function DetailsDialog(props: DetailsDialogProps) {
   const { t } = useTranslation()
+  const [requestDetailOpen, setRequestDetailOpen] = useState(false)
   const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false })
   const details = props.log.content ?? ''
   const other = parseLogOther(props.log.other)
@@ -591,7 +597,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
     reasoningEffortVariant = 'yellow'
   }
 
-  return (
+  const logDetailsDialog = (
     <Dialog
       open={props.open}
       onOpenChange={props.onOpenChange}
@@ -627,6 +633,19 @@ export function DetailsDialog(props: DetailsDialogProps) {
               value={props.log.request_id}
               mono
             />
+          )}
+          {props.isAdmin && props.log.request_id && (
+            <div className='pt-1'>
+              <Button
+                type='button'
+                variant='outline'
+                size='sm'
+                onClick={() => setRequestDetailOpen(true)}
+              >
+                <FileSearch className='size-3.5' aria-hidden='true' />
+                {t('View request details')}
+              </Button>
+            </div>
           )}
           {props.log.upstream_request_id && (
             <DetailRow
@@ -1235,6 +1254,19 @@ export function DetailsDialog(props: DetailsDialogProps) {
         )}
       </div>
     </Dialog>
+  )
+
+  return (
+    <>
+      {logDetailsDialog}
+      {props.isAdmin && props.log.request_id && (
+        <RequestDetailDialog
+          requestId={props.log.request_id}
+          open={requestDetailOpen}
+          onOpenChange={setRequestDetailOpen}
+        />
+      )}
+    </>
   )
 }
 

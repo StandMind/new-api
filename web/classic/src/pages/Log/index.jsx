@@ -18,12 +18,30 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
+import { Tabs, TabPane } from '@douyinfe/semi-ui';
 import UsageLogsTable from '../../components/table/usage-logs';
+import RequestDetailsTable from '../../components/table/request-details';
+import { isAdmin } from '../../helpers';
+import { useTranslation } from 'react-i18next';
 
-const Token = () => (
-  <div className='mt-[60px] px-2'>
-    <UsageLogsTable />
-  </div>
-);
+const Token = () => {
+  const { t } = useTranslation();
+  return (
+    <div className='mt-[60px] px-2'>
+      {isAdmin() ? (
+        <Tabs type='line'>
+          <TabPane tab={t('使用日志')} itemKey='usage'>
+            <UsageLogsTable />
+          </TabPane>
+          <TabPane tab={t('请求详情')} itemKey='request-details'>
+            <RequestDetailsTable />
+          </TabPane>
+        </Tabs>
+      ) : (
+        <UsageLogsTable />
+      )}
+    </div>
+  );
+};
 
 export default Token;

@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/request_detail_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"gorm.io/gorm"
 )
@@ -628,6 +629,8 @@ func handleConfigUpdate(key, value string) bool {
 		ratio_setting.InvalidateExposedDataCache()
 	} else if configName == "official_price_setting" {
 		InvalidatePricingCache()
+	} else if configName == request_detail_setting.ConfigName {
+		request_detail_setting.UpdateAndSync()
 	} else if configName == "theme" {
 		system_setting.UpdateAndSyncTheme()
 	}

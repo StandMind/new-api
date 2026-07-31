@@ -80,12 +80,19 @@ import type { LogCleanupTask } from '../types'
 
 const logSettingsSchema = z.object({
   LogConsumeEnabled: z.boolean(),
+  'request_detail_setting.mode': z.enum(['all', 'failed', 'none']),
+  'request_detail_setting.retention_days': z.number().int().min(1).max(3650),
+  'request_detail_setting.max_storage_mb': z
+    .number()
+    .int()
+    .min(128)
+    .max(10 * 1024 * 1024),
 })
 
 type LogSettingsFormValues = z.infer<typeof logSettingsSchema>
 
 type LogSettingsSectionProps = {
-  defaultEnabled: boolean
+  defaultValues: LogSettingsFormValues
 }
 
 type ServerLogInfo = {
@@ -95,6 +102,25 @@ type ServerLogInfo = {
   total_size: number
   oldest_time?: string
   newest_time?: string
+}
+
+type RequestDetailStats = {
+  storage: {
+    count: number
+    storage_bytes: number
+    oldest_at: number
+    newest_at: number
+  }
+  runtime: {
+    written: number
+    dropped_success: number
+    dropped_failure: number
+    queue_success: number
+    queue_failure: number
+    disk_suspended: boolean
+  }
+  max_storage_bytes: number
+  usage_percent: number
 }
 
 const HOURS_IN_DAY = 24
@@ -139,16 +165,19 @@ function isActiveLogCleanupTask(task: LogCleanupTask | null) {
   return task?.status === 'pending' || task?.status === 'running'
 }
 
-export function LogSettingsSection({
-  defaultEnabled,
-}: LogSettingsSectionProps) {
+export function LogSettingsSection(props: LogSettingsSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
+  const defaultLogConsumeEnabled = props.defaultValues.LogConsumeEnabled
+  const defaultRequestDetailMode =
+    props.defaultValues['request_detail_setting.mode']
+  const defaultRequestDetailRetentionDays =
+    props.defaultValues['request_detail_setting.retention_days']
+  const defaultRequestDetailMaxStorageMB =
+    props.defaultValues['request_detail_setting.max_storage_mb']
   const form = useForm<LogSettingsFormValues>({
     resolver: zodResolver(logSettingsSchema),
-    defaultValues: {
-      LogConsumeEnabled: defaultEnabled,
-    },
+    defaultValues: props.defaultValues,
   })
 
   const [purgeDate, setPurgeDate] = useState<Date | undefined>(() =>
@@ -163,6 +192,8 @@ export function LogSettingsSection({
   const [serverLogCleanupMode, setServerLogCleanupMode] = useState('by_count')
   const [serverLogCleanupValue, setServerLogCleanupValue] = useState(10)
   const [serverLogCleanupLoading, setServerLogCleanupLoading] = useState(false)
+  const [requestDetailStats, setRequestDetailStats] =
+    useState<RequestDetailStats | null>(null)
 
   const fetchServerLogInfo = useCallback(async () => {
     try {
@@ -173,13 +204,35 @@ export function LogSettingsSection({
     }
   }, [])
 
+  const fetchRequestDetailStats = useCallback(async () => {
+    try {
+      const res = await api.get('/api/request-detail/stats')
+      if (res.data.success) setRequestDetailStats(res.data.data)
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
   useEffect(() => {
-    form.reset({ LogConsumeEnabled: defaultEnabled })
-  }, [defaultEnabled, form])
+    form.reset({
+      LogConsumeEnabled: defaultLogConsumeEnabled,
+      'request_detail_setting.mode': defaultRequestDetailMode,
+      'request_detail_setting.retention_days':
+        defaultRequestDetailRetentionDays,
+      'request_detail_setting.max_storage_mb': defaultRequestDetailMaxStorageMB,
+    })
+  }, [
+    defaultLogConsumeEnabled,
+    defaultRequestDetailMaxStorageMB,
+    defaultRequestDetailMode,
+    defaultRequestDetailRetentionDays,
+    form,
+  ])
 
   useEffect(() => {
     fetchServerLogInfo()
-  }, [fetchServerLogInfo])
+    fetchRequestDetailStats()
+  }, [fetchRequestDetailStats, fetchServerLogInfo])
 
   useEffect(() => {
     let cancelled = false
@@ -257,11 +310,17 @@ export function LogSettingsSection({
   }, [logCleanupActive, logCleanupTaskId, t])
 
   const onSubmit = async (values: LogSettingsFormValues) => {
-    if (values.LogConsumeEnabled === defaultEnabled) return
-    await updateOption.mutateAsync({
-      key: 'LogConsumeEnabled',
-      value: values.LogConsumeEnabled,
-    })
+    const entries = Object.entries(values) as Array<
+      [keyof LogSettingsFormValues, string | number | boolean]
+    >
+    const changed = entries.filter(
+      ([key, value]) => value !== props.defaultValues[key]
+    )
+    for (const [key, value] of changed) {
+      const result = await updateOption.mutateAsync({ key, value })
+      if (!result.success) return
+    }
+    await fetchRequestDetailStats()
   }
 
   const handleRequestCleanLogs = () => {
@@ -366,6 +425,146 @@ export function LogSettingsSection({
               </SettingsSwitchItem>
             )}
           />
+
+          <SettingsControlGroup className='space-y-4'>
+            <div>
+              <h4 className='text-sm font-medium'>
+                {t('Request detail logging')}
+              </h4>
+              <p className='text-muted-foreground text-sm'>
+                {t(
+                  'Store sanitized request bodies and final routing diagnostics for troubleshooting.'
+                )}
+              </p>
+            </div>
+            <Alert>
+              <AlertDescription>
+                {t(
+                  'Writes are compressed and processed asynchronously. Credentials and file contents are never stored, and each request body is limited to 64 KB.'
+                )}
+              </AlertDescription>
+            </Alert>
+            <FormField
+              control={form.control}
+              name='request_detail_setting.mode'
+              render={({ field }) => (
+                <div className='space-y-2'>
+                  <FormLabel>{t('Recording mode')}</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value='all'>
+                          {t('Record all requests')}
+                        </SelectItem>
+                        <SelectItem value='failed'>
+                          {t('Record failed requests only')}
+                        </SelectItem>
+                        <SelectItem value='none'>
+                          {t('Do not record request details')}
+                        </SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    {t(
+                      'Failure-only mode records the final logical result after all channel retries.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </div>
+              )}
+            />
+            <div className='grid gap-4 sm:grid-cols-2'>
+              <FormField
+                control={form.control}
+                name='request_detail_setting.retention_days'
+                render={({ field }) => (
+                  <div className='space-y-2'>
+                    <FormLabel>{t('Retention days')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={1}
+                        max={3650}
+                        value={field.value}
+                        onChange={(event) =>
+                          field.onChange(event.target.valueAsNumber)
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Expired details are removed in background batches.')}
+                    </FormDescription>
+                    <FormMessage />
+                  </div>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='request_detail_setting.max_storage_mb'
+                render={({ field }) => (
+                  <div className='space-y-2'>
+                    <FormLabel>{t('Maximum storage (MB)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={128}
+                        max={10 * 1024 * 1024}
+                        value={field.value}
+                        onChange={(event) =>
+                          field.onChange(event.target.valueAsNumber)
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'At 90% usage, the oldest successful details are removed first until usage returns below 80%.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </div>
+                )}
+              />
+            </div>
+            {requestDetailStats && (
+              <div className='bg-muted/30 space-y-2 rounded-md border p-3 text-sm'>
+                <div className='flex flex-wrap items-center justify-between gap-2'>
+                  <span className='font-medium'>
+                    {t('Current detail storage')}
+                  </span>
+                  <span className='tabular-nums'>
+                    {formatBytes(requestDetailStats.storage.storage_bytes)} /{' '}
+                    {formatBytes(requestDetailStats.max_storage_bytes)}
+                  </span>
+                </div>
+                <Progress
+                  value={Math.min(100, requestDetailStats.usage_percent)}
+                />
+                <div className='text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs'>
+                  <span>
+                    {t('{{count}} stored requests', {
+                      count: requestDetailStats.storage.count,
+                    })}
+                  </span>
+                  <span>
+                    {t('{{count}} failed details dropped', {
+                      count: requestDetailStats.runtime.dropped_failure,
+                    })}
+                  </span>
+                  {requestDetailStats.runtime.disk_suspended && (
+                    <span className='text-destructive'>
+                      {t('Writing paused by low disk space protection')}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </SettingsControlGroup>
 
           <SettingsControlGroup className='space-y-3'>
             <div>

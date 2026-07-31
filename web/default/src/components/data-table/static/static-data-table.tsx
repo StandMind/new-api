@@ -46,6 +46,10 @@ type StaticDataTableDataProps<TData = unknown> = StaticDataTableBaseProps & {
   data: TData[]
   getRowKey?: (row: TData, index: number) => React.Key
   getRowClassName?: (row: TData, index: number) => string | undefined
+  getRowProps?: (
+    row: TData,
+    index: number
+  ) => Omit<React.ComponentProps<typeof TableRow>, 'children' | 'className'>
   renderRow?: (row: TData, index: number) => React.ReactNode
   empty?: boolean
   emptyContent?: React.ReactNode
@@ -68,6 +72,10 @@ export type StaticDataTableColumn<TData = unknown> = {
   header: React.ReactNode
   className?: string
   cellClassName?: string | ((row: TData, index: number) => string | undefined)
+  cellProps?: (
+    row: TData,
+    index: number
+  ) => Omit<React.ComponentProps<typeof TableCell>, 'children' | 'className'>
   cell?: (row: TData, index: number) => React.ReactNode
 }
 
@@ -97,6 +105,7 @@ function StaticDataTableWithColumns<TData>({
   data,
   getRowKey,
   getRowClassName,
+  getRowProps,
   renderRow,
   empty,
   emptyContent,
@@ -111,6 +120,7 @@ function StaticDataTableWithColumns<TData>({
       index={index}
       columns={columns}
       getRowClassName={getRowClassName}
+      getRowProps={getRowProps}
       renderRow={renderRow}
     />
   ))
@@ -145,7 +155,10 @@ function StaticDataTableWithColumns<TData>({
 type StaticDataTableRowProps<TData> = Required<
   Pick<StaticDataTableDataProps<TData>, 'columns'>
 > &
-  Pick<StaticDataTableDataProps<TData>, 'getRowClassName' | 'renderRow'> & {
+  Pick<
+    StaticDataTableDataProps<TData>,
+    'getRowClassName' | 'getRowProps' | 'renderRow'
+  > & {
     row: TData
     index: number
   }
@@ -155,25 +168,34 @@ function StaticDataTableRow<TData>({
   index,
   columns,
   getRowClassName,
+  getRowProps,
   renderRow,
 }: StaticDataTableRowProps<TData>) {
   if (renderRow) {
     return <>{renderRow(row, index)}</>
   }
 
+  const rowProps = getRowProps?.(row, index)
+
   return (
-    <TableRow className={getRowClassName?.(row, index)}>
-      {columns.map((column) => (
-        <TableCell
-          key={column.id}
-          className={cn(
-            'max-w-full min-w-0 overflow-hidden',
-            getStaticCellClassName(column, row, index)
-          )}
-        >
-          {renderStaticCellContent(column, row, index)}
-        </TableCell>
-      ))}
+    <TableRow {...rowProps} className={getRowClassName?.(row, index)}>
+      {columns.map((column) => {
+        const cellProps = column.cellProps?.(row, index)
+        if (cellProps?.rowSpan === 0 || cellProps?.colSpan === 0) return null
+
+        return (
+          <TableCell
+            key={column.id}
+            {...cellProps}
+            className={cn(
+              'max-w-full min-w-0 overflow-hidden',
+              getStaticCellClassName(column, row, index)
+            )}
+          >
+            {renderStaticCellContent(column, row, index)}
+          </TableCell>
+        )
+      })}
     </TableRow>
   )
 }

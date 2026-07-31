@@ -75,12 +75,23 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError *types.NewAPIError
 		ws          *websocket.Conn
 	)
+	defer func() {
+		if newAPIError != nil {
+			service.SetRequestDetailFailure(c, &service.RequestDetailFailure{
+				StatusCode: newAPIError.StatusCode,
+				ErrorType:  string(newAPIError.GetErrorType()),
+				ErrorCode:  string(newAPIError.GetErrorCode()),
+				Message:    newAPIError.MaskSensitiveErrorWithStatusCode(),
+			})
+		}
+	}()
 
 	if relayFormat == types.RelayFormatOpenAIRealtime {
 		var err error
 		ws, err = upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
-			helper.WssError(c, ws, types.NewError(err, types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry()).ToOpenAIError())
+			newAPIError = types.NewError(err, types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+			helper.WssError(c, ws, newAPIError.ToOpenAIError())
 			return
 		}
 		defer ws.Close()
@@ -548,23 +559,35 @@ func RelayTaskFetch(c *gin.Context) {
 }
 
 func RelayTask(c *gin.Context) {
+	var taskErr *dto.TaskError
+	defer func() {
+		if taskErr != nil {
+			service.SetRequestDetailFailure(c, &service.RequestDetailFailure{
+				StatusCode: taskErr.StatusCode,
+				ErrorType:  "task_error",
+				ErrorCode:  taskErr.Code,
+				Message:    taskErr.Message,
+			})
+		}
+	}()
+
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, &dto.TaskError{
+		taskErr = &dto.TaskError{
 			Code:       "gen_relay_info_failed",
 			Message:    err.Error(),
 			StatusCode: http.StatusInternalServerError,
-		})
+		}
+		respondTaskError(c, taskErr)
 		return
 	}
 
-	if taskErr := relay.ResolveOriginTask(c, relayInfo); taskErr != nil {
+	if taskErr = relay.ResolveOriginTask(c, relayInfo); taskErr != nil {
 		respondTaskError(c, taskErr)
 		return
 	}
 
 	var result *relay.TaskSubmitResult
-	var taskErr *dto.TaskError
 	defer func() {
 		if taskErr != nil && relayInfo.Billing != nil {
 			relayInfo.Billing.Refund(c)

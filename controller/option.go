@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/official_price_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/request_detail_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/gin-gonic/gin"
@@ -277,6 +278,14 @@ func UpdateOption(c *gin.Context) {
 				"success": false,
 				"message": err.Error(),
 			})
+			return
+		}
+	case request_detail_setting.ConfigName + ".mode",
+		request_detail_setting.ConfigName + ".retention_days",
+		request_detail_setting.ConfigName + ".max_storage_mb":
+		err = request_detail_setting.ValidateOption(option.Key, option.Value.(string))
+		if err != nil {
+			common.ApiErrorMsg(c, err.Error())
 			return
 		}
 	case "ImageRatio":

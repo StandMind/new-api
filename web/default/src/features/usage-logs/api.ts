@@ -26,6 +26,8 @@ import type {
   GetLogStatsResponse,
   GetMidjourneyLogsParams,
   GetTaskLogsParams,
+  RequestDetailResponse,
+  RequestDetailsResponse,
   UserInfo,
 } from './types'
 
@@ -88,6 +90,28 @@ export async function getUserInfo(
   userId: number
 ): Promise<{ success: boolean; message?: string; data?: UserInfo }> {
   const res = await api.get(`/api/user/${userId}`)
+  return res.data
+}
+
+export async function getRequestDetails(params: {
+  p?: number
+  page_size?: number
+  username?: string
+  model_name?: string
+  outcome?: string
+  request_id?: string
+}): Promise<RequestDetailsResponse> {
+  const query = buildQueryParams(params)
+  const res = await api.get(`/api/request-detail/?${query}`)
+  return res.data
+}
+
+export async function getRequestDetail(
+  requestId: string
+): Promise<RequestDetailResponse> {
+  const res = await api.get(
+    `/api/request-detail/${encodeURIComponent(requestId)}`
+  )
   return res.data
 }
 

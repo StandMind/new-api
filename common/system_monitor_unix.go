@@ -14,11 +14,19 @@ func GetDiskSpaceInfo() DiskSpaceInfo {
 	if cachePath == "" {
 		cachePath = os.TempDir()
 	}
+	return GetDiskSpaceInfoForPath(cachePath)
+}
+
+// GetDiskSpaceInfoForPath returns filesystem capacity for an arbitrary local path.
+func GetDiskSpaceInfoForPath(path string) DiskSpaceInfo {
+	if path == "" {
+		path = os.TempDir()
+	}
 
 	info := DiskSpaceInfo{}
 
 	var stat unix.Statfs_t
-	err := unix.Statfs(cachePath, &stat)
+	err := unix.Statfs(path, &stat)
 	if err != nil {
 		return info
 	}

@@ -27,6 +27,7 @@ import {
   DatePicker,
   Typography,
   Modal,
+  Progress,
 } from '@douyinfe/semi-ui';
 import dayjs from 'dayjs';
 import { useTranslation } from 'react-i18next';
@@ -46,10 +47,25 @@ export default function SettingsLog(props) {
   const [loadingCleanHistoryLog, setLoadingCleanHistoryLog] = useState(false);
   const [inputs, setInputs] = useState({
     LogConsumeEnabled: false,
+    'request_detail_setting.mode': 'failed',
+    'request_detail_setting.retention_days': 7,
+    'request_detail_setting.max_storage_mb': 5120,
     historyTimestamp: dayjs().subtract(1, 'month').toDate(),
   });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
+  const [requestDetailStats, setRequestDetailStats] = useState(null);
+
+  async function fetchRequestDetailStats() {
+    try {
+      const res = await API.get('/api/request-detail/stats');
+      if (res.data.success) {
+        setRequestDetailStats(res.data.data);
+      }
+    } catch {
+      // The settings form remains usable when statistics are unavailable.
+    }
+  }
 
   function onSubmit() {
     const updateArray = compareObjects(inputs, inputsRow).filter(
@@ -80,6 +96,7 @@ export default function SettingsLog(props) {
         }
         showSuccess(t('保存成功'));
         props.refresh();
+        fetchRequestDetailStats();
       })
       .catch(() => {
         showError(t('保存失败，请重试'));
@@ -191,6 +208,10 @@ export default function SettingsLog(props) {
     setInputsRow(structuredClone(currentInputs));
     refForm.current.setValues(currentInputs);
   }, [props.options]);
+
+  useEffect(() => {
+    fetchRequestDetailStats();
+  }, []);
   return (
     <>
       <Spin spinning={loading}>
@@ -245,6 +266,104 @@ export default function SettingsLog(props) {
                     {t('清除历史日志')}
                   </Button>
                 </Spin>
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Select
+                  field='request_detail_setting.mode'
+                  label={t('请求详情记录模式')}
+                  optionList={[
+                    { value: 'all', label: t('记录全部请求') },
+                    { value: 'failed', label: t('仅记录最终失败') },
+                    { value: 'none', label: t('不记录请求详情') },
+                  ]}
+                  onChange={(value) => {
+                    setInputs({
+                      ...inputs,
+                      'request_detail_setting.mode': value,
+                    });
+                  }}
+                />
+                <Text type='tertiary' size='small'>
+                  {t('失败以完整渠道重试后的最终结果为准')}
+                </Text>
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  field='request_detail_setting.retention_days'
+                  label={t('请求详情保留天数')}
+                  min={1}
+                  max={3650}
+                  onChange={(value) => {
+                    setInputs({
+                      ...inputs,
+                      'request_detail_setting.retention_days': value,
+                    });
+                  }}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  field='request_detail_setting.max_storage_mb'
+                  label={t('请求详情最大容量（MB）')}
+                  min={128}
+                  max={10 * 1024 * 1024}
+                  onChange={(value) => {
+                    setInputs({
+                      ...inputs,
+                      'request_detail_setting.max_storage_mb': value,
+                    });
+                  }}
+                />
+              </Col>
+            </Row>
+
+            <Row style={{ marginBottom: 16 }}>
+              <Col span={24}>
+                <Text type='tertiary' size='small'>
+                  {t(
+                    '请求详情会在后台异步压缩写入；凭据、响应正文和文件内容不会保存，单条请求体最多保存 64 KB。容量达到 90% 后优先清理最旧的成功记录。',
+                  )}
+                </Text>
+                {requestDetailStats && (
+                  <div style={{ marginTop: 10, maxWidth: 560 }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        marginBottom: 6,
+                      }}
+                    >
+                      <Text>{t('当前详情存储')}</Text>
+                      <Text>
+                        {Math.round(
+                          requestDetailStats.storage.storage_bytes /
+                            1024 /
+                            1024,
+                        )}{' '}
+                        MB /{' '}
+                        {Math.round(
+                          requestDetailStats.max_storage_bytes / 1024 / 1024,
+                        )}{' '}
+                        MB
+                      </Text>
+                    </div>
+                    <Progress
+                      percent={Math.min(
+                        100,
+                        requestDetailStats.usage_percent || 0,
+                      )}
+                      showInfo
+                    />
+                    <Text type='tertiary' size='small'>
+                      {t('已保存 {{count}} 条；丢弃失败详情 {{dropped}} 条', {
+                        count: requestDetailStats.storage.count,
+                        dropped:
+                          requestDetailStats.runtime.dropped_failure || 0,
+                      })}
+                    </Text>
+                  </div>
+                )}
               </Col>
             </Row>
 

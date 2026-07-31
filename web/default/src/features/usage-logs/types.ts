@@ -30,6 +30,60 @@ import type { UsageLog } from './data/schema'
  */
 export type LogCategory = 'common' | 'drawing' | 'task'
 
+export type RequestDetailOutcome = 'success' | 'failed'
+
+export interface RequestDetailRecord {
+  id: number
+  request_id: string
+  created_at: number
+  user_id: number
+  username: string
+  token_id: number
+  token_name: string
+  model_name: string
+  group: string
+  method: string
+  path: string
+  ip: string
+  outcome: RequestDetailOutcome
+  status_code: number
+  error_type: string
+  error_code: string
+  error_message: string
+  content_type: string
+  body_size: number
+  body_omitted_reason: string
+  storage_bytes: number
+  has_payload: boolean
+}
+
+export interface RequestDetailPayload {
+  headers?: Record<string, string>
+  query?: Record<string, unknown>
+  body?: unknown
+  routing?: Record<string, unknown>
+}
+
+export interface RequestDetailResponse {
+  success: boolean
+  message?: string
+  data?: {
+    detail: RequestDetailRecord
+    payload: RequestDetailPayload
+  }
+}
+
+export interface RequestDetailsResponse {
+  success: boolean
+  message?: string
+  data?: {
+    items: RequestDetailRecord[]
+    total: number
+    page: number
+    page_size: number
+  }
+}
+
 // ============================================================================
 // Filter Types
 // ============================================================================

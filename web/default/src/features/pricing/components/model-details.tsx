@@ -30,7 +30,7 @@ import {
   Sparkles,
   Timer,
 } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/copy-button'
@@ -48,6 +48,11 @@ import {
 } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { getPerfMetrics } from '@/features/performance-metrics/api'
 import {
   formatLatency,
@@ -124,6 +129,9 @@ const MODALITY_LABEL_KEYS: Record<string, string> = {
 
 const TOKEN_FORMAT = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 1,
+})
+const EXACT_TOKEN_FORMAT = new Intl.NumberFormat(undefined, {
+  maximumFractionDigits: 20,
 })
 const MODEL_DETAILS_SKELETON_KEYS = ['first', 'second', 'third', 'fourth']
 
@@ -572,6 +580,84 @@ function ModelHeader(props: { model: PricingModel }) {
 type DynamicPriceOptions = Parameters<typeof getDynamicPriceEntries>[1]
 type DynamicPricingTier = ReturnType<typeof getDynamicPricingTiers>[number]
 type DynamicFormattedPricesByTier = Map<DynamicPricingTier, Map<string, string>>
+type InputTokenTierRange = {
+  lowerBound: number | null
+  lowerInclusive: boolean
+  upperBound: number | null
+  upperInclusive: boolean
+}
+
+function getInputTokenTierRanges(
+  tiers: DynamicPricingTier[]
+): InputTokenTierRange[] | null {
+  if (tiers.length === 0) return null
+
+  const ranges: InputTokenTierRange[] = []
+  let previousUpperBound: number | null = null
+  let previousUpperInclusive = false
+
+  for (let index = 0; index < tiers.length; index += 1) {
+    const conditions = Array.isArray(tiers[index].conditions)
+      ? tiers[index].conditions
+      : []
+    const isLastTier = index === tiers.length - 1
+
+    if (isLastTier) {
+      if (conditions.length !== 0) return null
+      ranges.push({
+        lowerBound: previousUpperBound,
+        lowerInclusive: previousUpperBound !== null && !previousUpperInclusive,
+        upperBound: null,
+        upperInclusive: false,
+      })
+      continue
+    }
+
+    if (conditions.length !== 1) return null
+    const condition = conditions[0]
+    if (
+      condition.var !== 'len' ||
+      (condition.op !== '<' && condition.op !== '<=') ||
+      !Number.isFinite(condition.value) ||
+      condition.value <= 0 ||
+      (previousUpperBound !== null && condition.value <= previousUpperBound)
+    ) {
+      return null
+    }
+
+    ranges.push({
+      lowerBound: previousUpperBound,
+      lowerInclusive: previousUpperBound !== null && !previousUpperInclusive,
+      upperBound: condition.value,
+      upperInclusive: condition.op === '<=',
+    })
+    previousUpperBound = condition.value
+    previousUpperInclusive = condition.op === '<='
+  }
+
+  return ranges
+}
+
+function formatInputTokenTierRange(
+  range: InputTokenTierRange,
+  compact: boolean
+): string {
+  const formatValue = (value: number) =>
+    compact ? formatCatalogTokenCount(value) : EXACT_TOKEN_FORMAT.format(value)
+  const lowerOperator = range.lowerInclusive ? '≥' : '>'
+  const upperOperator = range.upperInclusive ? '≤' : '<'
+
+  if (range.lowerBound === null && range.upperBound !== null) {
+    return `${upperOperator} ${formatValue(range.upperBound)}`
+  }
+  if (range.lowerBound !== null && range.upperBound === null) {
+    return `${lowerOperator} ${formatValue(range.lowerBound)}`
+  }
+  if (range.lowerBound !== null && range.upperBound !== null) {
+    return `${lowerOperator} ${formatValue(range.lowerBound)} · ${upperOperator} ${formatValue(range.upperBound)}`
+  }
+  return '-'
+}
 
 function getDynamicPriceFields(
   tiers: DynamicPricingTier[],
@@ -617,6 +703,9 @@ function GroupPricingSection(props: {
   showRechargePrice?: boolean
 }) {
   const { t } = useTranslation()
+  const [hoveredPricingGroup, setHoveredPricingGroup] = useState<string | null>(
+    null
+  )
   const showRechargePrice = props.showRechargePrice ?? false
   const groupRatio = props.model.group_ratio ?? props.groupRatio
 
@@ -729,23 +818,58 @@ function GroupPricingSection(props: {
       }))
     })
     const showTierColumn = dynamicTiers.length > 1
+    const inputTokenTierRanges = showTierColumn
+      ? getInputTokenTierRanges(dynamicTiers)
+      : null
+    const usesInputTokenTiers = inputTokenTierRanges !== null
     const officialTierThresholds = getInputTokenTierThresholds(dynamicTiers)
 
     return (
       <section>
         <SectionTitle>{t('Pricing by Group')}</SectionTitle>
+        {usesInputTokenTiers && (
+          <p className='text-muted-foreground -mt-1 mb-3 text-xs'>
+            {t(
+              'Pricing tiers are determined by the total input context tokens in each request, not by cumulative account usage.'
+            )}
+          </p>
+        )}
         <StaticDataTable
-          className='-mx-4 overflow-x-auto rounded-none border-0 sm:mx-0 sm:rounded-lg sm:border'
+          className='border-border/60 rounded-lg'
           tableClassName='min-w-max text-sm'
           headerRowClassName='hover:bg-transparent'
           data={rows}
           getRowKey={(row) => `${row.group}-${row.tierIndex}`}
+          getRowClassName={(row) =>
+            cn(
+              row.tierIndex < dynamicTiers.length - 1 && 'border-b-0',
+              hoveredPricingGroup === row.group &&
+                '[background-color:color-mix(in_oklch,var(--muted)_50%,var(--background))]'
+            )
+          }
+          getRowProps={(row) => ({
+            'data-pricing-group': row.group,
+            onMouseEnter: () => setHoveredPricingGroup(row.group),
+            onMouseLeave: (event) => {
+              const relatedTarget = event.relatedTarget
+              const nextRow =
+                relatedTarget instanceof Element
+                  ? relatedTarget.closest('tr[data-pricing-group]')
+                  : null
+              if (nextRow?.getAttribute('data-pricing-group') !== row.group) {
+                setHoveredPricingGroup(null)
+              }
+            },
+          })}
           columns={[
             {
               id: 'group',
               header: t('Group'),
               className: thClass,
               cellClassName: 'py-2.5',
+              cellProps: (row) => ({
+                rowSpan: row.tierIndex === 0 ? dynamicTiers.length : 0,
+              }),
               cell: (row) => (
                 <div className='flex min-w-44 flex-wrap items-center gap-1.5'>
                   <GroupBadge group={row.group} size='sm' />
@@ -764,17 +888,49 @@ function GroupPricingSection(props: {
               header: t('Ratio'),
               className: thClass,
               cellClassName: 'text-muted-foreground py-2.5 font-mono',
+              cellProps: (row) => ({
+                rowSpan: row.tierIndex === 0 ? dynamicTiers.length : 0,
+              }),
               cell: (row) => `${row.ratio}x`,
             },
             ...(showTierColumn
               ? [
                   {
                     id: 'tier',
-                    header: t('Tier'),
+                    header: usesInputTokenTiers
+                      ? t('Input tokens per request')
+                      : t('Tier'),
                     className: thClass,
-                    cellClassName: 'text-muted-foreground py-2.5',
-                    cell: (row: (typeof rows)[number]) =>
-                      row.tier.label || t('Default'),
+                    cellClassName: (row: (typeof rows)[number]) =>
+                      cn(
+                        'text-muted-foreground py-2.5',
+                        row.tierIndex > 0 && 'border-t'
+                      ),
+                    cell: (row: (typeof rows)[number]) => {
+                      const range = inputTokenTierRanges?.[row.tierIndex]
+                      if (!range) return row.tier.label || t('Default')
+
+                      return (
+                        <div className='min-w-32'>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <span className='text-foreground inline-flex cursor-help font-medium tabular-nums' />
+                              }
+                            >
+                              {formatInputTokenTierRange(range, true)}
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {t('Input Tokens')}{' '}
+                              {formatInputTokenTierRange(range, false)}
+                            </TooltipContent>
+                          </Tooltip>
+                          <div className='text-muted-foreground/70 mt-0.5 text-[10px]'>
+                            {row.tier.label || t('Default')}
+                          </div>
+                        </div>
+                      )
+                    },
                   },
                 ]
               : []),
@@ -782,13 +938,17 @@ function GroupPricingSection(props: {
               id: fieldEntry.field,
               header: t(fieldEntry.shortLabel),
               className: `${thClass} text-right`,
-              cellClassName: 'py-2.5 text-right font-mono',
+              cellClassName: (row: (typeof rows)[number]) =>
+                cn(
+                  'py-2.5 text-right font-mono',
+                  row.tierIndex > 0 && 'border-t'
+                ),
               cell: (row: (typeof rows)[number]) =>
                 row.formattedPrices.get(fieldEntry.field) ?? '-',
             })),
           ]}
         />
-        <p className='text-muted-foreground/40 mt-1.5 px-4 text-[10px] sm:px-0'>
+        <p className='text-muted-foreground/40 mt-1.5 text-[10px]'>
           {t('Prices shown per')} {tokenUnitLabel} tokens
         </p>
       </section>
@@ -820,7 +980,7 @@ function GroupPricingSection(props: {
     <section>
       <SectionTitle>{t('Pricing by Group')}</SectionTitle>
       <StaticDataTable
-        className='-mx-4 overflow-x-auto rounded-none border-0 sm:mx-0 sm:rounded-lg sm:border'
+        className='border-border/60 rounded-lg'
         tableClassName='min-w-max text-sm'
         headerRowClassName='hover:bg-transparent'
         data={availableGroups}
@@ -893,9 +1053,9 @@ function GroupPricingSection(props: {
               ]),
         ]}
       />
-      <div className='-mx-4 sm:mx-0'>
+      <div>
         {isTokenBased && (
-          <p className='text-muted-foreground/40 mt-1.5 px-4 text-[10px] sm:px-0'>
+          <p className='text-muted-foreground/40 mt-1.5 text-[10px]'>
             {t('Prices shown per')} {tokenUnitLabel} tokens
           </p>
         )}
@@ -932,10 +1092,10 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
   const showRechargePrice = props.showRechargePrice ?? false
 
   return (
-    <div className='@container/details space-y-4'>
+    <div className='@container/details min-w-0 space-y-4'>
       <ModelHeader model={props.model} />
 
-      <Tabs defaultValue='overview' className='gap-4'>
+      <Tabs defaultValue='overview' className='min-w-0 gap-4'>
         <TabsList className='bg-muted/60 grid w-full grid-cols-3 gap-1 rounded-lg p-1 group-data-horizontal/tabs:h-auto'>
           {TAB_VALUES.map((value) => {
             const Icon = TAB_META[value].icon
@@ -952,29 +1112,30 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
           })}
         </TabsList>
 
-        <TabsContent value='overview' className='space-y-6 outline-none'>
+        <TabsContent
+          value='overview'
+          className='min-w-0 space-y-6 outline-none'
+        >
           <OverviewSummaryGrid model={props.model} />
 
-          <section className='bg-card/60 rounded-xl border p-4 shadow-sm'>
-            <GroupPricingSection
-              model={props.model}
-              groupRatio={props.groupRatio}
-              usableGroup={props.usableGroup}
-              priceRate={props.priceRate}
-              usdExchangeRate={props.usdExchangeRate}
-              tokenUnit={props.tokenUnit}
-              showRechargePrice={showRechargePrice}
-            />
-          </section>
+          <GroupPricingSection
+            model={props.model}
+            groupRatio={props.groupRatio}
+            usableGroup={props.usableGroup}
+            priceRate={props.priceRate}
+            usdExchangeRate={props.usdExchangeRate}
+            tokenUnit={props.tokenUnit}
+            showRechargePrice={showRechargePrice}
+          />
 
           <ModelBackendDetailsSection model={props.model} />
         </TabsContent>
 
-        <TabsContent value='performance' className='outline-none'>
+        <TabsContent value='performance' className='min-w-0 outline-none'>
           <ModelDetailsPerformance model={props.model} />
         </TabsContent>
 
-        <TabsContent value='api' className='outline-none'>
+        <TabsContent value='api' className='min-w-0 outline-none'>
           <ModelDetailsApi
             model={props.model}
             endpointMap={props.endpointMap}

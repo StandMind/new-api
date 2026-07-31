@@ -85,6 +85,12 @@ func run() error {
 			common.SysError("failed to close database: " + err.Error())
 		}
 	}()
+	service.StartRequestDetailWriter()
+	defer func() {
+		flushCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		service.StopRequestDetailWriter(flushCtx)
+	}()
 
 	if common.RedisEnabled {
 		// for compatibility with old versions
