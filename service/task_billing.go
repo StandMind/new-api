@@ -51,6 +51,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 		other["is_model_mapped"] = true
 		other["upstream_model_name"] = info.UpstreamModelName
 	}
+	AppendRoutingLogInfo(c, info, other)
 	attachQuotaSaturation(c, info, other)
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 		ChannelId: info.ChannelId,
@@ -282,26 +283,31 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 		return
 	}
 
-	// 获取用户和组的倍率信息
-	group := task.Group
-	if group == "" {
-		user, err := model.GetUserById(task.UserId, false)
-		if err == nil {
-			group = user.Group
+	// New tasks persist the successful attempt's resolved group ratio so later
+	// option changes and fallback routing cannot reprice an in-flight task.
+	finalGroupRatio := 0.0
+	hasGroupRatioSnapshot := false
+	if billingContext := task.PrivateData.BillingContext; billingContext != nil {
+		finalGroupRatio = billingContext.GroupRatio
+		hasGroupRatioSnapshot = true
+	}
+	if !hasGroupRatioSnapshot {
+		usingGroup := task.Group
+		userGroup := ""
+		if user, err := model.GetUserById(task.UserId, false); err == nil {
+			userGroup = user.Group
+			if usingGroup == "" {
+				usingGroup = userGroup
+			}
 		}
-	}
-	if group == "" {
-		return
-	}
-
-	groupRatio := ratio_setting.GetGroupRatio(group)
-	userGroupRatio, hasUserGroupRatio := ratio_setting.GetGroupGroupRatio(group, group)
-
-	var finalGroupRatio float64
-	if hasUserGroupRatio {
-		finalGroupRatio = userGroupRatio
-	} else {
-		finalGroupRatio = groupRatio
+		if usingGroup == "" {
+			return
+		}
+		finalGroupRatio, _ = ratio_setting.ResolveGroupRatio(
+			userGroup,
+			usingGroup,
+			modelName,
+		)
 	}
 
 	// 计算 OtherRatios 乘积（视频折扣、时长等）

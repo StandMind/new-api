@@ -50,7 +50,6 @@ export const useModelPricingData = () => {
   const [groupRatio, setGroupRatio] = useState({});
   const [usableGroup, setUsableGroup] = useState({});
   const [endpointMap, setEndpointMap] = useState({});
-  const [autoGroups, setAutoGroups] = useState([]);
 
   const [statusState] = useContext(StatusContext);
   const [userState] = useContext(UserContext);
@@ -192,24 +191,43 @@ export const useModelPricingData = () => {
     return `$${priceInUSD.toFixed(3)}`;
   };
 
-  const setModelsFormat = (models, groupRatio, vendorMap) => {
-    for (let i = 0; i < models.length; i++) {
-      const m = models[i];
-      m.key = m.model_name;
-      m.group_ratio = groupRatio[m.model_name];
+  const setModelsFormat = (
+    models,
+    groupRatio,
+    effectiveGroupModelRatio,
+    vendorMap,
+  ) => {
+    const formattedModels = (Array.isArray(models) ? models : []).map(
+      (model) => {
+        const vendor =
+          model.vendor_id && vendorMap[model.vendor_id]
+            ? vendorMap[model.vendor_id]
+            : null;
 
-      if (m.vendor_id && vendorMap[m.vendor_id]) {
-        const vendor = vendorMap[m.vendor_id];
-        m.vendor_name = vendor.name;
-        m.vendor_icon = vendor.icon;
-        m.vendor_description = vendor.description;
-      }
-    }
-    models.sort((a, b) => {
+        return {
+          ...model,
+          key: model.model_name,
+          group_ratio: {
+            ...(groupRatio || {}),
+            ...(effectiveGroupModelRatio?.[model.model_name] || {}),
+            ...(model.effective_group_ratio || {}),
+          },
+          ...(vendor
+            ? {
+                vendor_name: vendor.name,
+                vendor_icon: vendor.icon,
+                vendor_description: vendor.description,
+              }
+            : {}),
+        };
+      },
+    );
+
+    formattedModels.sort((a, b) => {
       return a.quota_type - b.quota_type;
     });
 
-    models.sort((a, b) => {
+    formattedModels.sort((a, b) => {
       if (a.model_name.startsWith('gpt') && !b.model_name.startsWith('gpt')) {
         return -1;
       } else if (
@@ -222,7 +240,7 @@ export const useModelPricingData = () => {
       }
     });
 
-    setModels(models);
+    setModels(formattedModels);
   };
 
   const loadPricing = async () => {
@@ -235,12 +253,12 @@ export const useModelPricingData = () => {
       data,
       vendors,
       group_ratio,
+      effective_group_model_ratio,
       usable_group,
       supported_endpoint,
-      auto_groups,
     } = res.data;
     if (success) {
-      setGroupRatio(group_ratio);
+      setGroupRatio(group_ratio || {});
       setUsableGroup(usable_group);
       setSelectedGroup('all');
       // 构建供应商 Map 方便查找
@@ -252,8 +270,12 @@ export const useModelPricingData = () => {
       }
       setVendorsMap(vendorMap);
       setEndpointMap(supported_endpoint || {});
-      setAutoGroups(auto_groups || []);
-      setModelsFormat(data, group_ratio, vendorMap);
+      setModelsFormat(
+        data,
+        group_ratio,
+        effective_group_model_ratio,
+        vendorMap,
+      );
     } else {
       showError(message);
     }
@@ -293,13 +315,6 @@ export const useModelPricingData = () => {
     setFilterGroup(group);
     if (group === 'all') {
       showInfo(t('已切换至最优倍率视图，每个模型使用其最低倍率分组'));
-    } else {
-      showInfo(
-        t('当前查看的分组为：{{group}}，倍率为：{{ratio}}', {
-          group: group,
-          ratio: groupRatio[group] ?? 1,
-        }),
-      );
     }
   };
 
@@ -373,7 +388,6 @@ export const useModelPricingData = () => {
     groupRatio,
     usableGroup,
     endpointMap,
-    autoGroups,
 
     // 计算属性
     priceRate,

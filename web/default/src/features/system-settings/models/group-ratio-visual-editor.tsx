@@ -16,19 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  AlertTriangle,
-  ChevronDown,
-  GripVertical,
-  Info,
-  Plus,
-  Trash2,
-} from 'lucide-react'
+import { AlertTriangle, ChevronDown, Info, Plus, Trash2 } from 'lucide-react'
 import { useState, useMemo, useEffect, useCallback, memo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { StaticDataTable } from '@/components/data-table/static/static-data-table'
 import { StaticRowActions } from '@/components/data-table/static/static-row-actions'
+import { Dialog } from '@/components/dialog'
 import {
   sideDrawerContentClassName,
   sideDrawerFormClassName,
@@ -49,7 +43,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { Dialog } from '@/components/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -75,7 +68,6 @@ type GroupRatioVisualEditorProps = {
   topupGroupRatio: string
   userUsableGroups: string
   groupGroupRatio: string
-  autoGroups: string
   groupSpecialUsableGroup: string
   onChange: (field: string, value: string) => void
 }
@@ -202,16 +194,6 @@ function sourceGroupPricingSignature(
   })
 }
 
-function UnknownGroupBadge() {
-  const { t } = useTranslation()
-  return (
-    <StatusBadge variant='danger' copyable={false}>
-      <AlertTriangle className='mr-1 h-3 w-3' />
-      {t('Not in pricing table')}
-    </StatusBadge>
-  )
-}
-
 type GroupNameSelectProps = {
   options: string[]
   value: string | null
@@ -256,11 +238,9 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
   topupGroupRatio,
   userUsableGroups,
   groupGroupRatio,
-  autoGroups,
   groupSpecialUsableGroup,
   onChange,
 }: GroupRatioVisualEditorProps) {
-  const { t } = useTranslation()
   const [detailGroup, setDetailGroup] = useState<string | null>(null)
 
   const registry = useMemo<RegistryEntry[]>(() => {
@@ -278,51 +258,6 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
     }))
   }, [groupRatio, userUsableGroups, topupGroupRatio])
 
-  const registryNames = useMemo(
-    () => registry.map((entry) => entry.name),
-    [registry]
-  )
-
-  // Auto groups
-  const autoGroupsList = useMemo(() => {
-    return safeJsonParse<string[]>(autoGroups, {
-      fallback: [],
-      context: 'auto groups',
-    })
-  }, [autoGroups])
-
-  const handleAutoGroupAdd = useCallback(
-    (name: string) => {
-      if (autoGroupsList.includes(name)) return
-      onChange('AutoGroups', JSON.stringify([...autoGroupsList, name], null, 2))
-    },
-    [autoGroupsList, onChange]
-  )
-
-  const handleAutoGroupDelete = useCallback(
-    (index: number) => {
-      const list = autoGroupsList.filter((_, i) => i !== index)
-      onChange('AutoGroups', JSON.stringify(list, null, 2))
-    },
-    [autoGroupsList, onChange]
-  )
-
-  const handleAutoGroupMove = useCallback(
-    (index: number, direction: 'up' | 'down') => {
-      const list = [...autoGroupsList]
-      const newIndex = direction === 'up' ? index - 1 : index + 1
-      if (newIndex < 0 || newIndex >= list.length) return
-      ;[list[index], list[newIndex]] = [list[newIndex], list[index]]
-      onChange('AutoGroups', JSON.stringify(list, null, 2))
-    },
-    [autoGroupsList, onChange]
-  )
-
-  const autoGroupCandidates = useMemo(
-    () => registryNames.filter((name) => !autoGroupsList.includes(name)),
-    [registryNames, autoGroupsList]
-  )
-
   return (
     <div className='space-y-4'>
       <GroupPricingTable
@@ -339,67 +274,6 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
         onChange={onChange}
       />
 
-      {/* Auto Groups */}
-      <Card className={sectionCardClassName}>
-        <CardHeader className={sectionHeaderClassName}>
-          <CardTitle>{t('Auto assignment order')}</CardTitle>
-          <CardDescription>
-            {t(
-              'Priority order for tokens in the auto group. The system tries groups from top to bottom.'
-            )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className='space-y-4'>
-            <GroupNameSelect
-              options={autoGroupCandidates}
-              value={null}
-              placeholder={t('Add group')}
-              onValueChange={handleAutoGroupAdd}
-            />
-            {autoGroupsList.length > 0 && (
-              <div className='space-y-2'>
-                {autoGroupsList.map((group, index) => (
-                  <div
-                    key={group}
-                    className='flex items-center gap-2 rounded-md border p-3'
-                  >
-                    <GripVertical className='text-muted-foreground h-4 w-4' />
-                    <span className='font-medium'>{group}</span>
-                    {!registryNames.includes(group) && <UnknownGroupBadge />}
-                    <div className='ml-auto flex gap-1'>
-                      <Button
-                        variant='ghost'
-                        size='sm'
-                        disabled={index === 0}
-                        onClick={() => handleAutoGroupMove(index, 'up')}
-                      >
-                        ↑
-                      </Button>
-                      <Button
-                        variant='ghost'
-                        size='sm'
-                        disabled={index === autoGroupsList.length - 1}
-                        onClick={() => handleAutoGroupMove(index, 'down')}
-                      >
-                        ↓
-                      </Button>
-                      <Button
-                        variant='ghost'
-                        size='sm'
-                        onClick={() => handleAutoGroupDelete(index)}
-                      >
-                        <Trash2 className='h-4 w-4' />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
       <GroupDetailSheet
         groupName={detailGroup}
         onOpenChange={(open) => {
@@ -409,7 +283,6 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
         topupGroupRatio={topupGroupRatio}
         userUsableGroups={userUsableGroups}
         groupGroupRatio={groupGroupRatio}
-        autoGroups={autoGroupsList}
         groupSpecialUsableGroup={groupSpecialUsableGroup}
       />
     </div>
@@ -1100,10 +973,13 @@ function GroupOverrideDialog({
           <p className='text-muted-foreground text-xs'>
             {baseRatio !== undefined
               ? t('(instead of {{ratio}})', { ratio: baseRatio })
-              : t('Multiplier applied when {{userGroup}} uses {{targetGroup}}', {
-                  userGroup: userGroup || t('this user group'),
-                  targetGroup: targetGroup || t('this token group'),
-                })}
+              : t(
+                  'Multiplier applied when {{userGroup}} uses {{targetGroup}}',
+                  {
+                    userGroup: userGroup || t('this user group'),
+                    targetGroup: targetGroup || t('this token group'),
+                  }
+                )}
           </p>
         </div>
       </div>
@@ -1118,7 +994,6 @@ type GroupDetailSheetProps = {
   topupGroupRatio: string
   userUsableGroups: string
   groupGroupRatio: string
-  autoGroups: string[]
   groupSpecialUsableGroup: string
 }
 
@@ -1185,8 +1060,6 @@ function GroupDetailSheet(props: GroupDetailSheetProps) {
       }
     }
 
-    const autoIndex = props.autoGroups.indexOf(name)
-
     return {
       ratio: entry?.ratio,
       topupRatio: Object.hasOwn(topupMap, name) ? String(topupMap[name]) : null,
@@ -1195,7 +1068,6 @@ function GroupDetailSheet(props: GroupDetailSheetProps) {
       incomingOverrides,
       outgoingOverrides,
       visibilityRules,
-      autoIndex,
     }
   }, [
     name,
@@ -1203,7 +1075,6 @@ function GroupDetailSheet(props: GroupDetailSheetProps) {
     props.topupGroupRatio,
     props.userUsableGroups,
     props.groupGroupRatio,
-    props.autoGroups,
     props.groupSpecialUsableGroup,
   ])
 
@@ -1256,18 +1127,6 @@ function GroupDetailSheet(props: GroupDetailSheetProps) {
                     </dd>
                   </div>
                 )}
-                <div className='flex justify-between'>
-                  <dt className='text-muted-foreground'>
-                    {t('Auto assignment order')}
-                  </dt>
-                  <dd className='font-medium'>
-                    {detail.autoIndex >= 0
-                      ? t('Position {{position}}', {
-                          position: detail.autoIndex + 1,
-                        })
-                      : t('Not included')}
-                  </dd>
-                </div>
               </dl>
             </section>
 

@@ -10,6 +10,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/setting/official_price_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -271,4 +272,45 @@ func TestModelPriceHelperRequestBillingRatiosOnlyApplyToFixedPrice(t *testing.T)
 	require.Equal(t, "QuotaFromFloat", clamp.Op)
 	require.Equal(t, common.QuotaClampOverflow, clamp.Kind)
 	require.Nil(t, info.Billing)
+}
+
+func TestOfficialReferencePriceDoesNotAffectBilling(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	savedModelRatios := ratio_setting.ModelRatio2JSONString()
+	savedGroupRatios := ratio_setting.GroupRatio2JSONString()
+	savedOfficialPrices := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		if key == official_price_setting.OptionKey {
+			savedOfficialPrices[key] = value
+		}
+		return nil
+	}))
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(savedModelRatios))
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(savedGroupRatios))
+		require.NoError(t, config.GlobalConfig.LoadFromDB(savedOfficialPrices))
+	})
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"official-display-only-model":2}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1}`))
+
+	calculate := func() types.PriceData {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		info := &relaycommon.RelayInfo{
+			OriginModelName: "official-display-only-model",
+			UserGroup:       "default",
+			UsingGroup:      "default",
+		}
+		priceData, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{MaxTokens: 100})
+		require.NoError(t, err)
+		return priceData
+	}
+
+	before := calculate()
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		official_price_setting.OptionKey: `{"official-display-only-model":{"unit":"usd_per_million_input_tokens","tiers":[{"price":999}]}}`,
+	}))
+	after := calculate()
+
+	require.Equal(t, before, after)
 }

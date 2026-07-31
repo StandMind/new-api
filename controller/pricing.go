@@ -4,6 +4,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/official_price_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
@@ -66,16 +67,40 @@ func GetPricing(c *gin.Context) {
 			delete(groupRatio, group)
 		}
 	}
+	rawGroupModelRatio := ratio_setting.GetGroupModelRatioCopy()
+	for ratioGroup := range rawGroupModelRatio {
+		if _, ok := usableGroup[ratioGroup]; !ok {
+			delete(rawGroupModelRatio, ratioGroup)
+		}
+	}
+	effectiveGroupModelRatio := make(map[string]map[string]float64, len(pricing))
+	for index := range pricing {
+		effective := make(map[string]float64)
+		for usableGroupName := range usableGroup {
+			if !common.StringsContains(pricing[index].EnableGroup, "all") &&
+				!common.StringsContains(pricing[index].EnableGroup, usableGroupName) {
+				continue
+			}
+			ratio, _ := ratio_setting.ResolveGroupRatio(group, usableGroupName, pricing[index].ModelName)
+			effective[usableGroupName] = ratio
+		}
+		pricing[index].EffectiveGroupRatio = effective
+		if officialPrice, ok := official_price_setting.GetModelPrice(pricing[index].ModelName); ok {
+			pricing[index].OfficialPrice = officialPrice
+		}
+		effectiveGroupModelRatio[pricing[index].ModelName] = effective
+	}
 
 	c.JSON(200, gin.H{
-		"success":            true,
-		"data":               pricing,
-		"vendors":            vendors,
-		"group_ratio":        groupRatio,
-		"usable_group":       usableGroup,
-		"supported_endpoint": model.GetSupportedEndpointMap(),
-		"auto_groups":        service.GetUserAutoGroup(group),
-		"pricing_version":    "a42d372ccf0b5dd13ecf71203521f9d2",
+		"success":                     true,
+		"data":                        pricing,
+		"vendors":                     vendors,
+		"group_ratio":                 groupRatio,
+		"group_model_ratio":           rawGroupModelRatio,
+		"effective_group_model_ratio": effectiveGroupModelRatio,
+		"usable_group":                usableGroup,
+		"supported_endpoint":          model.GetSupportedEndpointMap(),
+		"pricing_version":             "a42d372ccf0b5dd13ecf71203521f9d2",
 	})
 }
 

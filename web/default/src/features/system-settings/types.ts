@@ -223,9 +223,9 @@ export type ModelSettings = {
   GroupRatio: string
   UserUsableGroups: string
   GroupGroupRatio: string
-  AutoGroups: string
-  DefaultUseAutoGroup: boolean
+  GroupModelRatio: string
   'group_ratio_setting.group_special_usable_group': string
+  'official_price_setting.model_prices': string
   RetryTimes: number
   ChannelDisableThreshold: string
   AutomaticDisableChannelEnabled: boolean
@@ -277,9 +277,9 @@ export type BillingSettings = {
   GroupRatio: string
   UserUsableGroups: string
   GroupGroupRatio: string
-  AutoGroups: string
-  DefaultUseAutoGroup: boolean
+  GroupModelRatio: string
   'group_ratio_setting.group_special_usable_group': string
+  'official_price_setting.model_prices': string
   PayAddress: string
   EpayId: string
   EpayKey: string
@@ -448,4 +448,78 @@ export type UpstreamRatiosResponse = {
     differences: DifferencesMap
     test_results: TestResult[]
   }
+}
+
+export type GroupModelRouteChannel = {
+  channel_id: number
+  weight: number
+}
+
+export type GroupModelRouteTier = {
+  priority: number
+  channels: GroupModelRouteChannel[]
+}
+
+export type GroupModelRoute = {
+  group: string
+  model: string
+  tiers: GroupModelRouteTier[]
+  updated_at?: number
+}
+
+export type GroupModelRouteListChannel = GroupModelRouteChannel & {
+  channel_name: string
+  eligible: boolean
+}
+
+export type GroupModelRouteListTier = {
+  priority: number
+  channels: GroupModelRouteListChannel[]
+}
+
+export type GroupModelRouteListItem = Omit<GroupModelRoute, 'tiers'> & {
+  tiers: GroupModelRouteListTier[]
+}
+
+export type GroupModelRouteCandidate = {
+  channel_id: number
+  channel_name: string
+  priority: number
+  weight: number
+}
+
+export type GroupModelRouteResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    explicit: boolean
+    route: GroupModelRoute
+    candidates: GroupModelRouteCandidate[]
+  }
+}
+
+export type GroupModelRouteListResponse = {
+  success: boolean
+  message?: string
+  data?: GroupModelRouteListItem[]
+}
+
+export type SaveGroupModelRouteResponse = {
+  success: boolean
+  message?: string
+  data?: GroupModelRoute
+}
+
+export type DeleteGroupModelRouteResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    deleted: boolean
+  }
+}
+
+export type ChannelModelsResponse = {
+  success: boolean
+  message?: string
+  data?: Array<{ id: string }>
 }

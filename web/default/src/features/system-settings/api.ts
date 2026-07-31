@@ -20,11 +20,17 @@ import { api } from '@/lib/api'
 
 import type {
   ConfirmPaymentComplianceResponse,
+  ChannelModelsResponse,
+  DeleteGroupModelRouteResponse,
   FetchUpstreamRatiosRequest,
+  GroupModelRoute,
+  GroupModelRouteListResponse,
+  GroupModelRouteResponse,
   LogCleanupTask,
   SystemOptionsResponse,
   SystemTaskListResponse,
   SystemTaskResponse,
+  SaveGroupModelRouteResponse,
   UpdateOptionRequest,
   UpdateOptionResponse,
   UpstreamChannelsResponse,
@@ -103,5 +109,41 @@ export async function fetchUpstreamRatios(request: FetchUpstreamRatiosRequest) {
     '/api/ratio_sync/fetch',
     request
   )
+  return res.data
+}
+
+export async function getGroupModelRoute(group: string, model: string) {
+  const res = await api.get<GroupModelRouteResponse>(
+    '/api/group-model-routes',
+    { params: { group, model } }
+  )
+  return res.data
+}
+
+export async function listGroupModelRoutes() {
+  const res = await api.get<GroupModelRouteListResponse>(
+    '/api/group-model-routes/list'
+  )
+  return res.data
+}
+
+export async function saveGroupModelRoute(route: GroupModelRoute) {
+  const res = await api.put<SaveGroupModelRouteResponse>(
+    '/api/group-model-routes',
+    route
+  )
+  return res.data
+}
+
+export async function deleteGroupModelRoute(group: string, model: string) {
+  const res = await api.delete<DeleteGroupModelRouteResponse>(
+    '/api/group-model-routes',
+    { params: { group, model } }
+  )
+  return res.data
+}
+
+export async function getChannelModels() {
+  const res = await api.get<ChannelModelsResponse>('/api/channel/models')
   return res.data
 }

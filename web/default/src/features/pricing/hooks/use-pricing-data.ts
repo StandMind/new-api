@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+
 import { useStatus } from '@/hooks/use-status'
 
 import { getPricing } from '../api'
@@ -59,7 +60,11 @@ export function usePricingData() {
         vendor_name: vendor?.name,
         vendor_icon: vendor?.icon,
         vendor_description: vendor?.description,
-        group_ratio: data.group_ratio,
+        group_ratio: {
+          ...data.group_ratio,
+          ...data.effective_group_model_ratio?.[model.model_name],
+          ...model.effective_group_ratio,
+        },
       }
     })
   }, [data])
@@ -70,7 +75,6 @@ export function usePricingData() {
     groupRatio: data?.group_ratio ?? {},
     usableGroup: data?.usable_group ?? {},
     endpointMap: data?.supported_endpoint ?? {},
-    autoGroups: data?.auto_groups ?? [],
     isLoading,
     error,
     refetch,

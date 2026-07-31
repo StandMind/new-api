@@ -1,0 +1,14 @@
+{
+  "translation.Add auto group": "Agregar grupo automático",
+  "translation.Auto group behavior": "Comportamiento del grupo automático",
+  "translation.Auto Group Chain": "Cadena de grupo automático",
+  "translation.Default to auto groups": "Predeterminado para grupos automáticos",
+  "translation.If default auto group is enabled, newly created tokens start with auto instead of an empty group.": "Si el grupo automático predeterminado está habilitado, los tokens recién creados comienzan con auto en lugar de un grupo vacío.",
+  "translation.Priority order for automatic group assignment. New tokens rotate through this list.": "Orden de prioridad para la asignación automática de grupos. Los nuevos tokens rotan en esta lista.",
+  "translation.Priority order for tokens in the auto group. The system tries groups from top to bottom.": "Priority order for tokens in the auto group. The system tries groups from top to bottom.",
+  "translation.Use the group set on the token. If the token has no group, use the user group. The auto group tries the auto assignment order from top to bottom.": "Use the group set on the token. If the token has no group, use the user group. The auto group tries the auto assignment order from top to bottom.",
+  "translation.When a token uses the auto group, the system tries groups from top to bottom until it finds an available group.": "Cuando un token usa el grupo automático, el sistema prueba los grupos de arriba a abajo hasta que encuentra un grupo disponible.",
+  "translation.When enabled, newly created tokens start in the first auto group.": "Cuando está habilitado, los tokens recién creados comienzan en el primer grupo automático.",
+  "translation.Enable only after every API node has been upgraded to support explicit token group chains.": "Enable only after every API node has been upgraded to support explicit token group chains.",
+  "translation.Enable user group chains": "Enable user group chains"
+}

@@ -31,8 +31,10 @@ import { resetModelRatios } from '../api'
 import { SettingsPageTitleStatusPortal } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
+import { GroupModelRouteEditor } from './group-model-route-editor'
 import { GroupRatioForm } from './group-ratio-form'
 import { ModelRatioForm } from './model-ratio-form'
+import { OfficialPriceSettings } from './official-price-settings'
 import { ToolPriceSettings } from './tool-price-settings'
 import { UpstreamRatioSync } from './upstream-ratio-sync'
 import {
@@ -124,13 +126,7 @@ const createGroupSchema = (t: Translate) =>
     TopupGroupRatio: createJsonStringField(t),
     UserUsableGroups: createJsonStringField(t),
     GroupGroupRatio: createJsonStringField(t),
-    AutoGroups: createJsonStringField(t, {
-      predicate: (parsed) =>
-        Array.isArray(parsed) &&
-        parsed.every((item) => typeof item === 'string'),
-      predicateMessage: 'Expected a JSON array of group identifiers',
-    }),
-    DefaultUseAutoGroup: z.boolean(),
+    GroupModelRatio: createJsonStringField(t),
     GroupSpecialUsableGroup: createJsonStringField(t),
   })
 
@@ -140,6 +136,8 @@ type RatioTabId =
   | 'models'
   | 'unset-models'
   | 'groups'
+  | 'routes'
+  | 'official-prices'
   | 'tool-prices'
   | 'upstream-sync'
 
@@ -147,6 +145,7 @@ type RatioSettingsCardProps = {
   modelDefaults: ModelFormValues
   groupDefaults: GroupFormValues
   toolPricesDefault: string
+  officialPricesDefault: string
   titleKey?: string
   visibleTabs?: RatioTabId[]
 }
@@ -155,6 +154,7 @@ export function RatioSettingsCard({
   modelDefaults,
   groupDefaults,
   toolPricesDefault,
+  officialPricesDefault,
   titleKey = 'Pricing Ratios',
   visibleTabs = ['models', 'groups', 'tool-prices', 'upstream-sync'],
 }: RatioSettingsCardProps) {
@@ -203,8 +203,7 @@ export function RatioSettingsCard({
     TopupGroupRatio: normalizeJsonString(groupDefaults.TopupGroupRatio),
     UserUsableGroups: normalizeJsonString(groupDefaults.UserUsableGroups),
     GroupGroupRatio: normalizeJsonString(groupDefaults.GroupGroupRatio),
-    AutoGroups: normalizeJsonString(groupDefaults.AutoGroups),
-    DefaultUseAutoGroup: groupDefaults.DefaultUseAutoGroup,
+    GroupModelRatio: normalizeJsonString(groupDefaults.GroupModelRatio),
     GroupSpecialUsableGroup: normalizeJsonString(
       groupDefaults.GroupSpecialUsableGroup
     ),
@@ -241,7 +240,7 @@ export function RatioSettingsCard({
       TopupGroupRatio: formatJsonForTextarea(groupDefaults.TopupGroupRatio),
       UserUsableGroups: formatJsonForTextarea(groupDefaults.UserUsableGroups),
       GroupGroupRatio: formatJsonForTextarea(groupDefaults.GroupGroupRatio),
-      AutoGroups: formatJsonForTextarea(groupDefaults.AutoGroups),
+      GroupModelRatio: formatJsonForTextarea(groupDefaults.GroupModelRatio),
       GroupSpecialUsableGroup: formatJsonForTextarea(
         groupDefaults.GroupSpecialUsableGroup
       ),
@@ -289,8 +288,7 @@ export function RatioSettingsCard({
       TopupGroupRatio: normalizeJsonString(groupDefaults.TopupGroupRatio),
       UserUsableGroups: normalizeJsonString(groupDefaults.UserUsableGroups),
       GroupGroupRatio: normalizeJsonString(groupDefaults.GroupGroupRatio),
-      AutoGroups: normalizeJsonString(groupDefaults.AutoGroups),
-      DefaultUseAutoGroup: groupDefaults.DefaultUseAutoGroup,
+      GroupModelRatio: normalizeJsonString(groupDefaults.GroupModelRatio),
       GroupSpecialUsableGroup: normalizeJsonString(
         groupDefaults.GroupSpecialUsableGroup
       ),
@@ -302,7 +300,7 @@ export function RatioSettingsCard({
       TopupGroupRatio: formatJsonForTextarea(groupDefaults.TopupGroupRatio),
       UserUsableGroups: formatJsonForTextarea(groupDefaults.UserUsableGroups),
       GroupGroupRatio: formatJsonForTextarea(groupDefaults.GroupGroupRatio),
-      AutoGroups: formatJsonForTextarea(groupDefaults.AutoGroups),
+      GroupModelRatio: formatJsonForTextarea(groupDefaults.GroupModelRatio),
       GroupSpecialUsableGroup: formatJsonForTextarea(
         groupDefaults.GroupSpecialUsableGroup
       ),
@@ -359,8 +357,7 @@ export function RatioSettingsCard({
         TopupGroupRatio: normalizeJsonString(values.TopupGroupRatio),
         UserUsableGroups: normalizeJsonString(values.UserUsableGroups),
         GroupGroupRatio: normalizeJsonString(values.GroupGroupRatio),
-        AutoGroups: normalizeJsonString(values.AutoGroups),
-        DefaultUseAutoGroup: values.DefaultUseAutoGroup,
+        GroupModelRatio: normalizeJsonString(values.GroupModelRatio),
         GroupSpecialUsableGroup: normalizeJsonString(
           values.GroupSpecialUsableGroup
         ),
@@ -399,6 +396,8 @@ export function RatioSettingsCard({
     models: 'Model prices',
     'unset-models': 'Unset price models',
     groups: 'Group ratios',
+    routes: 'Group model routes',
+    'official-prices': 'Official reference prices',
     'tool-prices': 'Tool prices',
     'upstream-sync': 'Upstream price sync',
   }
@@ -435,8 +434,16 @@ export function RatioSettingsCard({
         />
       )
     }
+    if (tab === 'routes') {
+      return (
+        <GroupModelRouteEditor groupRatio={groupForm.watch('GroupRatio')} />
+      )
+    }
     if (tab === 'tool-prices') {
       return <ToolPriceSettings defaultValue={toolPricesDefault} />
+    }
+    if (tab === 'official-prices') {
+      return <OfficialPriceSettings defaultValue={officialPricesDefault} />
     }
     return (
       <UpstreamRatioSync

@@ -22,7 +22,7 @@ import { z } from 'zod'
 import { parseQuotaFromDollars, quotaUnitsToDollars } from '@/lib/format'
 
 import { DEFAULT_GROUP } from '../constants'
-import { type ApiKeyFormData, type ApiKey } from '../types'
+import type { ApiKey, ApiKeyFormData } from '../types'
 
 // ============================================================================
 // Form Schema
@@ -38,7 +38,7 @@ export function getApiKeyFormSchema(t: TFunction) {
       model_limits: z.array(z.string()),
       allow_ips: z.string().optional(),
       group: z.string().optional(),
-      cross_group_retry: z.boolean().optional(),
+      group_chain: z.array(z.string()).min(1, t('Select at least one group')),
       tokenCount: z.number().min(1).optional(),
     })
     .superRefine((data, ctx) => {
@@ -73,17 +73,15 @@ export const API_KEY_FORM_DEFAULT_VALUES: ApiKeyFormValues = {
   model_limits: [],
   allow_ips: '',
   group: DEFAULT_GROUP,
-  cross_group_retry: true,
+  group_chain: [DEFAULT_GROUP],
   tokenCount: 1,
 }
 
-export function getApiKeyFormDefaultValues(
-  defaultUseAutoGroup: boolean
-): ApiKeyFormValues {
+export function getApiKeyFormDefaultValues(): ApiKeyFormValues {
   return {
     ...API_KEY_FORM_DEFAULT_VALUES,
-    group: defaultUseAutoGroup ? 'auto' : DEFAULT_GROUP,
-    cross_group_retry: defaultUseAutoGroup,
+    model_limits: [...API_KEY_FORM_DEFAULT_VALUES.model_limits],
+    group_chain: [...API_KEY_FORM_DEFAULT_VALUES.group_chain],
   }
 }
 
@@ -97,7 +95,8 @@ export function getApiKeyFormDefaultValues(
 export function transformFormDataToPayload(
   data: ApiKeyFormValues
 ): ApiKeyFormData {
-  return {
+  const groupChain = data.group_chain.filter(Boolean)
+  const payload: ApiKeyFormData = {
     name: data.name,
     remain_quota: data.unlimited_quota
       ? 0
@@ -109,9 +108,10 @@ export function transformFormDataToPayload(
     model_limits_enabled: data.model_limits.length > 0,
     model_limits: data.model_limits.join(','),
     allow_ips: data.allow_ips || '',
-    group: data.group || '',
-    cross_group_retry: data.group === 'auto' ? !!data.cross_group_retry : false,
+    group: groupChain[0] || '',
+    group_chain: groupChain,
   }
+  return payload
 }
 
 /**
@@ -120,6 +120,7 @@ export function transformFormDataToPayload(
 export function transformApiKeyToFormDefaults(
   apiKey: ApiKey
 ): ApiKeyFormValues {
+  const groupChain = apiKey.group_chain ?? []
   return {
     name: apiKey.name,
     remain_quota_dollars: apiKey.unlimited_quota
@@ -135,7 +136,7 @@ export function transformApiKeyToFormDefaults(
       : [],
     allow_ips: apiKey.allow_ips || '',
     group: apiKey.group || DEFAULT_GROUP,
-    cross_group_retry: !!apiKey.cross_group_retry,
+    group_chain: groupChain,
     tokenCount: 1,
   }
 }

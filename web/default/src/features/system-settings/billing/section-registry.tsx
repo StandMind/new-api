@@ -45,8 +45,7 @@ const getGroupDefaults = (settings: BillingSettings) => ({
   GroupRatio: settings.GroupRatio,
   UserUsableGroups: settings.UserUsableGroups,
   GroupGroupRatio: settings.GroupGroupRatio,
-  AutoGroups: settings.AutoGroups,
-  DefaultUseAutoGroup: settings.DefaultUseAutoGroup,
+  GroupModelRatio: settings.GroupModelRatio,
   GroupSpecialUsableGroup:
     settings['group_ratio_setting.group_special_usable_group'],
 })
@@ -110,7 +109,14 @@ const BILLING_SECTIONS = [
         modelDefaults={getModelDefaults(settings)}
         groupDefaults={getGroupDefaults(settings)}
         toolPricesDefault={settings['tool_price_setting.prices']}
-        visibleTabs={['models', 'unset-models', 'tool-prices', 'upstream-sync']}
+        officialPricesDefault={settings['official_price_setting.model_prices']}
+        visibleTabs={[
+          'models',
+          'unset-models',
+          'official-prices',
+          'tool-prices',
+          'upstream-sync',
+        ]}
       />
     ),
   },
@@ -123,7 +129,8 @@ const BILLING_SECTIONS = [
         modelDefaults={getModelDefaults(settings)}
         groupDefaults={getGroupDefaults(settings)}
         toolPricesDefault={settings['tool_price_setting.prices']}
-        visibleTabs={['groups']}
+        officialPricesDefault={settings['official_price_setting.model_prices']}
+        visibleTabs={['groups', 'routes']}
       />
     ),
   },

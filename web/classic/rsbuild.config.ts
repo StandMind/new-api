@@ -19,6 +19,7 @@ export default defineConfig(({ envMode }) => {
     env.rawPublicVars.VITE_REACT_APP_SERVER_URL ||
     ''
   const proxyServerUrl =
+    process.env.NEW_API_DEV_PROXY_TARGET ||
     clientServerUrl ||
     'http://localhost:3000'
   const isProd = envMode === 'production'

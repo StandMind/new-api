@@ -52,6 +52,14 @@ type ApiKeyGroupComboboxProps = {
   disabled?: boolean
 }
 
+type ApiKeyGroupMultiSelectProps = {
+  options: ApiKeyGroupOption[]
+  value: string[]
+  onValueChange: (value: string[]) => void
+  placeholder?: string
+  disabled?: boolean
+}
+
 function formatGroupRatio(
   ratio: ApiKeyGroupOption['ratio'],
   ratioLabel: string
@@ -77,7 +85,11 @@ function getRatioBadgeClassName(ratio: ApiKeyGroupOption['ratio']) {
   return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300'
 }
 
-function GroupRatioBadge({ ratio }: { ratio: ApiKeyGroupOption['ratio'] }) {
+export function GroupRatioBadge({
+  ratio,
+}: {
+  ratio: ApiKeyGroupOption['ratio']
+}) {
   const { t } = useTranslation()
   const label = formatGroupRatio(ratio, t('Ratio'))
 
@@ -93,6 +105,129 @@ function GroupRatioBadge({ ratio }: { ratio: ApiKeyGroupOption['ratio'] }) {
     >
       {label}
     </Badge>
+  )
+}
+
+export function ApiKeyGroupMultiSelect(props: ApiKeyGroupMultiSelectProps) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const [searchValue, setSearchValue] = useState('')
+  const selectedSet = useMemo(() => new Set(props.value), [props.value])
+  const selectedOptions = useMemo(
+    () =>
+      props.value
+        .map((group) => props.options.find((option) => option.value === group))
+        .filter((option): option is ApiKeyGroupOption => option !== undefined),
+    [props.options, props.value]
+  )
+  const filteredOptions = useMemo(() => {
+    const search = searchValue.trim().toLowerCase()
+    if (!search) return props.options
+    return props.options.filter((option) => {
+      const ratioText = String(option.ratio ?? '').toLowerCase()
+      return (
+        option.value.toLowerCase().includes(search) ||
+        option.label.toLowerCase().includes(search) ||
+        option.desc?.toLowerCase().includes(search) ||
+        ratioText.includes(search)
+      )
+    })
+  }, [props.options, searchValue])
+
+  const toggleGroup = (group: string) => {
+    if (selectedSet.has(group)) {
+      if (props.value.length <= 1) return
+      props.onValueChange(props.value.filter((value) => value !== group))
+      return
+    }
+    props.onValueChange([...props.value, group])
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <Button
+            type='button'
+            variant='outline'
+            role='combobox'
+            aria-expanded={open}
+            disabled={props.disabled}
+            className='border-input bg-muted/40 hover:bg-muted/55 hover:text-foreground active:bg-background data-popup-open:border-ring data-popup-open:bg-background data-popup-open:ring-ring/20 h-auto min-h-14 w-full justify-between gap-3 rounded-lg px-3 py-2 text-start shadow-none data-popup-open:ring-[3px]'
+          />
+        }
+      >
+        <span className='min-w-0 flex-1'>
+          {selectedOptions.length === 0 ? (
+            <span className='text-muted-foreground'>
+              {props.placeholder || t('Select groups')}
+            </span>
+          ) : (
+            <span className='flex flex-wrap gap-1.5'>
+              {selectedOptions.slice(0, 3).map((option) => (
+                <Badge key={option.value} variant='secondary'>
+                  {option.label}
+                </Badge>
+              ))}
+              {selectedOptions.length > 3 && (
+                <Badge variant='outline'>+{selectedOptions.length - 3}</Badge>
+              )}
+            </span>
+          )}
+        </span>
+        <ChevronsUpDown className='h-4 w-4 shrink-0 opacity-50' />
+      </PopoverTrigger>
+      <PopoverContent
+        className='data-closed:zoom-out-100 data-open:zoom-in-100 data-[side=bottom]:slide-in-from-top-0 w-[var(--anchor-width)] overflow-hidden rounded-xl p-0 shadow-lg'
+        onWheel={(event) => event.stopPropagation()}
+        onTouchMove={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder={t('Search groups...')}
+            value={searchValue}
+            onValueChange={setSearchValue}
+          />
+          <CommandList className='max-h-[360px]'>
+            <CommandEmpty>{t('No group found.')}</CommandEmpty>
+            <CommandGroup>
+              {filteredOptions.map((option) => {
+                const selected = selectedSet.has(option.value)
+                const cannotRemove = selected && props.value.length <= 1
+                return (
+                  <CommandItem
+                    key={option.value}
+                    value={option.value}
+                    disabled={cannotRemove}
+                    onSelect={() => toggleGroup(option.value)}
+                    className='data-[selected=true]:bg-muted items-start gap-3 rounded-lg px-3 py-3 transition-colors'
+                  >
+                    <Check
+                      className={cn(
+                        'mt-0.5 h-4 w-4',
+                        selected ? 'opacity-100' : 'opacity-0'
+                      )}
+                    />
+                    <span className='min-w-0 flex-1'>
+                      <span className='block truncate font-medium'>
+                        {option.label}
+                      </span>
+                      {option.desc && (
+                        <span className='text-muted-foreground block text-xs'>
+                          {option.desc}
+                        </span>
+                      )}
+                    </span>
+                    <GroupRatioBadge ratio={option.ratio} />
+                  </CommandItem>
+                )
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   )
 }
 

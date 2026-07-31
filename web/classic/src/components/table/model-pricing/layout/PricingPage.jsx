@@ -73,10 +73,8 @@ const PricingPage = () => {
         siteDisplayType={pricingData.siteDisplayType}
         tokenUnit={pricingData.tokenUnit}
         displayPrice={pricingData.displayPrice}
-        showRatio={allProps.showRatio}
         vendorsMap={pricingData.vendorsMap}
         endpointMap={pricingData.endpointMap}
-        autoGroups={pricingData.autoGroups}
         t={pricingData.t}
       />
     </div>

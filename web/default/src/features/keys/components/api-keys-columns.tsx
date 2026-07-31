@@ -20,7 +20,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 
-import { BadgeCell, TruncatedCell } from '@/components/data-table'
+import { TruncatedCell } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -201,33 +201,30 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
       cell: ({ row }) => {
         const apiKey = row.original
         const group = row.getValue('group') as string
-        const ratio = group && group !== 'auto' ? groupRatios[group] : undefined
-
-        if (group === 'auto') {
+        const configuredGroupChain = apiKey.group_chain ?? []
+        const groupChain =
+          configuredGroupChain.length > 0 ? configuredGroupChain : [group]
+        if (groupChain.length > 1) {
+          const chainLabel = groupChain.join(' → ')
           return (
-            <Tooltip>
-              <TooltipTrigger
-                render={<BadgeCell className='gap-1.5 text-xs' />}
-              >
-                <GroupBadge group='auto' />
-                {apiKey.cross_group_retry && (
-                  <StatusBadge
-                    label={t('Cross-group')}
-                    variant='info'
-                    copyable={false}
-                  />
-                )}
-              </TooltipTrigger>
-              <TooltipContent>
-                <span className='text-xs'>
-                  {t(
-                    'Automatically selects the best available group with circuit breaker mechanism'
-                  )}
+            <TruncatedCell
+              className='-ml-1.5'
+              tooltipContent={chainLabel}
+              tooltipClassName='break-all'
+            >
+              <span className='inline-flex max-w-full items-center gap-1'>
+                <GroupBadge
+                  group={groupChain[0]}
+                  ratio={groupRatios[groupChain[0]]}
+                />
+                <span className='text-muted-foreground truncate text-xs'>
+                  → {groupChain.slice(1).join(' → ')}
                 </span>
-              </TooltipContent>
-            </Tooltip>
+              </span>
+            </TruncatedCell>
           )
         }
+        const ratio = group ? groupRatios[group] : undefined
         return (
           <TruncatedCell
             className='-ml-1.5'

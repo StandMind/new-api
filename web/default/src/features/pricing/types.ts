@@ -27,6 +27,24 @@ export type PricingVendor = {
   description?: string
 }
 
+export type OfficialPriceUnit =
+  | 'usd_per_million_input_tokens'
+  | 'usd_per_request'
+
+export type OfficialPriceTier = {
+  up_to_input_tokens?: number
+  price: number
+}
+
+export type OfficialPrice = {
+  unit: OfficialPriceUnit
+  source_model?: string
+  source_url?: string
+  verified_at?: string
+  notes?: string
+  tiers: OfficialPriceTier[]
+}
+
 export type PricingModel = {
   id: number
   model_name: string
@@ -50,6 +68,8 @@ export type PricingModel = {
   supported_endpoint_types?: string[]
   key?: string
   group_ratio?: Record<string, number>
+  effective_group_ratio?: Record<string, number>
+  official_price?: OfficialPrice
   /** Billing mode (e.g. "tiered_expr") used to flag dynamic pricing */
   billing_mode?: string
   /** Raw expression describing dynamic / tiered billing */
@@ -94,9 +114,10 @@ export type PricingData = {
   data: PricingModel[]
   vendors: PricingVendor[]
   group_ratio: Record<string, number>
+  group_model_ratio?: Record<string, Record<string, number>>
+  effective_group_model_ratio?: Record<string, Record<string, number>>
   usable_group: Record<string, { desc: string; ratio: number }>
   supported_endpoint: Record<string, string>
-  auto_groups: string[]
 }
 
 export type TokenUnit = 'M' | 'K'

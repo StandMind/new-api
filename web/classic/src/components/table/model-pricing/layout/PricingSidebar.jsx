@@ -58,21 +58,16 @@ const PricingSidebar = ({
   t,
   ...categoryProps
 }) => {
-  const {
-    quotaTypeModels,
-    endpointTypeModels,
-    vendorModels,
-    tagModels,
-    groupCountModels,
-  } = usePricingFilterCounts({
-    models: categoryProps.models,
-    filterGroup,
-    filterQuotaType,
-    filterEndpointType,
-    filterVendor,
-    filterTag,
-    searchValue: categoryProps.searchValue,
-  });
+  const { quotaTypeModels, endpointTypeModels, vendorModels, tagModels } =
+    usePricingFilterCounts({
+      models: categoryProps.models,
+      filterGroup,
+      filterQuotaType,
+      filterEndpointType,
+      filterVendor,
+      filterTag,
+      searchValue: categoryProps.searchValue,
+    });
 
   const handleResetFilters = () =>
     resetPricingFilters({
@@ -117,8 +112,6 @@ const PricingSidebar = ({
         filterGroup={filterGroup}
         setFilterGroup={handleGroupClick}
         usableGroup={categoryProps.usableGroup}
-        groupRatio={categoryProps.groupRatio}
-        models={groupCountModels}
         loading={loading}
         t={t}
       />

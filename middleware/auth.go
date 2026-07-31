@@ -419,22 +419,41 @@ func TokenAuth() func(c *gin.Context) {
 
 		userGroup := userCache.Group
 		tokenGroup := token.Group
-		if tokenGroup != "" {
-			// check common.UserUsableGroups[userGroup]
-			if _, ok := service.GetUserUsableGroups(userGroup)[tokenGroup]; !ok {
-				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", tokenGroup))
+		if tokenGroup == "auto" {
+			abortWithOpenAiMessage(c, http.StatusForbidden, "auto 分组令牌已失效，请重新创建 API Key")
+			return
+		}
+		groupChain := token.GetGroupChain()
+		if len(groupChain) == 0 {
+			abortWithOpenAiMessage(c, http.StatusForbidden, "API Key 未配置分组链，请重新创建")
+			return
+		}
+		if tokenGroup != groupChain[0] {
+			abortWithOpenAiMessage(c, http.StatusForbidden, "API Key 首组与分组链不一致，请重新保存")
+			return
+		}
+		usableGroups := service.GetUserUsableGroups(userGroup)
+		seenGroups := make(map[string]struct{}, len(groupChain))
+		for _, group := range groupChain {
+			if group == "auto" {
+				abortWithOpenAiMessage(c, http.StatusForbidden, "分组链不能包含 auto")
 				return
 			}
-			// check group in common.GroupRatio
-			if !ratio_setting.ContainsGroupRatio(tokenGroup) {
-				if tokenGroup != "auto" {
-					abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("分组 %s 已被弃用", tokenGroup))
-					return
-				}
+			if _, seen := seenGroups[group]; seen {
+				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("分组链不能重复包含 %s 分组", group))
+				return
 			}
-			userGroup = tokenGroup
+			seenGroups[group] = struct{}{}
+			if _, ok := usableGroups[group]; !ok {
+				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", group))
+				return
+			}
+			if !ratio_setting.ContainsGroupRatio(group) {
+				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("分组 %s 已被弃用", group))
+				return
+			}
 		}
-		common.SetContextKey(c, constant.ContextKeyUsingGroup, userGroup)
+		common.SetContextKey(c, constant.ContextKeyUsingGroup, groupChain[0])
 
 		err = SetupContextForToken(c, token, parts...)
 		if err != nil {
@@ -463,7 +482,7 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 		c.Set("token_model_limit_enabled", false)
 	}
 	common.SetContextKey(c, constant.ContextKeyTokenGroup, token.Group)
-	common.SetContextKey(c, constant.ContextKeyTokenCrossGroupRetry, token.CrossGroupRetry)
+	common.SetContextKey(c, constant.ContextKeyTokenGroupChain, token.GetGroupChain())
 	if len(parts) > 1 {
 		if model.IsAdmin(token.UserId) {
 			c.Set("specific_channel_id", parts[1])

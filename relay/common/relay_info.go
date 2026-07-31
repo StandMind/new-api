@@ -90,7 +90,7 @@ type RelayInfo struct {
 	TokenKey          string
 	TokenGroup        string
 	UserId            int
-	UsingGroup        string // 使用的分组，当auto跨分组重试时，会变动
+	UsingGroup        string // 使用的分组，分组链切换时会变动
 	UserGroup         string // 用户所在分组
 	TokenUnlimited    bool
 	StartTime         time.Time
@@ -161,7 +161,8 @@ type RelayInfo struct {
 	// *bytes.Reader/Buffer/strings.Reader). 0 means "let net/http decide".
 	UpstreamRequestBodySize int64
 
-	PriceData types.PriceData
+	PriceData   types.PriceData
+	PricedGroup string
 
 	// QuotaClamp is set (non-nil) when a quota conversion saturated at the
 	// int32 bound (or NaN fallback) while computing this request's charge.

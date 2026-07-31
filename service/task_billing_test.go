@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/glebarez/sqlite"
 	"github.com/shopspring/decimal"
@@ -45,6 +46,8 @@ func TestMain(m *testing.M) {
 		&model.Token{},
 		&model.Log{},
 		&model.Channel{},
+		&model.Ability{},
+		&model.GroupModelRoute{},
 		&model.TopUp{},
 		&model.UserSubscription{},
 		&model.SystemTask{},
@@ -67,6 +70,8 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM users")
 		model.DB.Exec("DELETE FROM tokens")
 		model.DB.Exec("DELETE FROM logs")
+		model.DB.Exec("DELETE FROM group_model_routes")
+		model.DB.Exec("DELETE FROM abilities")
 		model.DB.Exec("DELETE FROM channels")
 		model.DB.Exec("DELETE FROM top_ups")
 		model.DB.Exec("DELETE FROM user_subscriptions")
@@ -498,6 +503,48 @@ func TestRecalculate_ActualQuotaZero(t *testing.T) {
 	// No change (early return)
 	assert.Equal(t, initQuota, getUserQuota(t, userID))
 	assert.Equal(t, int64(0), countLogs(t))
+}
+
+func TestRecalculateTaskQuotaByTokensUsesSuccessfulGroupRatioSnapshot(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	originalModelRatio := ratio_setting.ModelRatio2JSONString()
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(
+		`{"snapshot-task-model":2}`,
+	))
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(originalModelRatio))
+	})
+
+	const userID, channelID = 131, 131
+	const initialQuota, preConsumedQuota = 10_000, 1_000
+	seedUser(t, userID, initialQuota)
+	seedChannel(t, channelID)
+
+	task := makeTask(
+		userID,
+		channelID,
+		preConsumedQuota,
+		0,
+		BillingSourceWallet,
+		0,
+	)
+	task.Group = "fallback-paid-group"
+	task.Properties.OriginModelName = "snapshot-task-model"
+	task.PrivateData.BillingContext.OriginModelName = "snapshot-task-model"
+	task.PrivateData.BillingContext.GroupRatio = 0.25
+	require.NoError(t, model.DB.Create(task).Error)
+
+	RecalculateTaskQuotaByTokens(ctx, task, 100)
+
+	const expectedQuota = 50 // 100 tokens * model ratio 2 * successful group ratio 0.25
+	assert.Equal(t, expectedQuota, task.Quota)
+	assert.Equal(
+		t,
+		initialQuota+(preConsumedQuota-expectedQuota),
+		getUserQuota(t, userID),
+	)
 }
 
 func TestRecalculate_Subscription_NegativeDelta(t *testing.T) {

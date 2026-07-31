@@ -26,6 +26,8 @@ import GroupRatioSettings from '../../pages/Setting/Ratio/GroupRatioSettings';
 import ModelRatioNotSetEditor from '../../pages/Setting/Ratio/ModelRationNotSetEditor';
 import UpstreamRatioSync from '../../pages/Setting/Ratio/UpstreamRatioSync';
 import ToolPriceSettings from '../../pages/Setting/Ratio/ToolPriceSettings';
+import GroupModelRouteSettings from '../../pages/Setting/Ratio/GroupModelRouteSettings';
+import OfficialPriceSettings from '../../pages/Setting/Ratio/OfficialPriceSettings';
 
 import { API, showError, toBoolean } from '../../helpers';
 
@@ -40,14 +42,14 @@ const RatioSetting = () => {
     CompletionRatio: '',
     GroupRatio: '',
     GroupGroupRatio: '',
+    GroupModelRatio: '',
     ImageRatio: '',
     AudioRatio: '',
     AudioCompletionRatio: '',
-    AutoGroups: '',
-    DefaultUseAutoGroup: false,
     ExposeRatioEnabled: false,
     UserUsableGroups: '',
     'group_ratio_setting.group_special_usable_group': '',
+    'official_price_setting.model_prices': '{}',
   });
 
   const [loading, setLoading] = useState(false);
@@ -65,7 +67,7 @@ const RatioSetting = () => {
             // 如果后端返回的不是合法 JSON，直接展示
           }
         }
-        if (['DefaultUseAutoGroup', 'ExposeRatioEnabled'].includes(item.key)) {
+        if (['ExposeRatioEnabled'].includes(item.key)) {
           newInputs[item.key] = toBoolean(item.value);
         } else {
           newInputs[item.key] = item.value;
@@ -102,6 +104,15 @@ const RatioSetting = () => {
           </Tabs.TabPane>
           <Tabs.TabPane tab={t('分组相关设置')} itemKey='group'>
             <GroupRatioSettings options={inputs} refresh={onRefresh} />
+          </Tabs.TabPane>
+          <Tabs.TabPane tab={t('分组模型渠道链')} itemKey='group_model_routes'>
+            <GroupModelRouteSettings groupRatio={inputs.GroupRatio} />
+          </Tabs.TabPane>
+          <Tabs.TabPane tab={t('官方参考价')} itemKey='official_prices'>
+            <OfficialPriceSettings
+              value={inputs['official_price_setting.model_prices']}
+              refresh={onRefresh}
+            />
           </Tabs.TabPane>
           <Tabs.TabPane tab={t('未设置价格模型')} itemKey='unset_models'>
             <ModelRatioNotSetEditor options={inputs} refresh={onRefresh} />

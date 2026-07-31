@@ -44,13 +44,11 @@ function getGroupRatioClassName(ratio: number): string {
 function getGroupLabel(params: {
   labelOverride?: string
   groupName?: string
-  isAutoGroup: boolean
   isEmptyGroup: boolean
   t: (key: string) => string
 }): string {
   if (params.labelOverride) return params.labelOverride
   if (params.isEmptyGroup) return params.t('User Group')
-  if (params.isAutoGroup) return params.t('Auto')
   return params.groupName ?? ''
 }
 
@@ -66,13 +64,10 @@ export function GroupBadge(props: GroupBadgeProps) {
     ...badgeProps
   } = props
   const groupName = group?.trim()
-  const isAutoGroup = groupName === 'auto'
   const isEmptyGroup = !groupName
-  const isSpecialGroup = isAutoGroup || isEmptyGroup
   const label = getGroupLabel({
     labelOverride,
     groupName,
-    isAutoGroup,
     isEmptyGroup,
     t,
   })
@@ -82,9 +77,9 @@ export function GroupBadge(props: GroupBadgeProps) {
       {...badgeProps}
       copyable={copyable}
       label={label}
-      showDot={showDot ?? (isSpecialGroup ? false : undefined)}
-      variant={isSpecialGroup ? 'neutral' : undefined}
-      autoColor={isSpecialGroup ? undefined : groupName}
+      showDot={showDot ?? (isEmptyGroup ? false : undefined)}
+      variant={isEmptyGroup ? 'neutral' : undefined}
+      autoColor={isEmptyGroup ? undefined : groupName}
       className={cn('min-w-0 shrink overflow-hidden', className)}
     />
   )

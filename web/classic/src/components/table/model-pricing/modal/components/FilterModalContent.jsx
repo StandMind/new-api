@@ -40,7 +40,7 @@ const FilterModalContent = ({ sidebarProps, t }) => {
     viewMode,
     setViewMode,
     filterGroup,
-    setFilterGroup,
+    handleGroupClick,
     filterQuotaType,
     setFilterQuotaType,
     filterEndpointType,
@@ -55,21 +55,16 @@ const FilterModalContent = ({ sidebarProps, t }) => {
     ...categoryProps
   } = sidebarProps;
 
-  const {
-    quotaTypeModels,
-    endpointTypeModels,
-    vendorModels,
-    tagModels,
-    groupCountModels,
-  } = usePricingFilterCounts({
-    models: categoryProps.models,
-    filterGroup,
-    filterQuotaType,
-    filterEndpointType,
-    filterVendor,
-    filterTag,
-    searchValue: sidebarProps.searchValue,
-  });
+  const { quotaTypeModels, endpointTypeModels, vendorModels, tagModels } =
+    usePricingFilterCounts({
+      models: categoryProps.models,
+      filterGroup,
+      filterQuotaType,
+      filterEndpointType,
+      filterVendor,
+      filterTag,
+      searchValue: sidebarProps.searchValue,
+    });
 
   return (
     <>
@@ -100,10 +95,8 @@ const FilterModalContent = ({ sidebarProps, t }) => {
 
       <PricingGroups
         filterGroup={filterGroup}
-        setFilterGroup={setFilterGroup}
+        setFilterGroup={handleGroupClick}
         usableGroup={categoryProps.usableGroup}
-        groupRatio={categoryProps.groupRatio}
-        models={groupCountModels}
         loading={loading}
         t={t}
       />

@@ -126,18 +126,6 @@ function stableStringify(obj) {
   return text + '\n'
 }
 
-function countLeafKeys(obj) {
-  if (Array.isArray(obj)) return obj.length
-  if (!isPlainObject(obj)) return 0
-  let count = 0
-  for (const k of Object.keys(obj)) {
-    const v = obj[k]
-    if (isPlainObject(v) || Array.isArray(v)) count += countLeafKeys(v)
-    else count += 1
-  }
-  return count
-}
-
 function reorderLikeBase(
   base,
   target,
@@ -244,7 +232,8 @@ async function main() {
     .map((e) => e.name)
     .sort((a, b) => a.localeCompare(b))
 
-  // Auto-pick base locale as the one with the most leaf keys under translation (most "rich").
+  // English is the source-key catalog. Picking the largest locale can revive
+  // deleted keys when another locale still contains stale translations.
   const parsedByLocale = {}
   for (const filename of localeFiles) {
     const locale = filename.replace(/\.json$/i, '')
@@ -252,15 +241,9 @@ async function main() {
     parsedByLocale[locale] = JSON.parse(raw)
   }
 
-  const baseLocale = Object.keys(parsedByLocale)
-    .map((locale) => {
-      const json = parsedByLocale[locale]
-      const trans = json?.translation ?? {}
-      return { locale, score: countLeafKeys(trans) }
-    })
-    .sort(
-      (a, b) => b.score - a.score || a.locale.localeCompare(b.locale)
-    )[0]?.locale
+  const baseLocale = parsedByLocale[FALLBACK_COMPARE_LOCALE]
+    ? FALLBACK_COMPARE_LOCALE
+    : Object.keys(parsedByLocale)[0]
 
   if (!baseLocale) throw new Error('No locale files found.')
 

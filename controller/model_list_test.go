@@ -215,6 +215,55 @@ func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 	require.Empty(t, decodeUserModelsResponse(t, vipRecorder))
 }
 
+func TestListModelsReturnsUnionForExplicitGroupChain(t *testing.T) {
+	withSelfUseModeEnabled(t)
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{
+			Group:     "default",
+			Model:     "zz-default-chain-model",
+			ChannelId: 1,
+			Enabled:   true,
+		},
+		{
+			Group:     "vip",
+			Model:     "zz-vip-chain-model",
+			ChannelId: 2,
+			Enabled:   true,
+		},
+		{
+			Group:     "vip",
+			Model:     "zz-shared-chain-model",
+			ChannelId: 2,
+			Enabled:   true,
+		},
+		{
+			Group:     "default",
+			Model:     "zz-shared-chain-model",
+			ChannelId: 1,
+			Enabled:   true,
+		},
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(ctx, constant.ContextKeyTokenGroup, "default")
+	common.SetContextKey(ctx, constant.ContextKeyTokenGroupChain, []string{
+		"default",
+		"vip",
+	})
+
+	ListModels(ctx, constant.ChannelTypeOpenAI)
+
+	ids := decodeListModelsResponse(t, recorder)
+	assert.Contains(t, ids, "zz-default-chain-model")
+	assert.Contains(t, ids, "zz-vip-chain-model")
+	assert.Contains(t, ids, "zz-shared-chain-model")
+	assert.Len(t, ids, 3)
+}
+
 func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 	withSelfUseModeDisabled(t)
 	withTieredBillingConfig(t, map[string]string{

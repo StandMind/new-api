@@ -88,19 +88,18 @@ const renderStatus = (text, record, t) => {
 };
 
 // Render group column
-const renderGroupColumn = (text, record, t, groupRatios = {}) => {
-  if (text === 'auto') {
+const renderGroupColumn = (text, record, groupRatios = {}) => {
+  const groupChain =
+    record?.group_chain?.length > 0 ? record.group_chain : [text];
+  if (groupChain.length > 1) {
     return (
-      <Tooltip
-        content={t(
-          '当前分组为 auto，会自动选择最优分组，当一个组不可用时自动降级到下一个组（熔断机制）',
-        )}
-        position='top'
-      >
-        <Tag color='white' shape='circle'>
-          {t('智能熔断')}
-          {record && record.cross_group_retry ? `(${t('跨分组')})` : ''}
-        </Tag>
+      <Tooltip content={groupChain.join(' → ')} position='top'>
+        <span className='flex max-w-full items-center gap-1 overflow-hidden'>
+          {renderGroup(groupChain[0])}
+          <span className='truncate text-xs text-gray-500'>
+            → {groupChain.slice(1).join(' → ')}
+          </span>
+        </span>
       </Tooltip>
     );
   }
@@ -501,7 +500,7 @@ export const getTokensColumns = ({
       title: t('分组'),
       dataIndex: 'group',
       key: 'group',
-      render: (text, record) => renderGroupColumn(text, record, t, groupRatios),
+      render: (text, record) => renderGroupColumn(text, record, groupRatios),
     },
     {
       title: t('密钥'),

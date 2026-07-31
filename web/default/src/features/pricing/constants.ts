@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type TFunction } from 'i18next'
+import type { TFunction } from 'i18next'
 
 import type { TokenUnit } from './types'
 
@@ -116,7 +116,7 @@ export const MAX_FILTER_ITEMS = 5
 export const SIDEBAR_WIDTH = 'w-64'
 
 /** Excluded groups */
-export const EXCLUDED_GROUPS = ['', 'auto']
+export const EXCLUDED_GROUPS = ['']
 
 /** Quota type values */
 export const QUOTA_TYPE_VALUES = {

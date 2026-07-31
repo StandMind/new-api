@@ -17,13 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState, useContext, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   API,
   showError,
   showSuccess,
   timestamp2string,
-  renderGroupOption,
   getCurrencyConfig,
   getModelCategories,
   selectFilter,
@@ -55,18 +54,27 @@ import {
   IconKey,
 } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
-import { StatusContext } from '../../../../context/Status';
+import TokenGroupChainEditor from './TokenGroupChainEditor';
 
 const { Text, Title } = Typography;
 
+function getCurrentUserGroup() {
+  try {
+    const user = JSON.parse(localStorage.getItem('user'));
+    return typeof user?.group === 'string' ? user.group : '';
+  } catch {
+    return '';
+  }
+}
+
 const EditTokenModal = (props) => {
   const { t } = useTranslation();
-  const [statusState, statusDispatch] = useContext(StatusContext);
   const [loading, setLoading] = useState(false);
   const isMobile = useIsMobile();
   const formApiRef = useRef(null);
   const [models, setModels] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [groupChain, setGroupChain] = useState([]);
   const [showQuotaInput, setShowQuotaInput] = useState(false);
   const isEdit = props.editingToken.id !== undefined;
 
@@ -80,9 +88,29 @@ const EditTokenModal = (props) => {
     model_limits: [],
     allow_ips: '',
     group: '',
-    cross_group_retry: false,
+    group_chain: [],
     tokenCount: 1,
   });
+
+  const getNewTokenValues = (groupOptions = groups) => {
+    const currentUserGroup = getCurrentUserGroup();
+    const fallback =
+      groupOptions.find((group) => group.value === currentUserGroup)?.value ||
+      groupOptions.find((group) => group.value === 'default')?.value ||
+      groupOptions[0]?.value ||
+      '';
+    return {
+      ...getInitValues(),
+      group: fallback,
+      group_chain: fallback ? [fallback] : [],
+    };
+  };
+
+  const resetNewTokenForm = (groupOptions = groups) => {
+    const values = getNewTokenValues(groupOptions);
+    setGroupChain(values.group_chain);
+    formApiRef.current?.setValues(values);
+  };
 
   const handleCancel = () => {
     props.handleClose();
@@ -138,19 +166,16 @@ const EditTokenModal = (props) => {
     const { success, message, data } = res.data;
     if (success) {
       let localGroupOptions = Object.entries(data).map(([group, info]) => ({
-        label: info.desc,
+        label: group,
         value: group,
+        desc: info.desc,
         ratio: info.ratio,
       }));
-      if (statusState?.status?.default_use_auto_group) {
-        if (localGroupOptions.some((group) => group.value === 'auto')) {
-          localGroupOptions.sort((a, b) => (a.value === 'auto' ? -1 : 1));
-        }
-      }
       setGroups(localGroupOptions);
-      // if (statusState?.status?.default_use_auto_group && formApiRef.current) {
-      //   formApiRef.current.setValue('group', 'auto');
-      // }
+
+      if (!isEdit && formApiRef.current) {
+        resetNewTokenForm(localGroupOptions);
+      }
     } else {
       showError(t(message));
     }
@@ -172,6 +197,7 @@ const EditTokenModal = (props) => {
       data.remain_amount = Number(
         quotaToDisplayAmount(data.remain_quota || 0).toFixed(6),
       );
+      setGroupChain(Array.isArray(data.group_chain) ? data.group_chain : []);
       if (formApiRef.current) {
         formApiRef.current.setValues({ ...getInitValues(), ...data });
       }
@@ -184,7 +210,7 @@ const EditTokenModal = (props) => {
   useEffect(() => {
     if (formApiRef.current) {
       if (!isEdit) {
-        formApiRef.current.setValues(getInitValues());
+        resetNewTokenForm();
       }
     }
     loadModels();
@@ -196,9 +222,10 @@ const EditTokenModal = (props) => {
       if (isEdit) {
         loadToken();
       } else {
-        formApiRef.current?.setValues(getInitValues());
+        resetNewTokenForm();
       }
     } else {
+      setGroupChain([]);
       formApiRef.current?.reset();
     }
   }, [props.visiable, props.editingToken.id]);
@@ -217,8 +244,21 @@ const EditTokenModal = (props) => {
 
   const submit = async (values) => {
     setLoading(true);
+    const normalizedValues = { ...values };
+    const allowedGroups = new Set(groups.map((group) => group.value));
+    normalizedValues.group_chain = groupChain.filter(
+      (group, index, chain) =>
+        allowedGroups.has(group) && chain.indexOf(group) === index,
+    );
+    if (normalizedValues.group_chain.length === 0) {
+      showError(t('请至少选择一个分组'));
+      setLoading(false);
+      return;
+    }
+    normalizedValues.group = normalizedValues.group_chain[0];
+
     if (isEdit) {
-      let { tokenCount: _tc, ...localInputs } = values;
+      let { tokenCount: _tc, ...localInputs } = normalizedValues;
       localInputs.remain_quota = localInputs.unlimited_quota
         ? 0
         : displayAmountToQuota(localInputs.remain_amount);
@@ -251,13 +291,15 @@ const EditTokenModal = (props) => {
         showError(t(message));
       }
     } else {
-      const count = parseInt(values.tokenCount, 10) || 1;
+      const count = parseInt(normalizedValues.tokenCount, 10) || 1;
       let successCount = 0;
       for (let i = 0; i < count; i++) {
-        let { tokenCount: _tc, ...localInputs } = values;
+        let { tokenCount: _tc, ...localInputs } = normalizedValues;
         const baseName =
-          values.name.trim() === '' ? 'default' : values.name.trim();
-        if (i !== 0 || values.name.trim() === '') {
+          normalizedValues.name.trim() === ''
+            ? 'default'
+            : normalizedValues.name.trim();
+        if (i !== 0 || normalizedValues.name.trim() === '') {
           localInputs.name = `${baseName}-${generateRandomSuffix()}`;
         } else {
           localInputs.name = baseName;
@@ -298,7 +340,7 @@ const EditTokenModal = (props) => {
       }
     }
     setLoading(false);
-    formApiRef.current?.setValues(getInitValues());
+    resetNewTokenForm();
   };
 
   return (
@@ -383,47 +425,21 @@ const EditTokenModal = (props) => {
                     />
                   </Col>
                   <Col span={24}>
-                    {groups.length > 0 ? (
-                      <Form.Select
-                        field='group'
-                        label={t('令牌分组')}
-                        placeholder={t('令牌分组，默认为用户的分组')}
-                        optionList={groups}
-                        renderOptionItem={renderGroupOption}
-                        filter={(input, option) => {
-                          const q = input.toLowerCase();
-                          return (
-                            option.value?.toLowerCase().includes(q) ||
-                            (typeof option.label === 'string' &&
-                              option.label.toLowerCase().includes(q))
-                          );
-                        }}
-                        showClear
-                        style={{ width: '100%' }}
-                      />
-                    ) : (
-                      <Form.Select
-                        placeholder={t('管理员未设置用户可选分组')}
-                        disabled
-                        label={t('令牌分组')}
-                        style={{ width: '100%' }}
-                      />
-                    )}
-                  </Col>
-                  <Col
-                    span={24}
-                    style={{
-                      display: values.group === 'auto' ? 'block' : 'none',
-                    }}
-                  >
-                    <Form.Switch
-                      field='cross_group_retry'
-                      label={t('跨分组重试')}
-                      size='default'
+                    <Form.Slot
+                      label={t('令牌分组链')}
                       extraText={t(
-                        '开启后，当前分组渠道失败时会按顺序尝试下一个分组的渠道',
+                        '请求按从上到下的顺序尝试分组，每个分组使用独立的模型渠道链',
                       )}
-                    />
+                    >
+                      <TokenGroupChainEditor
+                        options={groups}
+                        value={groupChain}
+                        onChange={(chain) => {
+                          setGroupChain(chain);
+                          formApiRef.current?.setValue('group', chain[0] || '');
+                        }}
+                      />
+                    </Form.Slot>
                   </Col>
                   <Col xs={24} sm={24} md={24} lg={10} xl={10}>
                     <Form.DatePicker
@@ -552,7 +568,10 @@ const EditTokenModal = (props) => {
                         ? `▾ ${t('收起原生额度输入')}`
                         : `▸ ${t('使用原生额度输入')}`}
                     </div>
-                    <div style={{ display: showQuotaInput ? 'block' : 'none' }} className='mt-2'>
+                    <div
+                      style={{ display: showQuotaInput ? 'block' : 'none' }}
+                      className='mt-2'
+                    >
                       <Form.InputNumber
                         field='remain_quota'
                         label={t('额度')}

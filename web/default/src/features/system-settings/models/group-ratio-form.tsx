@@ -49,14 +49,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 
-import {
-  SettingsForm,
-  SettingsSwitchContent,
-  SettingsSwitchItem,
-} from '../components/settings-form-layout'
+import { SettingsForm } from '../components/settings-form-layout'
 import { SettingsPageActionsPortal } from '../components/settings-page-context'
 import { safeJsonParse } from '../utils/json-parser'
 import { GroupRatioVisualEditor } from './group-ratio-visual-editor'
@@ -67,8 +62,7 @@ type GroupFormValues = {
   TopupGroupRatio: string
   UserUsableGroups: string
   GroupGroupRatio: string
-  AutoGroups: string
-  DefaultUseAutoGroup: boolean
+  GroupModelRatio: string
   GroupSpecialUsableGroup: string
 }
 
@@ -104,6 +98,7 @@ export const GroupRatioForm = memo(function GroupRatioForm({
   const watchedGroupRatio = form.watch('GroupRatio')
   const watchedUserUsableGroups = form.watch('UserUsableGroups')
   const watchedTopupGroupRatio = form.watch('TopupGroupRatio')
+  const watchedGroupModelRatio = form.watch('GroupModelRatio')
   const groupNames = useMemo(() => {
     const ratioMap = safeJsonParse<Record<string, number>>(watchedGroupRatio, {
       fallback: {},
@@ -117,14 +112,24 @@ export const GroupRatioForm = memo(function GroupRatioForm({
       watchedTopupGroupRatio,
       { fallback: {}, silent: true }
     )
+    const modelRatioMap = safeJsonParse<Record<string, Record<string, number>>>(
+      watchedGroupModelRatio,
+      { fallback: {}, silent: true }
+    )
     return [
       ...new Set([
         ...Object.keys(ratioMap),
         ...Object.keys(usableMap),
         ...Object.keys(topupMap),
+        ...Object.keys(modelRatioMap),
       ]),
     ]
-  }, [watchedGroupRatio, watchedUserUsableGroups, watchedTopupGroupRatio])
+  }, [
+    watchedGroupRatio,
+    watchedUserUsableGroups,
+    watchedTopupGroupRatio,
+    watchedGroupModelRatio,
+  ])
 
   return (
     <div className='space-y-6'>
@@ -168,7 +173,6 @@ export const GroupRatioForm = memo(function GroupRatioForm({
               topupGroupRatio={form.watch('TopupGroupRatio')}
               userUsableGroups={form.watch('UserUsableGroups')}
               groupGroupRatio={form.watch('GroupGroupRatio')}
-              autoGroups={form.watch('AutoGroups')}
               groupSpecialUsableGroup={form.watch('GroupSpecialUsableGroup')}
               onChange={(field, value) =>
                 handleFieldChange(field as keyof GroupFormValues, value)
@@ -185,24 +189,20 @@ export const GroupRatioForm = memo(function GroupRatioForm({
 
             <FormField
               control={form.control}
-              name='DefaultUseAutoGroup'
+              name='GroupModelRatio'
               render={({ field }) => (
-                <SettingsSwitchItem>
-                  <SettingsSwitchContent>
-                    <FormLabel>{t('Default to auto groups')}</FormLabel>
-                    <FormDescription>
-                      {t(
-                        'When enabled, newly created tokens start in the first auto group.'
-                      )}
-                    </FormDescription>
-                  </SettingsSwitchContent>
+                <FormItem>
+                  <FormLabel>{t('Model-specific group ratios')}</FormLabel>
                   <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
+                    <Textarea rows={8} {...field} />
                   </FormControl>
-                </SettingsSwitchItem>
+                  <FormDescription>
+                    {t(
+                      'Nested JSON: billing group → model or trailing-prefix wildcard → ratio. Exact models win, then the longest wildcard prefix.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
               )}
             />
           </div>
@@ -289,16 +289,16 @@ export const GroupRatioForm = memo(function GroupRatioForm({
 
             <FormField
               control={form.control}
-              name='AutoGroups'
+              name='GroupModelRatio'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('Auto assignment order')}</FormLabel>
+                  <FormLabel>{t('Model-specific group ratios')}</FormLabel>
                   <FormControl>
-                    <Textarea rows={6} {...field} />
+                    <Textarea rows={8} {...field} />
                   </FormControl>
                   <FormDescription>
                     {t(
-                      'JSON array of group identifiers. When enabled below, new tokens rotate through this list.'
+                      'Nested JSON: billing group → model or trailing-prefix wildcard → ratio. Exact models win, then the longest wildcard prefix.'
                     )}
                   </FormDescription>
                   <FormMessage />
@@ -322,29 +322,6 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name='DefaultUseAutoGroup'
-              render={({ field }) => (
-                <SettingsSwitchItem>
-                  <SettingsSwitchContent>
-                    <FormLabel>{t('Default to auto groups')}</FormLabel>
-                    <FormDescription>
-                      {t(
-                        'When enabled, newly created tokens start in the first auto group.'
-                      )}
-                    </FormDescription>
-                  </SettingsSwitchContent>
-                  <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                </SettingsSwitchItem>
               )}
             />
           </SettingsForm>
@@ -404,7 +381,9 @@ function GroupPricingGuide({ open, onOpenChange }: GroupPricingGuideProps) {
 
         <div className={sideDrawerFormClassName('gap-5')}>
           <section className='space-y-2'>
-            <h3 className='text-sm font-semibold'>{t('The two roles of a group')}</h3>
+            <h3 className='text-sm font-semibold'>
+              {t('The two roles of a group')}
+            </h3>
             <div className='text-muted-foreground space-y-2 text-sm leading-6'>
               <p>
                 {t(
@@ -416,7 +395,9 @@ function GroupPricingGuide({ open, onOpenChange }: GroupPricingGuideProps) {
                   {t('Token group')}
                 </span>
                 {': '}
-                {t('decides which channels are used and which base ratio applies.')}
+                {t(
+                  'decides which channels are used and which base ratio applies.'
+                )}
               </p>
               <p>
                 <span className='text-foreground font-medium'>
@@ -431,14 +412,16 @@ function GroupPricingGuide({ open, onOpenChange }: GroupPricingGuideProps) {
           </section>
 
           <section className='space-y-2'>
-            <h3 className='text-sm font-semibold'>{t('How a call is priced')}</h3>
+            <h3 className='text-sm font-semibold'>
+              {t('How a call is priced')}
+            </h3>
             <ol className='text-muted-foreground list-decimal space-y-2 pl-5 text-sm leading-6'>
               <li>
                 <span className='text-foreground font-medium'>
                   {t('Find the billing group.')}
                 </span>{' '}
                 {t(
-                  'Use the group set on the token. If the token has no group, use the user group. The auto group tries the auto assignment order from top to bottom.'
+                  'Use the first group in the token group chain. If the token has no group, use the user group.'
                 )}
               </li>
               <li>
@@ -453,7 +436,9 @@ function GroupPricingGuide({ open, onOpenChange }: GroupPricingGuideProps) {
                 <span className='text-foreground font-medium'>
                   {t('Charge.')}
                 </span>{' '}
-                {t('Cost = model price × that one ratio. Nothing else from the group settings enters the formula.')}
+                {t(
+                  'Cost = model price × that one ratio. Nothing else from the group settings enters the formula.'
+                )}
               </li>
             </ol>
             <p className='text-muted-foreground text-sm leading-6'>
@@ -466,7 +451,9 @@ function GroupPricingGuide({ open, onOpenChange }: GroupPricingGuideProps) {
           <section className='space-y-3'>
             <h3 className='text-sm font-semibold'>{t('Worked example')}</h3>
             <p className='text-muted-foreground text-sm leading-6'>
-              {t('The admin configured three groups and one special ratio rule:')}
+              {t(
+                'The admin configured three groups and one special ratio rule:'
+              )}
             </p>
 
             <div className='overflow-hidden rounded-lg border'>
@@ -529,7 +516,9 @@ function GroupPricingGuide({ open, onOpenChange }: GroupPricingGuideProps) {
                 </div>
                 <div className='space-y-2 p-3'>
                   <GuideStepRow chip='1'>
-                    {t('Billing group = premium (the token has a group, so use it)')}
+                    {t(
+                      'Billing group = premium (the token has a group, so use it)'
+                    )}
                   </GuideStepRow>
                   <GuideStepRow chip='2'>
                     {t(
@@ -550,7 +539,9 @@ function GroupPricingGuide({ open, onOpenChange }: GroupPricingGuideProps) {
                 </div>
                 <div className='space-y-2 p-3'>
                   <GuideStepRow chip='1'>
-                    {t('Billing group = default (the token has a group, so use it)')}
+                    {t(
+                      'Billing group = default (the token has a group, so use it)'
+                    )}
                   </GuideStepRow>
                   <GuideStepRow chip='2'>
                     {t(
@@ -608,23 +599,6 @@ vip          0.5     ${t('No')}                ${t('Assigned by administrator on
                 <p className='text-muted-foreground text-sm leading-6'>
                   {t(
                     'Users only see groups marked as user selectable. Non-selectable groups can still be assigned by administrators.'
-                  )}
-                </p>
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value='auto'>
-              <AccordionTrigger>{t('Auto group behavior')}</AccordionTrigger>
-              <AccordionContent className='space-y-3'>
-                <p className='text-muted-foreground text-sm leading-6'>
-                  {t(
-                    'When a token uses the auto group, the system tries groups from top to bottom until it finds an available group.'
-                  )}
-                </p>
-                <GuideCodeBlock>{`["default", "vip"]`}</GuideCodeBlock>
-                <p className='text-muted-foreground text-sm leading-6'>
-                  {t(
-                    'If default auto group is enabled, newly created tokens start with auto instead of an empty group.'
                   )}
                 </p>
               </AccordionContent>

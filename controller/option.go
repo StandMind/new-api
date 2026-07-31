@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
 	emailtemplatesetting "github.com/QuantumNous/new-api/setting/emailtemplate"
+	"github.com/QuantumNous/new-api/setting/official_price_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
@@ -168,6 +169,10 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	default:
+		if option.Key == "AutoGroups" || option.Key == "DefaultUseAutoGroup" || option.Key == "routing_setting.user_group_chain_enabled" {
+			common.ApiErrorMsg(c, "该配置项已废弃")
+			return
+		}
 		if isPaymentComplianceOptionKey(option.Key) {
 			common.ApiErrorMsg(c, "合规确认字段不允许通过通用设置接口修改")
 			return
@@ -249,6 +254,24 @@ func UpdateOption(c *gin.Context) {
 		}
 	case "GroupRatio":
 		err = ratio_setting.CheckGroupRatio(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+	case "GroupModelRatio":
+		err = ratio_setting.CheckGroupModelRatio(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+	case official_price_setting.OptionKey:
+		err = official_price_setting.ValidateModelPricesJSON(option.Value.(string))
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,

@@ -13,9 +13,14 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -32,10 +37,12 @@ type tokenPageResponse struct {
 }
 
 type tokenResponseItem struct {
-	ID     int    `json:"id"`
-	Name   string `json:"name"`
-	Key    string `json:"key"`
-	Status int    `json:"status"`
+	ID         int      `json:"id"`
+	Name       string   `json:"name"`
+	Key        string   `json:"key"`
+	Status     int      `json:"status"`
+	Group      string   `json:"group"`
+	GroupChain []string `json:"group_chain"`
 }
 
 type tokenKeyResponse struct {
@@ -59,11 +66,10 @@ type legacyToken struct {
 	RemainQuota        int    `gorm:"default:0"`
 	UnlimitedQuota     bool
 	ModelLimitsEnabled bool
-	ModelLimits        string  `gorm:"type:text"`
-	AllowIps           *string `gorm:"default:''"`
-	UsedQuota          int     `gorm:"default:0"`
-	Group              string  `gorm:"column:group;default:''"`
-	CrossGroupRetry    bool
+	ModelLimits        string         `gorm:"type:text"`
+	AllowIps           *string        `gorm:"default:''"`
+	UsedQuota          int            `gorm:"default:0"`
+	Group              string         `gorm:"column:group;default:''"`
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
 }
 
@@ -174,6 +180,7 @@ func seedToken(t *testing.T, db *gorm.DB, userID int, name string, rawKey string
 		RemainQuota:    100,
 		UnlimitedQuota: true,
 		Group:          "default",
+		GroupChain:     model.StringArray{"default"},
 	}
 	if err := db.Create(token).Error; err != nil {
 		t.Fatalf("failed to create token: %v", err)
@@ -300,7 +307,6 @@ func runTokenMigrationCompatibilityTest(t *testing.T, db *gorm.DB, dialect strin
 		AllowIps:           common.GetPointer(""),
 		UsedQuota:          0,
 		Group:              "default",
-		CrossGroupRetry:    false,
 	}).Error; err != nil {
 		t.Fatalf("failed to seed legacy token row: %v", err)
 	}
@@ -325,6 +331,9 @@ func runTokenMigrationCompatibilityTest(t *testing.T, db *gorm.DB, dialect strin
 	if migratedToken.Name != "legacy-token" {
 		t.Fatalf("expected migrated token name to be preserved, got %q", migratedToken.Name)
 	}
+	if got := migratedToken.GetGroupChain(); len(got) != 0 {
+		t.Fatalf("expected migrated token without an explicit group chain to remain invalid, got %#v", got)
+	}
 
 	inserted := model.Token{
 		UserId:             8,
@@ -340,8 +349,8 @@ func runTokenMigrationCompatibilityTest(t *testing.T, db *gorm.DB, dialect strin
 		ModelLimits:        "",
 		AllowIps:           common.GetPointer(""),
 		UsedQuota:          0,
-		Group:              "default",
-		CrossGroupRetry:    false,
+		Group:              "vip",
+		GroupChain:         model.StringArray{"vip", "default"},
 	}
 	if err := db.Create(&inserted).Error; err != nil {
 		t.Fatalf("failed to insert long token after migration: %v", err)
@@ -353,6 +362,9 @@ func runTokenMigrationCompatibilityTest(t *testing.T, db *gorm.DB, dialect strin
 	}
 	if fetched.Key != longKey {
 		t.Fatalf("expected long token key %q, got %q", longKey, fetched.Key)
+	}
+	if got := fetched.GetGroupChain(); len(got) != 2 || got[0] != "vip" || got[1] != "default" {
+		t.Fatalf("expected group chain to survive migration round trip, got %#v", got)
 	}
 }
 
@@ -482,7 +494,7 @@ func TestUpdateTokenMasksKeyInResponse(t *testing.T) {
 		"model_limits_enabled": false,
 		"model_limits":         "",
 		"group":                "default",
-		"cross_group_retry":    false,
+		"group_chain":          []string{"default"},
 	}
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 1)
@@ -537,4 +549,52 @@ func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {
 	if strings.Contains(unauthorizedRecorder.Body.String(), token.Key) {
 		t.Fatalf("unauthorized key response leaked raw token key: %s", unauthorizedRecorder.Body.String())
 	}
+}
+
+func TestNormalizeTokenGroupChain(t *testing.T) {
+	context, _ := newAuthenticatedContext(t, http.MethodPost, "/api/token", nil, 1)
+	common.SetContextKey(context, constant.ContextKeyUserGroup, "default")
+
+	validChain := model.StringArray{" vip ", "default"}
+	request := tokenRequest{Group: "auto", GroupChain: &validChain}
+	require.NoError(t, normalizeTokenGroupChain(context, &request))
+	assert.Equal(t, "vip", request.Group)
+	assert.Equal(t, model.StringArray{"vip", "default"}, *request.GroupChain)
+
+	tests := []model.StringArray{
+		{"default", "default"},
+		{"default", "auto"},
+		{"default", ""},
+		{"default", "unavailable"},
+	}
+	for _, chain := range tests {
+		invalidRequest := tokenRequest{Group: "default", GroupChain: &chain}
+		assert.Error(t, normalizeTokenGroupChain(context, &invalidRequest))
+	}
+
+	emptyChain := model.StringArray{}
+	assert.Error(t, normalizeTokenGroupChain(context, &tokenRequest{Group: "default", GroupChain: &emptyChain}))
+	assert.Error(t, normalizeTokenGroupChain(context, &tokenRequest{Group: "default"}))
+
+	originalGroupRatio := ratio_setting.GroupRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalGroupRatio))
+	})
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1}`))
+	deprecatedChain := model.StringArray{"vip", "default"}
+	deprecatedRequest := tokenRequest{Group: "vip", GroupChain: &deprecatedChain}
+	assert.ErrorContains(t, normalizeTokenGroupChain(context, &deprecatedRequest), "deprecated")
+}
+
+func TestSetupContextForTokenPublishesGroupChain(t *testing.T) {
+	context, _ := newAuthenticatedContext(t, http.MethodGet, "/v1/models", nil, 1)
+	token := &model.Token{
+		Id:         1,
+		UserId:     1,
+		Group:      "vip",
+		GroupChain: model.StringArray{"vip", "default"},
+	}
+
+	require.NoError(t, middleware.SetupContextForToken(context, token))
+	assert.Equal(t, []string{"vip", "default"}, common.GetContextKeyStringSlice(context, constant.ContextKeyTokenGroupChain))
 }

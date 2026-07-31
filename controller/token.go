@@ -1,15 +1,19 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -29,6 +33,54 @@ func buildMaskedTokenResponses(tokens []*model.Token) []*model.Token {
 		maskedTokens = append(maskedTokens, buildMaskedTokenResponse(token))
 	}
 	return maskedTokens
+}
+
+type tokenRequest struct {
+	Id                 int                `json:"id"`
+	Status             int                `json:"status"`
+	Name               string             `json:"name"`
+	ExpiredTime        int64              `json:"expired_time"`
+	RemainQuota        int                `json:"remain_quota"`
+	UnlimitedQuota     bool               `json:"unlimited_quota"`
+	ModelLimitsEnabled bool               `json:"model_limits_enabled"`
+	ModelLimits        string             `json:"model_limits"`
+	AllowIps           *string            `json:"allow_ips"`
+	Group              string             `json:"group"`
+	GroupChain         *model.StringArray `json:"group_chain"`
+}
+
+func normalizeTokenGroupChain(c *gin.Context, request *tokenRequest) error {
+	if request.GroupChain == nil || len(*request.GroupChain) == 0 {
+		return errors.New("group chain must contain at least one group")
+	}
+	rawChain := append(model.StringArray(nil), (*request.GroupChain)...)
+
+	usableGroups := service.GetUserUsableGroups(common.GetContextKeyString(c, constant.ContextKeyUserGroup))
+	seen := make(map[string]struct{}, len(rawChain))
+	normalized := make(model.StringArray, 0, len(rawChain))
+	for _, rawGroup := range rawChain {
+		group := strings.TrimSpace(rawGroup)
+		if group == "" {
+			return errors.New("group chain cannot contain an empty group")
+		}
+		if group == "auto" {
+			return errors.New("group chain cannot contain auto")
+		}
+		if _, exists := seen[group]; exists {
+			return fmt.Errorf("group %s is duplicated in group chain", group)
+		}
+		if _, allowed := usableGroups[group]; !allowed {
+			return fmt.Errorf("no access to group %s", group)
+		}
+		if !ratio_setting.ContainsGroupRatio(group) {
+			return fmt.Errorf("group %s is deprecated", group)
+		}
+		seen[group] = struct{}{}
+		normalized = append(normalized, group)
+	}
+	request.GroupChain = &normalized
+	request.Group = normalized[0]
+	return nil
 }
 
 func GetAllTokens(c *gin.Context) {
@@ -165,9 +217,13 @@ func GetTokenUsage(c *gin.Context) {
 }
 
 func AddToken(c *gin.Context) {
-	token := model.Token{}
+	token := tokenRequest{}
 	err := c.ShouldBindJSON(&token)
 	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := normalizeTokenGroupChain(c, &token); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -220,8 +276,8 @@ func AddToken(c *gin.Context) {
 		ModelLimits:        token.ModelLimits,
 		AllowIps:           token.AllowIps,
 		Group:              token.Group,
-		CrossGroupRetry:    token.CrossGroupRetry,
 	}
+	cleanToken.GroupChain = append(model.StringArray(nil), (*token.GroupChain)...)
 	err = cleanToken.Insert()
 	if err != nil {
 		common.ApiError(c, err)
@@ -250,11 +306,17 @@ func DeleteToken(c *gin.Context) {
 func UpdateToken(c *gin.Context) {
 	userId := c.GetInt("id")
 	statusOnly := c.Query("status_only")
-	token := model.Token{}
+	token := tokenRequest{}
 	err := c.ShouldBindJSON(&token)
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	if statusOnly == "" {
+		if err := normalizeTokenGroupChain(c, &token); err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 	if len(token.Name) > 50 {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
@@ -298,7 +360,7 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.ModelLimits = token.ModelLimits
 		cleanToken.AllowIps = token.AllowIps
 		cleanToken.Group = token.Group
-		cleanToken.CrossGroupRetry = token.CrossGroupRetry
+		cleanToken.GroupChain = append(model.StringArray(nil), (*token.GroupChain)...)
 	}
 	err = cleanToken.Update()
 	if err != nil {

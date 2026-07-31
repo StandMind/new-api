@@ -26,7 +26,6 @@ import ModelHeader from './components/ModelHeader';
 import ModelBasicInfo from './components/ModelBasicInfo';
 import ModelEndpoints from './components/ModelEndpoints';
 import ModelPricingTable from './components/ModelPricingTable';
-import DynamicPricingBreakdown from './components/DynamicPricingBreakdown';
 
 const { Text } = Typography;
 
@@ -39,14 +38,16 @@ const ModelDetailSideSheet = ({
   siteDisplayType,
   tokenUnit,
   displayPrice,
-  showRatio,
   usableGroup,
   vendorsMap,
   endpointMap,
-  autoGroups,
   t,
 }) => {
   const isMobile = useIsMobile();
+  const modelGroupRatio = {
+    ...(groupRatio || {}),
+    ...(modelData?.group_ratio || {}),
+  };
 
   return (
     <SideSheet
@@ -95,29 +96,16 @@ const ModelDetailSideSheet = ({
                 t={t}
               />
             </div>
-            {modelData.billing_mode === 'tiered_expr' && modelData.billing_expr && (
-              <>
-                <Divider margin={16} />
-                <div style={{ padding: '0 24px' }}>
-                  <DynamicPricingBreakdown
-                    billingExpr={modelData.billing_expr}
-                    t={t}
-                  />
-                </div>
-              </>
-            )}
             <Divider margin={16} />
             <div style={{ padding: '0 24px' }}>
               <ModelPricingTable
                 modelData={modelData}
-                groupRatio={groupRatio}
+                groupRatio={modelGroupRatio}
                 currency={currency}
                 siteDisplayType={siteDisplayType}
                 tokenUnit={tokenUnit}
                 displayPrice={displayPrice}
-                showRatio={showRatio}
                 usableGroup={usableGroup}
-                autoGroups={autoGroups}
                 t={t}
               />
             </div>

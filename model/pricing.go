@@ -10,33 +10,36 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
+	"github.com/QuantumNous/new-api/setting/official_price_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 )
 
 type Pricing struct {
-	ModelName              string                  `json:"model_name"`
-	Description            string                  `json:"description,omitempty"`
-	DescriptionI18n        LocalizedText           `json:"-"`
-	Icon                   string                  `json:"icon,omitempty"`
-	Tags                   string                  `json:"tags,omitempty"`
-	TagsI18n               LocalizedText           `json:"-"`
-	VendorID               int                     `json:"vendor_id,omitempty"`
-	QuotaType              int                     `json:"quota_type"`
-	ModelRatio             float64                 `json:"model_ratio"`
-	ModelPrice             float64                 `json:"model_price"`
-	OwnerBy                string                  `json:"owner_by"`
-	CompletionRatio        float64                 `json:"completion_ratio"`
-	CacheRatio             *float64                `json:"cache_ratio,omitempty"`
-	CreateCacheRatio       *float64                `json:"create_cache_ratio,omitempty"`
-	ImageRatio             *float64                `json:"image_ratio,omitempty"`
-	AudioRatio             *float64                `json:"audio_ratio,omitempty"`
-	AudioCompletionRatio   *float64                `json:"audio_completion_ratio,omitempty"`
-	EnableGroup            []string                `json:"enable_groups"`
-	SupportedEndpointTypes []constant.EndpointType `json:"supported_endpoint_types"`
-	BillingMode            string                  `json:"billing_mode,omitempty"`
-	BillingExpr            string                  `json:"billing_expr,omitempty"`
-	PricingVersion         string                  `json:"pricing_version,omitempty"`
+	ModelName              string                             `json:"model_name"`
+	Description            string                             `json:"description,omitempty"`
+	DescriptionI18n        LocalizedText                      `json:"-"`
+	Icon                   string                             `json:"icon,omitempty"`
+	Tags                   string                             `json:"tags,omitempty"`
+	TagsI18n               LocalizedText                      `json:"-"`
+	VendorID               int                                `json:"vendor_id,omitempty"`
+	QuotaType              int                                `json:"quota_type"`
+	ModelRatio             float64                            `json:"model_ratio"`
+	ModelPrice             float64                            `json:"model_price"`
+	OwnerBy                string                             `json:"owner_by"`
+	CompletionRatio        float64                            `json:"completion_ratio"`
+	CacheRatio             *float64                           `json:"cache_ratio,omitempty"`
+	CreateCacheRatio       *float64                           `json:"create_cache_ratio,omitempty"`
+	ImageRatio             *float64                           `json:"image_ratio,omitempty"`
+	AudioRatio             *float64                           `json:"audio_ratio,omitempty"`
+	AudioCompletionRatio   *float64                           `json:"audio_completion_ratio,omitempty"`
+	EnableGroup            []string                           `json:"enable_groups"`
+	SupportedEndpointTypes []constant.EndpointType            `json:"supported_endpoint_types"`
+	BillingMode            string                             `json:"billing_mode,omitempty"`
+	BillingExpr            string                             `json:"billing_expr,omitempty"`
+	PricingVersion         string                             `json:"pricing_version,omitempty"`
+	EffectiveGroupRatio    map[string]float64                 `json:"effective_group_ratio,omitempty"`
+	OfficialPrice          *official_price_setting.ModelPrice `json:"official_price,omitempty"`
 }
 
 type PricingVendor struct {
