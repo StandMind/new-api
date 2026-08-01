@@ -321,7 +321,7 @@ export default function SettingsLog(props) {
               <Col span={24}>
                 <Text type='tertiary' size='small'>
                   {t(
-                    '请求详情会在后台异步压缩写入；凭据、响应正文和文件内容不会保存，单条请求体最多保存 64 KB。容量达到 90% 后优先清理最旧的成功记录。',
+                    '请求详情会在后台异步压缩写入；凭据和文件内容不会保存，单条请求体最多保存 64 KB，文本响应正文最多保存 1 MiB。容量达到 90% 后优先清理最旧的成功记录。',
                   )}
                 </Text>
                 {requestDetailStats && (

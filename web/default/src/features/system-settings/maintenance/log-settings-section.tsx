@@ -440,7 +440,7 @@ export function LogSettingsSection(props: LogSettingsSectionProps) {
             <Alert>
               <AlertDescription>
                 {t(
-                  'Writes are compressed and processed asynchronously. Credentials and file contents are never stored, and each request body is limited to 64 KB.'
+                  'Writes are compressed and processed asynchronously. Credentials and file contents are never stored. Request bodies are limited to 64 KB and text response bodies to 1 MiB.'
                 )}
               </AlertDescription>
             </Alert>

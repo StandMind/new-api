@@ -261,5 +261,15 @@
   "Search models or source models...": "Search models or source models...",
   "The final tier must not have an upper limit": "The final tier must not have an upper limit",
   "Tier limits must be positive and strictly increasing": "Tier limits must be positive and strictly increasing",
-  "Up to input tokens": "Up to input tokens"
+  "Up to input tokens": "Up to input tokens",
+  "Store sanitized request bodies and final routing diagnostics for troubleshooting.": "Store sanitized request bodies and final routing diagnostics for troubleshooting.",
+  "Writes are compressed and processed asynchronously. Credentials and file contents are never stored. Request bodies are limited to 64 KB and text response bodies to 1 MiB.": "Writes are compressed and processed asynchronously. Credentials and file contents are never stored. Request bodies are limited to 64 KB and text response bodies to 1 MiB.",
+  "Failure-only mode records the final logical result after all channel retries.": "Failure-only mode records the final logical result after all channel retries.",
+  "At 90% usage, the oldest successful details are removed first until usage returns below 80%.": "At 90% usage, the oldest successful details are removed first until usage returns below 80%.",
+  "Sanitized request and response content with final routing diagnostics.": "Sanitized request and response content with final routing diagnostics.",
+  "The response body exceeded the capture limit and was truncated.": "The response body exceeded the capture limit and was truncated.",
+  "The response body was empty.": "The response body was empty.",
+  "The response body was not captured for this record.": "The response body was not captured for this record.",
+  "Request details are unavailable or have expired.": "Request details are unavailable or have expired.",
+  "Failed to load request details": "Failed to load request details"
 }

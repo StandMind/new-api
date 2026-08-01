@@ -62,6 +62,14 @@ export interface RequestDetailPayload {
   query?: Record<string, unknown>
   body?: unknown
   routing?: Record<string, unknown>
+  response?: {
+    status_code: number
+    content_type?: string
+    body_size: number
+    body?: unknown
+    truncated?: boolean
+    omitted_reason?: string
+  }
 }
 
 export interface RequestDetailResponse {

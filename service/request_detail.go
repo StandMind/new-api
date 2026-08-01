@@ -38,10 +38,12 @@ const (
 	requestDetailSuccessQueueSize       = 2048
 	requestDetailCleanupBatchSize       = 500
 	requestDetailMaxErrorBytes          = 8 * 1024
+	requestDetailMaxDecodedPayloadBytes = 4 * request_detail_setting.MaxResponseBodyBytes
 	requestDetailMaxRouteAttempts       = 256
 	requestDetailStorageOverheadBytes   = 512
 	requestDetailMinFreeDiskBytes       = 2 << 30
 	requestDetailFailureContextKey      = "request_detail_failure"
+	requestDetailResponseContextKey     = "request_detail_response"
 )
 
 type RequestDetailFailure struct {
@@ -52,10 +54,29 @@ type RequestDetailFailure struct {
 }
 
 type RequestDetailPayload struct {
-	Headers map[string]string      `json:"headers,omitempty"`
-	Query   map[string]interface{} `json:"query,omitempty"`
-	Body    interface{}            `json:"body,omitempty"`
-	Routing map[string]interface{} `json:"routing,omitempty"`
+	Headers  map[string]string             `json:"headers,omitempty"`
+	Query    map[string]interface{}        `json:"query,omitempty"`
+	Body     interface{}                   `json:"body,omitempty"`
+	Routing  map[string]interface{}        `json:"routing,omitempty"`
+	Response *RequestDetailResponsePayload `json:"response,omitempty"`
+}
+
+type RequestDetailResponsePayload struct {
+	StatusCode    int         `json:"status_code"`
+	ContentType   string      `json:"content_type,omitempty"`
+	BodySize      int64       `json:"body_size"`
+	Body          interface{} `json:"body,omitempty"`
+	Truncated     bool        `json:"truncated,omitempty"`
+	OmittedReason string      `json:"omitted_reason,omitempty"`
+}
+
+type RequestDetailResponseSnapshot struct {
+	StatusCode    int
+	ContentType   string
+	BodySize      int64
+	Body          []byte
+	Truncated     bool
+	OmittedReason string
 }
 
 type RequestDetailRuntimeStats struct {
@@ -68,12 +89,13 @@ type RequestDetailRuntimeStats struct {
 }
 
 type queuedRequestDetail struct {
-	detail  *model.RequestDetail
-	body    []byte
-	query   url.Values
-	headers map[string]string
-	routing map[string]interface{}
-	failed  bool
+	detail   *model.RequestDetail
+	body     []byte
+	query    url.Values
+	headers  map[string]string
+	routing  map[string]interface{}
+	response *RequestDetailResponseSnapshot
+	failed   bool
 }
 
 type requestDetailWriter struct {
@@ -103,6 +125,13 @@ func SetRequestDetailFailure(c *gin.Context, failure *RequestDetailFailure) {
 		return
 	}
 	c.Set(requestDetailFailureContextKey, failure)
+}
+
+func SetRequestDetailResponse(c *gin.Context, response *RequestDetailResponseSnapshot) {
+	if c == nil || response == nil {
+		return
+	}
+	c.Set(requestDetailResponseContextKey, response)
 }
 
 func CaptureRequestDetailFromContext(c *gin.Context) {
@@ -211,6 +240,9 @@ func CaptureRequestDetail(c *gin.Context, failure *RequestDetailFailure) {
 	}
 
 	queued := &queuedRequestDetail{detail: detail, failed: failed}
+	if response, exists := c.Get(requestDetailResponseContextKey); exists {
+		queued.response, _ = response.(*RequestDetailResponseSnapshot)
+	}
 	if c.Request != nil {
 		detail.Method = boundedRequestDetailString(c.Request.Method, 16)
 		detail.ContentType = boundedRequestDetailString(c.Request.Header.Get("Content-Type"), 255)
@@ -267,13 +299,16 @@ func DecodeRequestDetailPayload(compressed []byte) (RequestDetailPayload, error)
 	if err != nil {
 		return RequestDetailPayload{}, err
 	}
-	decompressed, readErr := io.ReadAll(io.LimitReader(reader, 512*1024))
+	decompressed, readErr := io.ReadAll(io.LimitReader(reader, requestDetailMaxDecodedPayloadBytes+1))
 	closeErr := reader.Close()
 	if readErr != nil {
 		return RequestDetailPayload{}, readErr
 	}
 	if closeErr != nil {
 		return RequestDetailPayload{}, closeErr
+	}
+	if len(decompressed) > requestDetailMaxDecodedPayloadBytes {
+		return RequestDetailPayload{}, fmt.Errorf("request detail payload exceeds decoded size limit")
 	}
 	var payload RequestDetailPayload
 	if err := common.Unmarshal(decompressed, &payload); err != nil {
@@ -550,6 +585,30 @@ func prepareRequestDetail(queued *queuedRequestDetail) (*model.RequestDetail, er
 			payload.Body = body
 		}
 	}
+	if queued.response != nil {
+		response := &RequestDetailResponsePayload{
+			StatusCode:    queued.response.StatusCode,
+			ContentType:   queued.response.ContentType,
+			BodySize:      queued.response.BodySize,
+			Truncated:     queued.response.Truncated,
+			OmittedReason: queued.response.OmittedReason,
+		}
+		if len(queued.response.Body) > 0 {
+			body, err := parseRequestDetailResponseBody(
+				queued.response.ContentType,
+				queued.response.Body,
+				queued.response.Truncated,
+			)
+			if err != nil {
+				if response.OmittedReason == "" {
+					response.OmittedReason = "parse_failed"
+				}
+			} else {
+				response.Body = body
+			}
+		}
+		payload.Response = response
+	}
 	serialized, err := common.Marshal(payload)
 	if err != nil {
 		return nil, err
@@ -570,6 +629,21 @@ func prepareRequestDetail(queued *queuedRequestDetail) (*model.RequestDetail, er
 	queued.detail.StorageBytes = int64(len(queued.detail.Payload)) + requestDetailStorageOverheadBytes +
 		int64(len(queued.detail.ErrorMessage)+len(queued.detail.Path)+len(queued.detail.ModelName)+len(queued.detail.Username))
 	return queued.detail, nil
+}
+
+func parseRequestDetailResponseBody(contentType string, body []byte, truncated bool) (interface{}, error) {
+	mediaType := requestDetailMediaType(contentType)
+	if (mediaType == "application/json" || strings.HasSuffix(mediaType, "+json")) && !truncated {
+		var value interface{}
+		if err := common.Unmarshal(body, &value); err != nil {
+			return nil, err
+		}
+		return redactRequestDetailValue("", value), nil
+	}
+	if !utf8.Valid(body) {
+		return nil, fmt.Errorf("response body is not valid UTF-8")
+	}
+	return common.MaskSensitiveInfo(string(body)), nil
 }
 
 func parseRequestDetailBody(contentType string, body []byte) (interface{}, error) {
@@ -684,12 +758,29 @@ func isSensitiveRequestDetailKey(key string) bool {
 }
 
 func isRequestDetailBodyTypeSupported(contentType string) bool {
+	mediaType := requestDetailMediaType(contentType)
+	return mediaType == "application/json" || strings.HasSuffix(mediaType, "+json") ||
+		mediaType == "application/x-www-form-urlencoded" || mediaType == "multipart/form-data"
+}
+
+func IsRequestDetailResponseBodyTypeSupported(contentType string) bool {
+	mediaType := requestDetailMediaType(contentType)
+	if mediaType == "" {
+		return true
+	}
+	return strings.HasPrefix(mediaType, "text/") || mediaType == "application/json" ||
+		strings.HasSuffix(mediaType, "+json") || mediaType == "application/xml" ||
+		strings.HasSuffix(mediaType, "+xml") || mediaType == "application/javascript" ||
+		mediaType == "application/x-javascript" || mediaType == "application/x-ndjson" ||
+		mediaType == "application/graphql-response+json"
+}
+
+func requestDetailMediaType(contentType string) string {
 	mediaType, _, err := mime.ParseMediaType(contentType)
 	if err != nil {
 		mediaType = strings.TrimSpace(strings.Split(contentType, ";")[0])
 	}
-	return mediaType == "application/json" || strings.HasSuffix(mediaType, "+json") ||
-		mediaType == "application/x-www-form-urlencoded" || mediaType == "multipart/form-data"
+	return strings.ToLower(mediaType)
 }
 
 func requestDetailHeaderSnapshot(header http.Header) map[string]string {

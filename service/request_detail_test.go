@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/request_detail_setting"
 
 	"github.com/gin-gonic/gin"
@@ -88,6 +89,12 @@ func TestCaptureRequestDetailFromContextQueuesDistributorFailure(t *testing.T) {
 		ErrorCode:  "model_not_found",
 		Message:    "no available channel",
 	})
+	SetRequestDetailResponse(context, &RequestDetailResponseSnapshot{
+		StatusCode:  503,
+		ContentType: "application/json",
+		BodySize:    36,
+		Body:        []byte(`{"error":{"message":"unavailable"}}`),
+	})
 	CaptureRequestDetailFromContext(context)
 
 	select {
@@ -98,7 +105,45 @@ func TestCaptureRequestDetailFromContextQueuesDistributorFailure(t *testing.T) {
 		assert.Equal(t, "vip", queued.detail.Group)
 		assert.Equal(t, 503, queued.detail.StatusCode)
 		assert.Equal(t, "model_not_found", queued.detail.ErrorCode)
+		require.NotNil(t, queued.response)
+		assert.Equal(t, 503, queued.response.StatusCode)
+		assert.JSONEq(t, `{"error":{"message":"unavailable"}}`, string(queued.response.Body))
 	default:
 		t.Fatal("expected distributor failure to be queued")
 	}
+}
+
+func TestPrepareRequestDetailStoresCompleteSanitizedResponse(t *testing.T) {
+	queued := &queuedRequestDetail{
+		detail: &model.RequestDetail{
+			RequestID: "req-response",
+			Outcome:   model.RequestDetailOutcomeFailed,
+		},
+		response: &RequestDetailResponseSnapshot{
+			StatusCode:  429,
+			ContentType: "application/json; charset=utf-8",
+			BodySize:    183,
+			Body: []byte(`{
+				"id":"response-id",
+				"choices":[{"index":0,"message":{"role":"assistant","content":"full output"}}],
+				"usage":{"input_tokens":12,"output_tokens":34},
+				"api_key":"must-not-be-stored"
+			}`),
+		},
+	}
+
+	detail, err := prepareRequestDetail(queued)
+	require.NoError(t, err)
+	payload, err := DecodeRequestDetailPayload(detail.Payload)
+	require.NoError(t, err)
+	require.NotNil(t, payload.Response)
+	assert.Equal(t, 429, payload.Response.StatusCode)
+	assert.Equal(t, int64(183), payload.Response.BodySize)
+
+	body, ok := payload.Response.Body.(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "response-id", body["id"])
+	assert.Equal(t, "[REDACTED]", body["api_key"])
+	assert.NotEmpty(t, body["choices"])
+	assert.NotEmpty(t, body["usage"])
 }

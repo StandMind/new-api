@@ -199,6 +199,26 @@ export default function RequestDetailsTable() {
         },
       ]
     : [];
+  const requestPayload = selectedDetail?.payload
+    ? {
+        headers: selectedDetail.payload.headers,
+        query: selectedDetail.payload.query,
+        body: selectedDetail.payload.body,
+        routing: selectedDetail.payload.routing,
+      }
+    : null;
+  const requestPayloadText =
+    requestPayload &&
+    Object.values(requestPayload).some((value) => value !== undefined)
+      ? JSON.stringify(requestPayload, null, 2)
+      : '';
+  const response = selectedDetail?.payload?.response;
+  const responseBodyText =
+    response?.body === undefined || response.body === null
+      ? ''
+      : typeof response.body === 'string'
+        ? response.body
+        : JSON.stringify(response.body, null, 2);
 
   return (
     <div className='space-y-3'>
@@ -286,22 +306,77 @@ export default function RequestDetailsTable() {
           {selectedDetail && (
             <div className='space-y-4'>
               <Descriptions data={detailDescription} row />
+              {requestPayloadText && (
+                <div>
+                  <Text strong>{t('脱敏后的请求内容')}</Text>
+                  <pre
+                    style={{
+                      maxHeight: 420,
+                      overflow: 'auto',
+                      marginTop: 8,
+                      padding: 12,
+                      border: '1px solid var(--semi-color-border)',
+                      borderRadius: 6,
+                      whiteSpace: 'pre-wrap',
+                      overflowWrap: 'anywhere',
+                    }}
+                  >
+                    {requestPayloadText}
+                  </pre>
+                </div>
+              )}
               <div>
-                <Text strong>{t('脱敏后的请求内容')}</Text>
-                <pre
-                  style={{
-                    maxHeight: 420,
-                    overflow: 'auto',
-                    marginTop: 8,
-                    padding: 12,
-                    border: '1px solid var(--semi-color-border)',
-                    borderRadius: 6,
-                    whiteSpace: 'pre-wrap',
-                    overflowWrap: 'anywhere',
-                  }}
-                >
-                  {JSON.stringify(selectedDetail.payload, null, 2)}
-                </pre>
+                <Text strong>{t('响应内容')}</Text>
+                {response ? (
+                  <div className='space-y-2 mt-2'>
+                    <Descriptions
+                      row
+                      data={[
+                        { key: t('状态码'), value: response.status_code },
+                        {
+                          key: 'Content-Type',
+                          value: response.content_type || '-',
+                        },
+                        {
+                          key: t('大小'),
+                          value: `${Number(response.body_size || 0).toLocaleString()} bytes`,
+                        },
+                      ]}
+                    />
+                    {response.truncated && (
+                      <Text type='warning'>
+                        {t('响应正文超过采集上限，已截断显示。')}
+                      </Text>
+                    )}
+                    {responseBodyText ? (
+                      <pre
+                        style={{
+                          maxHeight: 420,
+                          overflow: 'auto',
+                          padding: 12,
+                          border: '1px solid var(--semi-color-border)',
+                          borderRadius: 6,
+                          whiteSpace: 'pre-wrap',
+                          overflowWrap: 'anywhere',
+                        }}
+                      >
+                        {responseBodyText}
+                      </pre>
+                    ) : (
+                      <Text type='tertiary'>
+                        {response.omitted_reason
+                          ? t('未保存：{{reason}}', {
+                              reason: response.omitted_reason,
+                            })
+                          : t('响应正文为空。')}
+                      </Text>
+                    )}
+                  </div>
+                ) : (
+                  <div className='mt-2'>
+                    <Text type='tertiary'>{t('该记录未采集响应正文。')}</Text>
+                  </div>
+                )}
               </div>
             </div>
           )}

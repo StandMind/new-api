@@ -18,6 +18,7 @@ const (
 	DefaultRetentionDays = 7
 	DefaultMaxStorageMB  = 5 * 1024
 	MaxBodyBytes         = 64 * 1024
+	MaxResponseBodyBytes = 1024 * 1024
 )
 
 type RequestDetailSetting struct {

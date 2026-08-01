@@ -54,10 +54,26 @@ export function RequestDetailDialog(props: RequestDetailDialogProps) {
     retry: false,
   })
   const detail = query.data?.data?.detail
-  const payloadText = useMemo(() => {
+  const requestPayloadText = useMemo(() => {
     const payload = query.data?.data?.payload
-    return payload ? JSON.stringify(payload, null, 2) : ''
+    if (!payload) return ''
+    const requestPayload = {
+      headers: payload.headers,
+      query: payload.query,
+      body: payload.body,
+      routing: payload.routing,
+    }
+    return Object.values(requestPayload).some((value) => value !== undefined)
+      ? JSON.stringify(requestPayload, null, 2)
+      : ''
   }, [query.data?.data?.payload])
+  const response = query.data?.data?.payload?.response
+  const responseBodyText = useMemo(() => {
+    if (response?.body === undefined || response.body === null) return ''
+    return typeof response.body === 'string'
+      ? response.body
+      : JSON.stringify(response.body, null, 2)
+  }, [response?.body])
 
   return (
     <Dialog
@@ -65,7 +81,7 @@ export function RequestDetailDialog(props: RequestDetailDialogProps) {
       onOpenChange={props.onOpenChange}
       title={t('Request Details')}
       description={t(
-        'Sanitized request content and final routing diagnostics. Sensitive credentials and response bodies are not stored.'
+        'Sanitized request and response content with final routing diagnostics.'
       )}
       contentClassName='min-w-0 overflow-hidden sm:max-w-4xl'
       contentHeight='min(78dvh, 800px)'
@@ -128,21 +144,19 @@ export function RequestDetailDialog(props: RequestDetailDialogProps) {
             )}
           </div>
 
-          {payloadText && (
+          {requestPayloadText && (
             <div className='min-w-0 space-y-2'>
               <div className='flex items-center justify-between gap-3'>
-                <span className='text-sm font-medium'>
-                  {t('Sanitized payload')}
-                </span>
+                <span className='text-sm font-medium'>{t('Request')}</span>
                 <Button
                   type='button'
                   variant='ghost'
                   size='icon'
-                  onClick={() => copyToClipboard(payloadText)}
+                  onClick={() => copyToClipboard(requestPayloadText)}
                   title={t('Copy to clipboard')}
                   aria-label={t('Copy to clipboard')}
                 >
-                  {copiedText === payloadText ? (
+                  {copiedText === requestPayloadText ? (
                     <Check className='size-4 text-green-600' />
                   ) : (
                     <Copy className='size-4' />
@@ -150,10 +164,74 @@ export function RequestDetailDialog(props: RequestDetailDialogProps) {
                 </Button>
               </div>
               <pre className='bg-muted/40 max-h-[28rem] min-w-0 overflow-auto rounded-md border p-3 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap'>
-                {payloadText}
+                {requestPayloadText}
               </pre>
             </div>
           )}
+
+          <div className='min-w-0 space-y-2'>
+            <div className='flex items-center justify-between gap-3'>
+              <span className='text-sm font-medium'>{t('Response')}</span>
+              {responseBodyText && (
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='icon'
+                  onClick={() => copyToClipboard(responseBodyText)}
+                  title={t('Copy to clipboard')}
+                  aria-label={t('Copy to clipboard')}
+                >
+                  {copiedText === responseBodyText ? (
+                    <Check className='size-4 text-green-600' />
+                  ) : (
+                    <Copy className='size-4' />
+                  )}
+                </Button>
+              )}
+            </div>
+            {response ? (
+              <>
+                <div className='space-y-1.5'>
+                  <MetadataRow
+                    label={t('Status Code')}
+                    value={String(response.status_code)}
+                  />
+                  <MetadataRow
+                    label='Content-Type'
+                    value={response.content_type || '-'}
+                  />
+                  <MetadataRow
+                    label={t('Size')}
+                    value={`${response.body_size.toLocaleString()} bytes`}
+                  />
+                </div>
+                {response.truncated && (
+                  <div className='rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-300'>
+                    {t(
+                      'The response body exceeded the capture limit and was truncated.'
+                    )}
+                  </div>
+                )}
+                {responseBodyText ? (
+                  <pre className='bg-muted/40 max-h-[28rem] min-w-0 overflow-auto rounded-md border p-3 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap'>
+                    {responseBodyText}
+                  </pre>
+                ) : (
+                  <div className='text-muted-foreground text-xs'>
+                    {response.omitted_reason
+                      ? t('Not stored: {{reason}}', {
+                          reason: response.omitted_reason,
+                        })
+                      : t('The response body was empty.')}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className='text-muted-foreground text-xs'>
+                {t('The response body was not captured for this record.')}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </Dialog>
