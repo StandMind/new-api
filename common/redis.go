@@ -16,6 +16,21 @@ import (
 var RDB *redis.Client
 var RedisEnabled = true
 
+func encodeRedisHashCollection(fieldName string, value reflect.Value) (string, error) {
+	encoded, err := Marshal(value.Interface())
+	if err != nil {
+		return "", fmt.Errorf("failed to encode field %s: %w", fieldName, err)
+	}
+	return string(encoded), nil
+}
+
+func decodeRedisHashCollection(fieldName string, value string, destination reflect.Value) error {
+	if err := Unmarshal([]byte(value), destination.Addr().Interface()); err != nil {
+		return fmt.Errorf("failed to decode field %s: %w", fieldName, err)
+	}
+	return nil
+}
+
 func RedisKeyCacheSeconds() int {
 	return SyncFrequency
 }
@@ -139,6 +154,15 @@ func RedisHSetObj(key string, obj interface{}, expiration time.Duration) error {
 			continue
 		}
 
+		if value.Kind() == reflect.Slice || value.Kind() == reflect.Array || value.Kind() == reflect.Map {
+			encoded, err := encodeRedisHashCollection(field.Name, value)
+			if err != nil {
+				return err
+			}
+			data[field.Name] = encoded
+			continue
+		}
+
 		// 其他类型直接转换为字符串
 		data[field.Name] = fmt.Sprintf("%v", value.Interface())
 	}
@@ -218,6 +242,10 @@ func RedisHGetObj(key string, obj interface{}) error {
 					return fmt.Errorf("failed to parse bool field %s: %w", fieldName, err)
 				}
 				fieldValue.SetBool(boolValue)
+			case reflect.Slice, reflect.Array, reflect.Map:
+				if err := decodeRedisHashCollection(fieldName, value, fieldValue); err != nil {
+					return err
+				}
 			case reflect.Struct:
 				// Special handling for gorm.DeletedAt
 				if fieldValue.Type().String() == "gorm.DeletedAt" {

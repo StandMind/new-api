@@ -354,6 +354,8 @@ smoke_slot() {
   local service
   local ip
   local response
+  local response_body
+  local response_status
   service="$(service_for_slot "${slot}")"
   ip="$(slot_ip "${service}")"
   [ -n "${ip}" ] || fatal "could not resolve ${service} IP"
@@ -376,11 +378,21 @@ smoke_slot() {
   fi
 
   if [ -n "${SMOKE_TOKEN}" ]; then
-    response="$(curl --fail --silent --show-error --max-time 15 \
+    if ! response="$(curl --silent --show-error --max-time 15 \
+      --write-out $'\n%{http_code}' \
       -H "Authorization: Bearer ${SMOKE_TOKEN}" \
-      "http://${ip}:3000/v1/models")"
-    grep -q '"data"' <<< "${response}" \
-      || fatal "${service} authenticated model-list smoke test failed"
+      "http://${ip}:3000/v1/models")"; then
+      fatal "${service} authenticated model-list smoke transport failed"
+    fi
+    response_status="${response##*$'\n'}"
+    response_body="${response%$'\n'*}"
+    if ! [[ "${response_status}" =~ ^2[0-9][0-9]$ ]] || ! grep -q '"data"' <<< "${response_body}"; then
+      response_body="$(tr '\r\n\t' '   ' <<< "${response_body}" \
+        | sed -E 's/(Bearer[[:space:]]+|sk-)[A-Za-z0-9._-]+/\1[redacted]/g' \
+        | cut -c1-512)"
+      log "${service} authenticated model-list smoke failed status=${response_status} response=${response_body}"
+      fatal "${service} authenticated model-list smoke test failed"
+    fi
   else
     log "SMOKE_TOKEN is unset; skipping authenticated model-list smoke test"
   fi
