@@ -10,7 +10,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -50,30 +49,18 @@ func BuildRouteAttemptPlan(groups []string, modelName, requestPath string, exhau
 		currentIndex:     -1,
 		exhaustive:       exhaustive,
 	}
-	for _, group := range uniqueGroups {
-		routeModel := modelName
-		route, explicit, err := model.GetGroupModelRoute(group, routeModel)
-		if err != nil {
-			return nil, err
-		}
-		candidates, err := model.GetGroupModelRouteCandidatesForRequest(group, modelName, requestPath)
-		if err != nil {
-			return nil, err
-		}
+	routePlans, err := model.LoadGroupModelRoutePlans(uniqueGroups, modelName, requestPath)
+	if err != nil {
+		return nil, err
+	}
+	for _, routePlan := range routePlans {
+		group := routePlan.Group
+		routeModel := routePlan.RouteModel
+		route := routePlan.Route
+		explicit := routePlan.Explicit
+		candidates := routePlan.Candidates
 		if len(candidates) == 0 {
 			continue
-		}
-		if !explicit {
-			normalizedModel := ratio_setting.FormatMatchingModelName(modelName)
-			if normalizedModel != modelName {
-				route, explicit, err = model.GetGroupModelRoute(group, normalizedModel)
-				if err != nil {
-					return nil, err
-				}
-				if explicit {
-					routeModel = normalizedModel
-				}
-			}
 		}
 
 		available := make(map[int]model.GroupModelRouteCandidate, len(candidates))

@@ -70,6 +70,7 @@ type legacyToken struct {
 	AllowIps           *string        `gorm:"default:''"`
 	UsedQuota          int            `gorm:"default:0"`
 	Group              string         `gorm:"column:group;default:''"`
+	CrossGroupRetry    bool           `gorm:"column:cross_group_retry"`
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
 }
 
@@ -107,6 +108,9 @@ func migrateTokenControllerTestDB(t *testing.T, db *gorm.DB) {
 
 	if err := db.AutoMigrate(&model.Token{}); err != nil {
 		t.Fatalf("failed to migrate token table: %v", err)
+	}
+	if err := model.MigrateLegacyTokenGroupChains(); err != nil {
+		t.Fatalf("failed to backfill token group chains: %v", err)
 	}
 }
 
@@ -307,8 +311,39 @@ func runTokenMigrationCompatibilityTest(t *testing.T, db *gorm.DB, dialect strin
 		AllowIps:           common.GetPointer(""),
 		UsedQuota:          0,
 		Group:              "default",
+		CrossGroupRetry:    true,
 	}).Error; err != nil {
 		t.Fatalf("failed to seed legacy token row: %v", err)
+	}
+	additionalLegacyTokens := []legacyToken{
+		{
+			UserId: 8, Key: strings.Repeat("c", 48), Status: common.TokenStatusEnabled,
+			Name: "legacy-empty-1", ExpiredTime: -1, RemainQuota: 101, UnlimitedQuota: true,
+			ModelLimitsEnabled: true, ModelLimits: "model-a", AllowIps: common.GetPointer("127.0.0.1"), Group: "",
+		},
+		{
+			UserId: 9, Key: strings.Repeat("d", 48), Status: common.TokenStatusEnabled,
+			Name: "legacy-empty-2", ExpiredTime: -1, RemainQuota: 102, UnlimitedQuota: false,
+			ModelLimitsEnabled: true, ModelLimits: "model-b", AllowIps: common.GetPointer("10.0.0.1"), Group: "",
+		},
+		{
+			UserId: 10, Key: strings.Repeat("e", 48), Status: common.TokenStatusEnabled,
+			Name: "legacy-empty-3", ExpiredTime: -1, RemainQuota: 103, UnlimitedQuota: true,
+			ModelLimitsEnabled: false, ModelLimits: "", AllowIps: common.GetPointer(""), Group: "",
+		},
+		{
+			UserId: 11, Key: strings.Repeat("f", 48), Status: common.TokenStatusEnabled,
+			Name: "legacy-default-2", ExpiredTime: -1, RemainQuota: 104, UnlimitedQuota: false,
+			ModelLimitsEnabled: true, ModelLimits: "model-c", AllowIps: common.GetPointer("192.0.2.1"), Group: "default",
+		},
+		{
+			UserId: 12, Key: strings.Repeat("g", 48), Status: common.TokenStatusEnabled,
+			Name: "legacy-auto", ExpiredTime: -1, RemainQuota: 105, UnlimitedQuota: true,
+			ModelLimitsEnabled: false, ModelLimits: "", AllowIps: common.GetPointer(""), Group: "auto",
+		},
+	}
+	if err := db.Create(&additionalLegacyTokens).Error; err != nil {
+		t.Fatalf("failed to seed production-shaped legacy token rows: %v", err)
 	}
 
 	if got := getTokenKeyColumnType(t, db, dialect); got != "char(48)" {
@@ -319,6 +354,9 @@ func runTokenMigrationCompatibilityTest(t *testing.T, db *gorm.DB, dialect strin
 
 	if got := getTokenKeyColumnType(t, db, dialect); got != "varchar(128)" {
 		t.Fatalf("expected migrated key column type varchar(128), got %q", got)
+	}
+	if !db.Migrator().HasColumn(&legacyToken{}, "cross_group_retry") {
+		t.Fatalf("expected cross_group_retry to remain during the rollback window")
 	}
 
 	var migratedToken model.Token
@@ -331,9 +369,49 @@ func runTokenMigrationCompatibilityTest(t *testing.T, db *gorm.DB, dialect strin
 	if migratedToken.Name != "legacy-token" {
 		t.Fatalf("expected migrated token name to be preserved, got %q", migratedToken.Name)
 	}
-	if got := migratedToken.GetGroupChain(); len(got) != 0 {
-		t.Fatalf("expected migrated token without an explicit group chain to remain invalid, got %#v", got)
+	if got := migratedToken.GetGroupChain(); len(got) != 1 || got[0] != "default" {
+		t.Fatalf("expected migrated token to receive the default explicit group chain, got %#v", got)
 	}
+	if err := model.MigrateLegacyTokenGroupChains(); err != nil {
+		t.Fatalf("failed to rerun token group-chain backfill: %v", err)
+	}
+
+	var productionShapeTokens []model.Token
+	if err := db.Where("name IN ?", []string{
+		"legacy-token",
+		"legacy-empty-1",
+		"legacy-empty-2",
+		"legacy-empty-3",
+		"legacy-default-2",
+	}).Order("name ASC").Find(&productionShapeTokens).Error; err != nil {
+		t.Fatalf("failed to load production-shaped tokens: %v", err)
+	}
+	require.Len(t, productionShapeTokens, 5)
+	for _, token := range productionShapeTokens {
+		assert.Equal(t, "default", token.Group)
+		assert.Equal(t, []string{"default"}, token.GetGroupChain())
+	}
+	productionShapeByName := make(map[string]model.Token, len(productionShapeTokens))
+	for _, token := range productionShapeTokens {
+		productionShapeByName[token.Name] = token
+	}
+	assert.Equal(t, 101, productionShapeByName["legacy-empty-1"].RemainQuota)
+	assert.True(t, productionShapeByName["legacy-empty-1"].ModelLimitsEnabled)
+	assert.Equal(t, "model-a", productionShapeByName["legacy-empty-1"].ModelLimits)
+
+	var legacyReadable legacyToken
+	if err := db.First(&legacyReadable, "name = ?", "legacy-token").Error; err != nil {
+		t.Fatalf("legacy reader failed after migration: %v", err)
+	}
+	assert.True(t, legacyReadable.CrossGroupRetry)
+	assert.Equal(t, 100, legacyReadable.RemainQuota)
+
+	var autoToken model.Token
+	if err := db.First(&autoToken, "name = ?", "legacy-auto").Error; err != nil {
+		t.Fatalf("failed to load legacy auto token: %v", err)
+	}
+	assert.Equal(t, "auto", autoToken.Group)
+	assert.Empty(t, autoToken.GetGroupChain())
 
 	inserted := model.Token{
 		UserId:             8,

@@ -60,6 +60,52 @@ func (token *Token) GetGroupChain() []string {
 	return append([]string(nil), token.GroupChain...)
 }
 
+func MigrateLegacyTokenGroupChains() error {
+	if DB == nil || !DB.Migrator().HasTable(&Token{}) || !DB.Migrator().HasColumn(&Token{}, "group_chain") {
+		return nil
+	}
+	initCol()
+
+	const emptyChainCondition = "(group_chain IS NULL OR group_chain = ? OR group_chain = ?)"
+	return DB.Transaction(func(tx *gorm.DB) error {
+		defaultChain, err := (StringArray{"default"}).Value()
+		if err != nil {
+			return fmt.Errorf("encode default token group chain: %w", err)
+		}
+		if err := tx.Model(&Token{}).
+			Where(emptyChainCondition, "", "[]").
+			Where("("+commonGroupCol+" = ? OR "+commonGroupCol+" IS NULL)", "").
+			Updates(map[string]any{
+				"group":       "default",
+				"group_chain": defaultChain,
+			}).Error; err != nil {
+			return fmt.Errorf("backfill default token group chains: %w", err)
+		}
+
+		var legacyGroups []string
+		if err := tx.Model(&Token{}).
+			Distinct().
+			Where(emptyChainCondition, "", "[]").
+			Where(commonGroupCol+" <> ?", "auto").
+			Pluck("group", &legacyGroups).Error; err != nil {
+			return fmt.Errorf("list legacy token groups: %w", err)
+		}
+		for _, group := range legacyGroups {
+			chain, err := (StringArray{group}).Value()
+			if err != nil {
+				return fmt.Errorf("encode token group chain for %s: %w", group, err)
+			}
+			if err := tx.Model(&Token{}).
+				Where(emptyChainCondition, "", "[]").
+				Where(commonGroupCol+" = ?", group).
+				Update("group_chain", chain).Error; err != nil {
+				return fmt.Errorf("backfill token group chain for %s: %w", group, err)
+			}
+		}
+		return nil
+	})
+}
+
 func (token *Token) GetIpLimits() []string {
 	// delete empty spaces
 	//split with \n

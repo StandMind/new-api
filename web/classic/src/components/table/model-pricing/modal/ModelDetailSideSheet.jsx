@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { SideSheet, Typography, Button, Divider } from '@douyinfe/semi-ui';
+import { SideSheet, Typography, Divider } from '@douyinfe/semi-ui';
 import { IconClose } from '@douyinfe/semi-icons';
 
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
@@ -62,15 +62,8 @@ const ModelDetailSideSheet = ({
         borderBottom: '1px solid var(--semi-color-border)',
       }}
       visible={visible}
-      width={isMobile ? '100%' : 600}
-      closeIcon={
-        <Button
-          className='semi-button-tertiary semi-button-size-small semi-button-borderless'
-          type='button'
-          icon={<IconClose />}
-          onClick={onClose}
-        />
-      }
+      width={isMobile ? '100vw' : 600}
+      closeIcon={<IconClose />}
       onCancel={onClose}
     >
       <div style={{ paddingTop: 16, paddingBottom: 16 }}>

@@ -130,7 +130,7 @@ func authHelper(c *gin.Context, minRole int) {
 		return
 	}
 	if role.(int) < minRole {
-		c.JSON(http.StatusOK, gin.H{
+		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"message": common.TranslateMessage(c, i18n.MsgAuthInsufficientPrivilege),
 		})

@@ -302,33 +302,51 @@ const ModelPricingTable = ({
     title: t('分组'),
     dataIndex: 'group',
     width: 230,
-    onCell: (row) => ({ rowSpan: getGroupCellRowSpan(row) }),
-    render: (group, row) => (
-      <div className='flex flex-wrap items-center gap-1.5 min-w-[200px]'>
-        <Tag color='white' size='small'>
-          {group}
-        </Tag>
-        <OfficialPriceTag
-          modelData={modelData}
-          actualPrice={row.officialActualPrice}
-          unit={row.officialUnit}
-          tierIndex={row.tierIndex ?? 0}
-          tierThresholds={officialTierThresholds}
-          t={t}
-        />
-      </div>
-    ),
+    render: (group, row) => {
+      const rowSpan = getGroupCellRowSpan(row);
+      return {
+        children:
+          rowSpan === 0 ? null : (
+            <div className='flex flex-wrap items-center gap-1.5 min-w-[200px]'>
+              <Tag color='white' size='small'>
+                {group}
+              </Tag>
+              <OfficialPriceTag
+                modelData={modelData}
+                actualPrice={row.officialActualPrice}
+                unit={row.officialUnit}
+                tierIndex={row.tierIndex ?? 0}
+                tierThresholds={officialTierThresholds}
+                t={t}
+              />
+            </div>
+          ),
+        props: {
+          rowSpan,
+          style: rowSpan === 0 ? { display: 'none' } : undefined,
+        },
+      };
+    },
   };
   const ratioColumn = {
     title: t('分组倍率'),
     dataIndex: 'ratio',
     width: 90,
-    onCell: (row) => ({ rowSpan: getGroupCellRowSpan(row) }),
-    render: (ratio) => (
-      <Tag color='blue' size='small'>
-        {ratio}x
-      </Tag>
-    ),
+    render: (ratio, row) => {
+      const rowSpan = getGroupCellRowSpan(row);
+      return {
+        children:
+          rowSpan === 0 ? null : (
+            <Tag color='blue' size='small'>
+              {ratio}x
+            </Tag>
+          ),
+        props: {
+          rowSpan,
+          style: rowSpan === 0 ? { display: 'none' } : undefined,
+        },
+      };
+    },
   };
 
   const columns = [groupColumn, ratioColumn];

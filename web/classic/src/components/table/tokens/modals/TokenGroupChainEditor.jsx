@@ -21,8 +21,7 @@ import {
   closestCenter,
   DndContext,
   KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
+  PointerSensor,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
@@ -34,7 +33,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Button, Select, Tag, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Select, Tag, Typography } from '@douyinfe/semi-ui';
 import { GripVertical, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { renderGroupOption } from '../../../../helpers';
@@ -50,24 +49,43 @@ function SortableGroup({ group, index, option, canRemove, onRemove }) {
     zIndex: sortable.isDragging ? 10 : undefined,
     boxShadow: sortable.isDragging ? '0 8px 24px rgb(0 0 0 / 12%)' : undefined,
   };
+  const forwardSortableArrowKey = (event) => {
+    if (
+      !sortable.isDragging ||
+      !['ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowUp'].includes(event.code)
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: event.key,
+        code: event.code,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  };
 
   return (
     <div
       ref={sortable.setNodeRef}
       style={style}
-      className='flex min-h-14 items-center gap-3 bg-white px-3 py-2'
+      className='flex min-h-14 w-full min-w-0 items-center gap-3 bg-white px-3 py-2'
     >
-      <Tooltip content={t('拖动调整优先级')}>
-        <Button
-          icon={<GripVertical size={16} />}
-          theme='borderless'
-          size='small'
-          className='!touch-none cursor-grab active:cursor-grabbing'
-          aria-label={t('拖动调整优先级')}
-          {...sortable.attributes}
-          {...sortable.listeners}
-        />
-      </Tooltip>
+      <button
+        ref={sortable.setActivatorNodeRef}
+        type='button'
+        className='flex h-8 w-8 shrink-0 touch-none cursor-grab items-center justify-center rounded-md border-0 bg-transparent p-0 text-gray-500 hover:bg-gray-100 active:cursor-grabbing'
+        aria-label={t('拖动调整优先级')}
+        title={t('拖动调整优先级')}
+        onKeyDownCapture={forwardSortableArrowKey}
+        {...sortable.attributes}
+        {...sortable.listeners}
+      >
+        <GripVertical size={16} />
+      </button>
       <Tag size='small' color='blue'>
         {index + 1}
       </Tag>
@@ -87,17 +105,16 @@ function SortableGroup({ group, index, option, canRemove, onRemove }) {
           {option.ratio}x
         </Tag>
       )}
-      <Tooltip content={t('移除分组')}>
-        <Button
-          icon={<Trash2 size={16} />}
-          theme='borderless'
-          type='danger'
-          size='small'
-          disabled={!canRemove}
-          aria-label={t('移除分组')}
-          onClick={onRemove}
-        />
-      </Tooltip>
+      <button
+        type='button'
+        className='flex h-8 w-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent p-0 text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50'
+        disabled={!canRemove}
+        aria-label={t('移除分组')}
+        title={t('移除分组')}
+        onClick={onRemove}
+      >
+        <Trash2 size={16} />
+      </button>
     </div>
   );
 }
@@ -113,10 +130,7 @@ export default function TokenGroupChainEditor({
     [options],
   );
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 150, tolerance: 5 },
-    }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
@@ -139,7 +153,7 @@ export default function TokenGroupChainEditor({
   };
 
   return (
-    <div className='space-y-3'>
+    <div className='min-w-0 space-y-3'>
       <Select
         multiple
         filter
@@ -161,7 +175,7 @@ export default function TokenGroupChainEditor({
         onDragEnd={handleDragEnd}
       >
         <SortableContext items={value} strategy={verticalListSortingStrategy}>
-          <div className='divide-y divide-gray-100 overflow-hidden rounded-lg border border-solid border-gray-200'>
+          <div className='w-full min-w-0 divide-y divide-gray-100 overflow-hidden rounded-lg border border-solid border-gray-200'>
             {value.map((group, index) => (
               <SortableGroup
                 key={group}

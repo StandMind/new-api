@@ -35,10 +35,10 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Trash2 } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import {
   Tooltip,
   TooltipContent,
@@ -73,34 +73,51 @@ function SortableGroup(props: SortableGroupProps) {
     transform: CSS.Transform.toString(sortable.transform),
     transition: sortable.transition,
   }
+  const forwardSortableArrowKey = (
+    event: ReactKeyboardEvent<HTMLButtonElement>
+  ) => {
+    if (
+      !sortable.isDragging ||
+      !['ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowUp'].includes(event.code)
+    ) {
+      return
+    }
+
+    event.preventDefault()
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: event.key,
+        code: event.code,
+        bubbles: true,
+        cancelable: true,
+      })
+    )
+  }
 
   return (
     <div
       ref={sortable.setNodeRef}
       style={style}
       className={cn(
-        'bg-background flex min-h-14 items-center gap-3 px-3 py-2',
+        'bg-background flex min-h-14 w-full min-w-0 items-center gap-3 px-3 py-2',
         sortable.isDragging && 'relative z-10 shadow-lg'
       )}
     >
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              type='button'
-              variant='ghost'
-              size='icon-sm'
-              className='cursor-grab touch-none active:cursor-grabbing'
-              aria-label={t('Drag to reorder')}
-              {...sortable.attributes}
-              {...sortable.listeners}
-            />
-          }
-        >
-          <GripVertical />
-        </TooltipTrigger>
-        <TooltipContent>{t('Drag to reorder')}</TooltipContent>
-      </Tooltip>
+      <button
+        ref={sortable.setActivatorNodeRef}
+        type='button'
+        className={cn(
+          buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
+          'cursor-grab touch-none active:cursor-grabbing'
+        )}
+        aria-label={t('Drag to reorder')}
+        title={t('Drag to reorder')}
+        onKeyDownCapture={forwardSortableArrowKey}
+        {...sortable.attributes}
+        {...sortable.listeners}
+      >
+        <GripVertical />
+      </button>
       <span className='bg-muted text-muted-foreground flex size-6 shrink-0 items-center justify-center rounded-md text-xs font-medium'>
         {props.index + 1}
       </span>
@@ -159,7 +176,7 @@ export function ApiKeyGroupChainEditor(props: ApiKeyGroupChainEditorProps) {
   }
 
   return (
-    <div className='space-y-3'>
+    <div className='min-w-0 space-y-3'>
       <ApiKeyGroupMultiSelect
         options={props.options}
         value={props.value}
@@ -177,7 +194,7 @@ export function ApiKeyGroupChainEditor(props: ApiKeyGroupChainEditorProps) {
           items={props.value}
           strategy={verticalListSortingStrategy}
         >
-          <div className='divide-y overflow-hidden rounded-lg border'>
+          <div className='w-full min-w-0 divide-y overflow-hidden rounded-lg border'>
             {props.value.map((group, index) => (
               <SortableGroup
                 key={group}

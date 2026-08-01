@@ -70,6 +70,14 @@ type GroupModelRouteCandidate struct {
 	Weight      uint   `json:"weight"`
 }
 
+type GroupModelRoutePlan struct {
+	Group      string
+	RouteModel string
+	Route      *GroupModelRoute
+	Explicit   bool
+	Candidates []GroupModelRouteCandidate
+}
+
 type GroupModelRouteListChannel struct {
 	ChannelID   int    `json:"channel_id"`
 	ChannelName string `json:"channel_name"`
@@ -277,6 +285,137 @@ func GetGroupModelRouteCandidatesForRequest(group, model, requestPath string) ([
 		return candidates, nil
 	}
 	return getGroupModelRouteCandidates(group, normalizedModel, requestPath)
+}
+
+func LoadGroupModelRoutePlans(groups []string, modelName, requestPath string) ([]GroupModelRoutePlan, error) {
+	uniqueGroups := make([]string, 0, len(groups))
+	seenGroups := make(map[string]struct{}, len(groups))
+	for _, group := range groups {
+		if _, seen := seenGroups[group]; seen {
+			continue
+		}
+		seenGroups[group] = struct{}{}
+		uniqueGroups = append(uniqueGroups, group)
+	}
+	if len(uniqueGroups) == 0 {
+		return []GroupModelRoutePlan{}, nil
+	}
+
+	normalizedModel := ratio_setting.FormatMatchingModelName(modelName)
+	models := []string{modelName}
+	if normalizedModel != modelName {
+		models = append(models, normalizedModel)
+	}
+
+	type groupModelKey struct {
+		Group string
+		Model string
+	}
+
+	var routes []GroupModelRoute
+	if err := DB.Where(map[string]any{"group": uniqueGroups, "model": models}).
+		Find(&routes).Error; err != nil {
+		return nil, err
+	}
+	routeByKey := make(map[groupModelKey]*GroupModelRoute, len(routes))
+	for index := range routes {
+		route := &routes[index]
+		routeByKey[groupModelKey{Group: route.Group, Model: route.Model}] = route
+	}
+
+	var abilities []Ability
+	if err := DB.Where(map[string]any{"group": uniqueGroups, "model": models}).
+		Where("enabled = ?", true).
+		Find(&abilities).Error; err != nil {
+		return nil, err
+	}
+
+	channelIDs := make([]int, 0, len(abilities))
+	seenChannelIDs := make(map[int]struct{}, len(abilities))
+	for _, ability := range abilities {
+		if _, seen := seenChannelIDs[ability.ChannelId]; seen {
+			continue
+		}
+		seenChannelIDs[ability.ChannelId] = struct{}{}
+		channelIDs = append(channelIDs, ability.ChannelId)
+	}
+	channelByID := make(map[int]*Channel, len(channelIDs))
+	if len(channelIDs) > 0 {
+		var channels []*Channel
+		if err := DB.Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
+			return nil, err
+		}
+		for _, channel := range channels {
+			channelByID[channel.Id] = channel
+		}
+	}
+
+	abilitiesByKey := make(map[groupModelKey][]Ability)
+	for _, ability := range abilities {
+		key := groupModelKey{Group: ability.Group, Model: ability.Model}
+		abilitiesByKey[key] = append(abilitiesByKey[key], ability)
+	}
+	candidatesByKey := make(map[groupModelKey][]GroupModelRouteCandidate, len(abilitiesByKey))
+	for key, matchingAbilities := range abilitiesByKey {
+		matchingAbilities = filterAbilitiesByRequestPathAndModelWithChannels(
+			matchingAbilities,
+			requestPath,
+			key.Model,
+			channelByID,
+		)
+		candidates := make([]GroupModelRouteCandidate, 0, len(matchingAbilities))
+		for _, ability := range matchingAbilities {
+			channel, ok := channelByID[ability.ChannelId]
+			if !ok || channel.Status != common.ChannelStatusEnabled {
+				continue
+			}
+			priority := int64(0)
+			if ability.Priority != nil {
+				priority = *ability.Priority
+			}
+			candidates = append(candidates, GroupModelRouteCandidate{
+				ChannelID:   ability.ChannelId,
+				ChannelName: channel.Name,
+				Priority:    priority,
+				Weight:      ability.Weight,
+			})
+		}
+		sort.SliceStable(candidates, func(i, j int) bool {
+			if candidates[i].Priority != candidates[j].Priority {
+				return candidates[i].Priority > candidates[j].Priority
+			}
+			if candidates[i].Weight != candidates[j].Weight {
+				return candidates[i].Weight > candidates[j].Weight
+			}
+			return candidates[i].ChannelID < candidates[j].ChannelID
+		})
+		candidatesByKey[key] = candidates
+	}
+
+	plans := make([]GroupModelRoutePlan, 0, len(uniqueGroups))
+	for _, group := range uniqueGroups {
+		exactKey := groupModelKey{Group: group, Model: modelName}
+		routeModel := modelName
+		route := routeByKey[exactKey]
+		candidates := candidatesByKey[exactKey]
+		if len(candidates) == 0 && normalizedModel != modelName {
+			candidates = candidatesByKey[groupModelKey{Group: group, Model: normalizedModel}]
+		}
+		if route == nil && normalizedModel != modelName {
+			route = routeByKey[groupModelKey{Group: group, Model: normalizedModel}]
+			if route != nil {
+				routeModel = normalizedModel
+			}
+		}
+		plans = append(plans, GroupModelRoutePlan{
+			Group:      group,
+			RouteModel: routeModel,
+			Route:      route,
+			Explicit:   route != nil,
+			Candidates: candidates,
+		})
+	}
+	return plans, nil
 }
 
 func getGroupModelRouteCandidates(group, model, requestPath string) ([]GroupModelRouteCandidate, error) {

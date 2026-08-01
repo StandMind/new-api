@@ -171,9 +171,25 @@ func filterAbilitiesByRequestPathAndModel(abilities []Ability, requestPath strin
 		// On error, fall back to unfiltered candidates to avoid blocking selection
 		return abilities
 	}
+	channelByID := make(map[int]*Channel, len(channels))
+	for _, channel := range channels {
+		channelByID[channel.Id] = channel
+	}
+	return filterAbilitiesByRequestPathAndModelWithChannels(abilities, requestPath, model, channelByID)
+}
+
+func filterAbilitiesByRequestPathAndModelWithChannels(
+	abilities []Ability,
+	requestPath string,
+	model string,
+	channelByID map[int]*Channel,
+) []Ability {
+	if requestPath == "" || len(abilities) == 0 {
+		return abilities
+	}
 
 	advancedConfigs := make(map[int]*dto.AdvancedCustomConfig)
-	for _, channel := range channels {
+	for _, channel := range channelByID {
 		if channel.Type == constant.ChannelTypeAdvancedCustom {
 			advancedConfigs[channel.Id] = channel.GetOtherSettings().AdvancedCustom
 		}

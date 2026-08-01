@@ -225,16 +225,16 @@ export default function OfficialPriceSettings({ value, refresh }) {
     },
     {
       title: t('计价单位'),
-      dataIndex: 'price',
-      render: (price) =>
-        price.unit === REQUEST_UNIT ? t('每次请求') : t('每百万输入 Token'),
+      dataIndex: 'unit',
+      render: (_unit, row) =>
+        row.price.unit === REQUEST_UNIT ? t('每次请求') : t('每百万输入 Token'),
     },
     {
       title: t('档位'),
-      dataIndex: 'price',
-      render: (price) => (
+      dataIndex: 'tiers',
+      render: (_tiers, row) => (
         <div className='flex flex-wrap gap-1'>
-          {(price.tiers || []).map((tier, index) => (
+          {(row.price.tiers || []).map((tier, index) => (
             <Tag key={`${tier.up_to_input_tokens || 'last'}-${index}`}>
               {tier.up_to_input_tokens
                 ? `≤ ${tier.up_to_input_tokens}: $${tier.price}`
@@ -246,8 +246,8 @@ export default function OfficialPriceSettings({ value, refresh }) {
     },
     {
       title: t('核验日期'),
-      dataIndex: 'price',
-      render: (price) => price.verified_at || '-',
+      dataIndex: 'verified_at',
+      render: (_verifiedAt, row) => row.price.verified_at || '-',
     },
     {
       title: t('操作'),

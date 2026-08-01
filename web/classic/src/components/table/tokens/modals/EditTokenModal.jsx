@@ -364,7 +364,7 @@ const EditTokenModal = (props) => {
       }
       bodyStyle={{ padding: '0' }}
       visible={props.visiable}
-      width={isMobile ? '100%' : 600}
+      width={isMobile ? '100vw' : 600}
       footer={
         <div className='flex justify-end bg-white'>
           <Space>

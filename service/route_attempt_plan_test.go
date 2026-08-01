@@ -1,14 +1,36 @@
 package service
 
 import (
+	"context"
+	"fmt"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
+
+type routeQueryCountingLogger struct {
+	gormlogger.Interface
+	queries int
+}
+
+func (logger *routeQueryCountingLogger) Trace(
+	ctx context.Context,
+	begin time.Time,
+	fc func() (string, int64),
+	err error,
+) {
+	logger.queries++
+	logger.Interface.Trace(ctx, begin, fc, err)
+}
 
 func TestWeightedRouteChannelsOrdersWithoutReplacement(t *testing.T) {
 	channels := []model.GroupModelRouteChannel{
@@ -250,6 +272,140 @@ func TestBuildRouteAttemptPlanUsesIndependentGroupModelRoutes(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.Equal(t, databasePlan.Attempts(), memoryPlan.Attempts())
+}
+
+func TestBuildRouteAttemptPlanUsesBoundedDatabaseQueriesForFifteenGroups(t *testing.T) {
+	truncate(t)
+
+	priority := int64(10)
+	weight := uint(100)
+	channel := model.Channel{
+		Id:       7100,
+		Name:     "shared-query-budget-channel",
+		Key:      "sk-query-budget",
+		Status:   common.ChannelStatusEnabled,
+		Priority: &priority,
+		Weight:   &weight,
+	}
+	require.NoError(t, model.DB.Create(&channel).Error)
+
+	groups := make([]string, 0, 15)
+	abilities := make([]model.Ability, 0, 15)
+	routes := make([]model.GroupModelRoute, 0, 5)
+	for index := 0; index < 15; index++ {
+		group := fmt.Sprintf("query-budget-%02d", index)
+		groups = append(groups, group)
+		abilities = append(abilities, model.Ability{
+			Group:     group,
+			Model:     "query-budget-model",
+			ChannelId: channel.Id,
+			Enabled:   true,
+			Priority:  &priority,
+			Weight:    weight,
+		})
+		if index%3 == 0 {
+			routes = append(routes, model.GroupModelRoute{
+				Group: group,
+				Model: "query-budget-model",
+				Tiers: model.GroupModelRouteTiers{{
+					Priority: 20,
+					Channels: []model.GroupModelRouteChannel{{
+						ChannelID: channel.Id,
+						Weight:    int64(weight),
+					}},
+				}},
+			})
+		}
+	}
+	require.NoError(t, model.DB.Create(&abilities).Error)
+	require.NoError(t, model.DB.Create(&routes).Error)
+
+	baseDB := model.DB
+	queryLogger := &routeQueryCountingLogger{Interface: gormlogger.Discard}
+	model.DB = baseDB.Session(&gorm.Session{Logger: queryLogger})
+	plan, err := BuildRouteAttemptPlan(groups, "query-budget-model", "/v1/chat/completions", true)
+	model.DB = baseDB
+	require.NoError(t, err)
+	require.Len(t, plan.Attempts(), len(groups))
+	assert.LessOrEqual(t, queryLogger.queries, 6, "route planning query budget exceeded")
+}
+
+func TestBuildRouteAttemptPlanNormalizesAfterRequestPathFiltering(t *testing.T) {
+	truncate(t)
+
+	priority := int64(10)
+	weight := uint(100)
+	normalizedChannel := model.Channel{
+		Id:       7301,
+		Name:     "normalized-route-channel",
+		Key:      "sk-normalized-route",
+		Status:   common.ChannelStatusEnabled,
+		Priority: &priority,
+		Weight:   &weight,
+	}
+	exactAdvancedChannel := model.Channel{
+		Id:       7302,
+		Type:     constant.ChannelTypeAdvancedCustom,
+		Name:     "path-mismatched-exact-channel",
+		Key:      "sk-path-mismatch",
+		Status:   common.ChannelStatusEnabled,
+		Priority: &priority,
+		Weight:   &weight,
+	}
+	exactAdvancedChannel.SetOtherSettings(dto.ChannelOtherSettings{
+		AdvancedCustom: &dto.AdvancedCustomConfig{
+			Routes: []dto.AdvancedCustomRoute{{
+				IncomingPath: "/v1/embeddings",
+				UpstreamPath: "/v1/embeddings",
+				Models:       []string{"gpt-4-gizmo-customer"},
+			}},
+		},
+	})
+	require.NoError(t, model.DB.Create(&[]model.Channel{normalizedChannel, exactAdvancedChannel}).Error)
+	require.NoError(t, model.DB.Create(&[]model.Ability{
+		{
+			Group:     "normalized-route-group",
+			Model:     "gpt-4-gizmo-*",
+			ChannelId: normalizedChannel.Id,
+			Enabled:   true,
+			Priority:  &priority,
+			Weight:    weight,
+		},
+		{
+			Group:     "normalized-route-group",
+			Model:     "gpt-4-gizmo-customer",
+			ChannelId: exactAdvancedChannel.Id,
+			Enabled:   true,
+			Priority:  &priority,
+			Weight:    weight,
+		},
+	}).Error)
+	require.NoError(t, model.SaveGroupModelRoute(&model.GroupModelRoute{
+		Group: "normalized-route-group",
+		Model: "gpt-4-gizmo-*",
+		Tiers: model.GroupModelRouteTiers{{
+			Priority: 100,
+			Channels: []model.GroupModelRouteChannel{{
+				ChannelID: normalizedChannel.Id,
+				Weight:    100,
+			}},
+		}},
+	}))
+
+	plan, err := BuildRouteAttemptPlan(
+		[]string{"normalized-route-group"},
+		"gpt-4-gizmo-customer",
+		"/v1/chat/completions",
+		false,
+	)
+	require.NoError(t, err)
+	assert.Equal(t, []RouteAttempt{{
+		Group:     "normalized-route-group",
+		Model:     "gpt-4-gizmo-*",
+		Priority:  100,
+		ChannelID: normalizedChannel.Id,
+		Explicit:  true,
+	}}, plan.Attempts())
 }
 
 func TestNormalizeGroupModelRouteRejectsInvalidTiers(t *testing.T) {
