@@ -61,6 +61,37 @@ state_set phase starting
 state_set master_replaced true
 [ "$(state_get master_replaced)" = "true" ]
 
+state_set phase observing-complete
+state_set candidate_slot blue
+ACTIVE_IMAGE='example.invalid/new-api@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+container_running() {
+  return 0
+}
+wait_healthy() {
+  return 0
+}
+container_image() {
+  case "$1" in
+    new-api-green) printf '%s\n' "${ACTIVE_IMAGE}" ;;
+    new-api-blue|new-api-master) printf '%s\n' "${VALID_IMAGE}" ;;
+    *) return 1 ;;
+  esac
+}
+caddy_has_upstream_order() {
+  [ "$1" = new-api-green ] && [ "$2" = new-api-blue ]
+}
+supersede_upgrade
+[ "$(state_get phase)" = "superseded" ]
+[ "$(state_get superseded_by_slot)" = "green" ]
+[ "$(state_get superseded_by_image)" = "${ACTIVE_IMAGE}" ]
+[ -f "$(state_get superseded_state_archive)" ]
+require_closed_upgrade
+state_set phase observing-complete
+if (require_closed_upgrade); then
+  printf 'open upgrade unexpectedly allowed a regular slot change\n' >&2
+  exit 1
+fi
+
 CANDIDATE_CADDY="${TEST_DIR}/Caddyfile.candidate"
 render_caddy_candidate new-api-blue new-api-green "${CANDIDATE_CADDY}" /readyz
 grep -q 'reverse_proxy new-api-blue:3000 new-api-green:3000' "${CANDIDATE_CADDY}"

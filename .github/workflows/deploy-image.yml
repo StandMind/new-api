@@ -26,6 +26,7 @@ on:
           - start-upgrade
           - finalize-upgrade
           - rollback-upgrade
+          - supersede-upgrade
       image_ref:
         description: 'Immutable image digest; required for deploy/preflight-upgrade/start-upgrade'
         required: false
@@ -192,7 +193,7 @@ jobs:
     name: Approve production deployment
     if: >-
       github.event_name == 'workflow_dispatch' &&
-      (inputs.operation == 'deploy' || inputs.operation == 'start-upgrade')
+      (inputs.operation == 'deploy' || inputs.operation == 'start-upgrade' || inputs.operation == 'supersede-upgrade')
     needs: validate
     runs-on: ubuntu-latest
     environment: production
@@ -213,12 +214,13 @@ jobs:
       needs.validate.result == 'success' &&
       (
         (
-          (inputs.operation == 'deploy' || inputs.operation == 'start-upgrade') &&
+          (inputs.operation == 'deploy' || inputs.operation == 'start-upgrade' || inputs.operation == 'supersede-upgrade') &&
           needs.production_approval.result == 'success'
         ) ||
         (
           inputs.operation != 'deploy' &&
           inputs.operation != 'start-upgrade' &&
+          inputs.operation != 'supersede-upgrade' &&
           needs.production_approval.result == 'skipped'
         )
       )
@@ -257,7 +259,7 @@ jobs:
                 exit 1
               fi
               ;;
-            finalize-upgrade|rollback-upgrade)
+            finalize-upgrade|rollback-upgrade|supersede-upgrade)
               ;;
             *)
               echo "::error::unsupported operation: ${OPERATION}"

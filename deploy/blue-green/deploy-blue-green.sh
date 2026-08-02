@@ -43,6 +43,7 @@ Usage:
   deploy-blue-green.sh start-upgrade <image@sha256:digest>
   deploy-blue-green.sh finalize-upgrade
   deploy-blue-green.sh rollback-upgrade
+  deploy-blue-green.sh supersede-upgrade
 
 The deploy command recreates only the inactive slot. It refuses to proceed if
 that slot still has established HTTP connections. The previously active slot
@@ -263,6 +264,16 @@ require_upgrade_phase() {
     fi
   done
   fatal "upgrade phase is ${phase:-unknown}; expected: $*"
+}
+
+require_closed_upgrade() {
+  local phase
+  [ -f "${UPGRADE_STATE_FILE}" ] || return
+  phase="$(state_get phase)"
+  case "${phase}" in
+    finalized|rolled-back|superseded) return ;;
+    *) fatal "regular slot changes are blocked while upgrade phase is ${phase:-unknown}" ;;
+  esac
 }
 
 latest_backup() {
@@ -589,6 +600,7 @@ switch_slot() {
   local previous_slot
   local target_service
   local previous_service
+  require_closed_upgrade
   validate_slot "${target_slot}"
   previous_slot="$(read_active_slot)"
   target_service="$(service_for_slot "${target_slot}")"
@@ -616,6 +628,7 @@ deploy_inactive() {
   local active_service
 
   validate_image_ref "${image_ref}"
+  require_closed_upgrade
 
   active_slot="$(read_active_slot)"
   inactive_slot="$(other_slot "${active_slot}")"
@@ -904,7 +917,7 @@ preflight_upgrade() {
   if [ -f "${UPGRADE_STATE_FILE}" ]; then
     existing_phase="$(state_get phase)"
     case "${existing_phase}" in
-      finalized|rolled-back) ;;
+      finalized|rolled-back|superseded) ;;
       *) fatal "an upgrade is already in phase ${existing_phase:-unknown}" ;;
     esac
   fi
@@ -1129,6 +1142,52 @@ rollback_upgrade() {
   rollback_upgrade_internal
 }
 
+supersede_upgrade() {
+  local active_slot
+  local candidate_slot
+  local active_service
+  local candidate_service
+  local active_image
+  local candidate_image
+  local archive_file
+
+  require_upgrade_phase observing-complete
+  active_slot="$(read_active_slot)"
+  candidate_slot="$(state_get candidate_slot)"
+  validate_slot "${candidate_slot}"
+  [ "${active_slot}" != "${candidate_slot}" ] \
+    || fatal "candidate slot is still active; finalize or roll back the upgrade instead"
+
+  active_service="$(service_for_slot "${active_slot}")"
+  candidate_service="$(service_for_slot "${candidate_slot}")"
+  container_running "${active_service}" || fatal "active service ${active_service} is not running"
+  container_running "${candidate_service}" || fatal "candidate service ${candidate_service} is not running"
+  container_running new-api-master || fatal "new-api-master is not running"
+  wait_healthy "${active_service}"
+  wait_healthy "${candidate_service}"
+
+  active_image="$(container_image "${active_service}")"
+  candidate_image="$(state_get candidate_image)"
+  [ "$(container_image "${candidate_service}")" = "${candidate_image}" ] \
+    || fatal "recorded candidate slot no longer runs the recorded candidate image"
+  [ "$(container_image new-api-master)" = "${candidate_image}" ] \
+    || fatal "master no longer runs the recorded candidate image"
+  [ "${active_image}" != "${candidate_image}" ] \
+    || fatal "active image has not superseded the recorded candidate image"
+  caddy_has_upstream_order "${active_service}" "${candidate_service}" \
+    || fatal "Caddy runtime upstream order does not match the active slot"
+
+  archive_file="${UPGRADE_STATE_FILE}.superseded.$(date +%Y%m%d%H%M%S)"
+  cp -a "${UPGRADE_STATE_FILE}" "${archive_file}"
+  chmod 600 "${archive_file}"
+  state_set superseded_by_slot "${active_slot}"
+  state_set superseded_by_image "${active_image}"
+  state_set superseded_state_archive "${archive_file}"
+  state_set phase superseded
+  state_set completed_at "$(date -Ins)"
+  log "archived superseded upgrade state at ${archive_file}; no service or traffic changes were made"
+}
+
 show_status() {
   local active="unknown"
   if [ -s "${ACTIVE_SLOT_FILE}" ]; then
@@ -1208,6 +1267,10 @@ main() {
     rollback-upgrade)
       [ "$#" -eq 1 ] || fatal "rollback-upgrade takes no image argument"
       rollback_upgrade
+      ;;
+    supersede-upgrade)
+      [ "$#" -eq 1 ] || fatal "supersede-upgrade takes no image argument"
+      supersede_upgrade
       ;;
     *)
       usage

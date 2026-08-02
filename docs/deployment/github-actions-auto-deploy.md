@@ -11,9 +11,10 @@
 1. Pull Request 和 push 到 `aivrae/main`：阻断执行全量 Go 测试、default typecheck、i18n 同步、default/classic production build、部署工具校验和容器镜像构建。
 2. Pull Request 只验证镜像可构建，不推送；push 会推送 SHA 标签到 GHCR，并在工作流摘要中输出 digest。
 3. `workflow_dispatch`：可选择 `deploy`、`preflight-upgrade`、`start-upgrade`、
-   `finalize-upgrade` 或 `rollback-upgrade`。只有真正开始对外发布的 `deploy` 和
-   `start-upgrade` 会等待 `production` Environment 人工批准；其余操作在校验通过后
-   直接执行。
+   `finalize-upgrade`、`rollback-upgrade` 或 `supersede-upgrade`。真正开始对外发布的
+   `deploy`、`start-upgrade`，以及关闭已被后续发布取代的历史回滚状态的
+   `supersede-upgrade` 会等待 `production` Environment 人工批准；其余操作在校验通过
+   后直接执行。
 
 `.github/workflows/migration-compatibility.yml` 另外在 SQLite、MySQL 5.7、PostgreSQL
 9.6 和 PostgreSQL 15 上运行两次 `--migrate-only`，并验证两项批准的列类型变化和
@@ -118,6 +119,7 @@ docker-compose.slots.yml  blue、green、master
 | `start-upgrade` | 是 | 执行生产迁移、替换 master 并切换对外流量 |
 | `finalize-upgrade` | 否 | 由 24 小时保留期和零连接检查阻断不安全执行 |
 | `rollback-upgrade` | 否 | 回滚必须能够立即执行，不应等待人工审批门禁 |
+| `supersede-upgrade` | 是 | 归档已被后续发布取代且无法再回滚的升级状态 |
 
 `aivrae/main` 的分支保护应要求升级 PR 通过 `Validate application`、
 `Build immutable image`、SQLite、MySQL 5.7、PostgreSQL 9.6 和 PostgreSQL 15
@@ -165,12 +167,17 @@ docker-compose.slots.yml  blue、green、master
    切换为 `/readyz`。
 5. `rollback-upgrade`：仅允许在 finalize 前执行。先恢复 Caddy 到旧活动槽，再恢复
    旧 master；不会恢复数据库备份，也不会删除候选槽日志。
+6. `supersede-upgrade`：仅用于历史升级已完成观察、但候选槽随后被一次普通发布取代，
+   导致 finalize 无法继续的恢复场景。操作要求当前活动镜像与历史候选不同、历史候选
+   槽和 master 仍运行记录的候选镜像且 Caddy 顺序正确；满足条件后只归档并关闭旧状态，
+   不修改容器、数据库或流量。普通 deploy 和手工 switch 在升级状态关闭前会被阻断。
 
 `upgrade-state` 的主要阶段为：
 
 ```text
 preflight-complete -> starting -> switched -> observing-complete -> finalized
                                              \-> rolled-back
+                                             \-> superseded
 ```
 
 候选镜像必须是完整 `image@sha256:digest`。`start-upgrade` 还强制要求低额度
