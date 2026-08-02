@@ -9,37 +9,37 @@
     },
     "es": {
       "file": "es.json",
-      "missingCount": 0,
+      "missingCount": 56,
       "extrasCount": 0,
-      "untranslatedCount": 273
+      "untranslatedCount": 282
     },
     "fr": {
       "file": "fr.json",
-      "missingCount": 0,
+      "missingCount": 56,
       "extrasCount": 0,
-      "untranslatedCount": 41
+      "untranslatedCount": 50
     },
     "ja": {
       "file": "ja.json",
-      "missingCount": 0,
+      "missingCount": 56,
       "extrasCount": 0,
-      "untranslatedCount": 131
+      "untranslatedCount": 179
     },
     "ru": {
       "file": "ru.json",
-      "missingCount": 0,
+      "missingCount": 56,
       "extrasCount": 0,
-      "untranslatedCount": 131
+      "untranslatedCount": 179
     },
     "vi": {
       "file": "vi.json",
-      "missingCount": 0,
+      "missingCount": 56,
       "extrasCount": 0,
-      "untranslatedCount": 41
+      "untranslatedCount": 50
     },
     "zh-TW": {
       "file": "zh-TW.json",
-      "missingCount": 0,
+      "missingCount": 56,
       "extrasCount": 0,
       "untranslatedCount": 0
     },

@@ -234,6 +234,14 @@ func SetApiRouter(router *gin.Engine) {
 			ratioSyncRoute.GET("/channels", controller.GetSyncableChannels)
 			ratioSyncRoute.POST("/fetch", controller.FetchUpstreamRatios)
 		}
+		openLuxPriceSyncRoute := apiRouter.Group("/openlux-price-sync")
+		openLuxPriceSyncRoute.Use(middleware.RootAuth())
+		{
+			openLuxPriceSyncRoute.GET("/bindings", controller.GetOpenLuxPriceSyncBindings)
+			openLuxPriceSyncRoute.PUT("/bindings", controller.PutOpenLuxPriceSyncBindings)
+			openLuxPriceSyncRoute.POST("/preview", controller.PreviewOpenLuxPriceSync)
+			openLuxPriceSyncRoute.POST("/apply", controller.ApplyOpenLuxPriceSync)
+		}
 		registerChannelRoutes(apiRouter)
 		registerAuthzRoutes(apiRouter)
 		tokenRoute := apiRouter.Group("/token")

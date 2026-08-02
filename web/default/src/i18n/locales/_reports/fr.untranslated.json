@@ -39,5 +39,14 @@
   "The response body was empty.": "The response body was empty.",
   "The response body was not captured for this record.": "The response body was not captured for this record.",
   "Request details are unavailable or have expired.": "Request details are unavailable or have expired.",
-  "Failed to load request details": "Failed to load request details"
+  "Failed to load request details": "Failed to load request details",
+  "Changes applied, but the refreshed preview could not be loaded": "Changes applied, but the refreshed preview could not be loaded",
+  "Failed to apply OpenLux changes": "Failed to apply OpenLux changes",
+  "Failed to check OpenLux prices": "Failed to check OpenLux prices",
+  "Failed to load OpenLux bindings": "Failed to load OpenLux bindings",
+  "Failed to save OpenLux bindings": "Failed to save OpenLux bindings",
+  "Price also applies to {{count}} other channels": "Price also applies to {{count}} other channels",
+  "The preview is stale. Check OpenLux prices again.": "The preview is stale. Check OpenLux prices again.",
+  "association_and_price": "Remove association and group price",
+  "openlux_only_price_retained": "Detach OpenLux and retain group price"
 }

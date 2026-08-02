@@ -116,6 +116,7 @@ const BILLING_SECTIONS = [
           'official-prices',
           'tool-prices',
           'upstream-sync',
+          'openlux-sync',
         ]}
       />
     ),

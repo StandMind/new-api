@@ -35,6 +35,7 @@ import { GroupModelRouteEditor } from './group-model-route-editor'
 import { GroupRatioForm } from './group-ratio-form'
 import { ModelRatioForm } from './model-ratio-form'
 import { OfficialPriceSettings } from './official-price-settings'
+import { OpenLuxPriceSync } from './openlux-sync'
 import { ToolPriceSettings } from './tool-price-settings'
 import { UpstreamRatioSync } from './upstream-ratio-sync'
 import {
@@ -140,6 +141,7 @@ type RatioTabId =
   | 'official-prices'
   | 'tool-prices'
   | 'upstream-sync'
+  | 'openlux-sync'
 
 type RatioSettingsCardProps = {
   modelDefaults: ModelFormValues
@@ -400,6 +402,7 @@ export function RatioSettingsCard({
     'official-prices': 'Official reference prices',
     'tool-prices': 'Tool prices',
     'upstream-sync': 'Upstream price sync',
+    'openlux-sync': 'OpenLux sync',
   }
   const tabsGridClass =
     {
@@ -408,6 +411,7 @@ export function RatioSettingsCard({
       3: 'grid-cols-3',
       4: 'grid-cols-4',
       5: 'grid-cols-5',
+      6: 'grid-cols-6',
     }[visibleTabs.length] ?? 'grid-cols-4'
   const defaultTab = visibleTabs[0] ?? 'models'
 
@@ -445,6 +449,9 @@ export function RatioSettingsCard({
     if (tab === 'official-prices') {
       return <OfficialPriceSettings defaultValue={officialPricesDefault} />
     }
+    if (tab === 'openlux-sync') {
+      return <OpenLuxPriceSync />
+    }
     return (
       <UpstreamRatioSync
         modelRatios={{
@@ -464,13 +471,15 @@ export function RatioSettingsCard({
   }
 
   const renderTabSwitcher = () => (
-    <TabsList className={`grid w-fit max-w-full ${tabsGridClass}`}>
-      {visibleTabs.map((tab) => (
-        <TabsTrigger key={tab} value={tab}>
-          {t(tabLabels[tab])}
-        </TabsTrigger>
-      ))}
-    </TabsList>
+    <div className='w-full overflow-x-auto pb-1'>
+      <TabsList className={`grid max-w-none min-w-max ${tabsGridClass}`}>
+        {visibleTabs.map((tab) => (
+          <TabsTrigger key={tab} value={tab}>
+            {t(tabLabels[tab])}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </div>
   )
 
   return (
