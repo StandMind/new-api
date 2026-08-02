@@ -23,6 +23,7 @@ type Pricing struct {
 	Tags                   string                             `json:"tags,omitempty"`
 	TagsI18n               LocalizedText                      `json:"-"`
 	VendorID               int                                `json:"vendor_id,omitempty"`
+	ReleaseDate            string                             `json:"release_date,omitempty"`
 	QuotaType              int                                `json:"quota_type"`
 	ModelRatio             float64                            `json:"model_ratio"`
 	ModelPrice             float64                            `json:"model_price"`
@@ -397,6 +398,7 @@ func updatePricing() {
 			pricing.Tags = meta.Tags
 			pricing.TagsI18n = meta.TagsI18n
 			pricing.VendorID = meta.VendorID
+			pricing.ReleaseDate = meta.ReleaseDate
 		}
 		modelPrice, findPrice := ratio_setting.GetModelPrice(model, false)
 		if findPrice {

@@ -162,6 +162,28 @@ func TestPricingModelMetadataEndpointsCanProvideEndpointWithoutChannelInference(
 	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAI}, byModel["metadata-only-model"])
 }
 
+func TestPricingIncludesModelReleaseDate(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+
+	insertPricingEndpointChannel(t, 105, constant.ChannelTypeOpenAI, dto.ChannelOtherSettings{})
+	insertPricingEndpointAbility(t, 105, "release-date-model")
+	require.NoError(t, DB.Create(&Model{
+		ModelName:   "release-date-model",
+		ReleaseDate: "2026-07-31",
+		Status:      1,
+		NameRule:    NameRuleExact,
+	}).Error)
+
+	pricings := GetPricing()
+	for _, pricing := range pricings {
+		if pricing.ModelName == "release-date-model" {
+			assert.Equal(t, "2026-07-31", pricing.ReleaseDate)
+			return
+		}
+	}
+	t.Fatal("release-date-model was not returned by pricing")
+}
+
 func TestPricingAdvancedCustomMissingConfigFallsBackToChannelType(t *testing.T) {
 	resetPricingEndpointTestTables(t)
 

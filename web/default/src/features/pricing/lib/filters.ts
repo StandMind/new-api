@@ -115,6 +115,22 @@ export function sortModels(
   const sorted = [...models]
 
   switch (sortBy) {
+    case SORT_OPTIONS.RELEASE_DATE:
+      sorted.sort((a, b) => {
+        const aDate = /^\d{4}-\d{2}-\d{2}$/.test(a.release_date || '')
+          ? a.release_date || ''
+          : ''
+        const bDate = /^\d{4}-\d{2}-\d{2}$/.test(b.release_date || '')
+          ? b.release_date || ''
+          : ''
+        if (aDate !== bDate) {
+          if (!aDate) return 1
+          if (!bDate) return -1
+          return bDate.localeCompare(aDate)
+        }
+        return (a.model_name || '').localeCompare(b.model_name || '')
+      })
+      break
     case SORT_OPTIONS.NAME:
       sorted.sort((a, b) =>
         (a.model_name || '').localeCompare(b.model_name || '')

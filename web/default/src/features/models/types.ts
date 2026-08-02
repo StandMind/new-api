@@ -48,6 +48,7 @@ export interface Model {
   endpoints?: string
   status: number
   sync_official: number
+  release_date?: string
   created_time: number
   updated_time: number
   name_rule: number

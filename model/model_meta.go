@@ -1,8 +1,10 @@
 package model
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 
@@ -33,6 +35,7 @@ type Model struct {
 	Endpoints       string         `json:"endpoints,omitempty" gorm:"type:text"`
 	Status          int            `json:"status" gorm:"default:1"`
 	SyncOfficial    int            `json:"sync_official" gorm:"default:1"`
+	ReleaseDate     string         `json:"release_date,omitempty" gorm:"type:varchar(10)"`
 	CreatedTime     int64          `json:"created_time" gorm:"bigint"`
 	UpdatedTime     int64          `json:"updated_time" gorm:"bigint"`
 	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index;uniqueIndex:uk_model_name_delete_at,priority:2"`
@@ -46,7 +49,24 @@ type Model struct {
 	MatchedCount  int      `json:"matched_count,omitempty" gorm:"-"`
 }
 
+func normalizeModelReleaseDate(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	parsed, err := time.Parse(time.DateOnly, value)
+	if err != nil || parsed.Format(time.DateOnly) != value {
+		return "", fmt.Errorf("release_date must use YYYY-MM-DD format")
+	}
+	return value, nil
+}
+
 func (mi *Model) Insert() error {
+	releaseDate, err := normalizeModelReleaseDate(mi.ReleaseDate)
+	if err != nil {
+		return err
+	}
+	mi.ReleaseDate = releaseDate
 	now := common.GetTimestamp()
 	mi.CreatedTime = now
 	mi.UpdatedTime = now
@@ -77,10 +97,15 @@ func IsModelNameDuplicated(id int, name string) (bool, error) {
 }
 
 func (mi *Model) Update() error {
+	releaseDate, err := normalizeModelReleaseDate(mi.ReleaseDate)
+	if err != nil {
+		return err
+	}
+	mi.ReleaseDate = releaseDate
 	mi.UpdatedTime = common.GetTimestamp()
 	// 使用 Select 强制更新所有字段，包括零值
 	return DB.Model(&Model{}).Where("id = ?", mi.Id).
-		Select("model_name", "description", "description_i18n", "icon", "tags", "tags_i18n", "vendor_id", "endpoints", "status", "sync_official", "name_rule", "updated_time").
+		Select("model_name", "description", "description_i18n", "icon", "tags", "tags_i18n", "vendor_id", "endpoints", "status", "sync_official", "release_date", "name_rule", "updated_time").
 		Updates(mi).Error
 }
 

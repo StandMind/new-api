@@ -278,6 +278,23 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
       enableSorting: false,
     },
 
+    // Model release date column
+    {
+      accessorKey: 'release_date',
+      header: t('Release Date'),
+      meta: { mobileHidden: true },
+      cell: ({ row }) => {
+        const releaseDate = row.getValue('release_date') as string
+        return (
+          <span className='font-mono text-sm whitespace-nowrap'>
+            {releaseDate || '-'}
+          </span>
+        )
+      },
+      size: 125,
+      enableSorting: false,
+    },
+
     // Tags column
     {
       accessorKey: 'tags',

@@ -100,6 +100,7 @@ const extendedModelFormSchema = z.object({
   name_rule: z.number(),
   status: z.boolean(),
   sync_official: z.boolean(),
+  release_date: z.string(),
   price: z.string().optional(),
   ratio: z.string().optional(),
   cacheRatio: z.string().optional(),
@@ -269,6 +270,7 @@ export function ModelMutateDrawer({
       name_rule: 0,
       status: true,
       sync_official: true,
+      release_date: '',
       price: '',
       ratio: '',
       cacheRatio: '',
@@ -331,6 +333,7 @@ export function ModelMutateDrawer({
         name_rule: model.name_rule || 0,
         status: model.status === 1,
         sync_official: model.sync_official === 1,
+        release_date: model.release_date || '',
         price: '',
         ratio: '',
         cacheRatio: '',
@@ -437,6 +440,7 @@ export function ModelMutateDrawer({
         name_rule: 0,
         status: true,
         sync_official: true,
+        release_date: '',
         price: '',
         ratio: '',
         cacheRatio: '',
@@ -470,6 +474,7 @@ export function ModelMutateDrawer({
           tags_i18n: serializeLocalizedTags(values.tags_i18n),
           status: values.status ? 1 : 0,
           sync_official: values.sync_official ? 1 : 0,
+          release_date: values.release_date.trim(),
         }
 
         // Remove ratio fields from model data (they're stored in system settings)
@@ -820,6 +825,23 @@ export function ModelMutateDrawer({
                         </SelectGroup>
                       </SelectContent>
                     </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='release_date'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Release Date')}</FormLabel>
+                    <FormControl>
+                      <Input type='date' {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Official release date of this model.')}
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

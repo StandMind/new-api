@@ -156,6 +156,28 @@ function formatCatalogYearMonth(value?: string): string {
   return date.toLocaleString(undefined, { year: 'numeric', month: 'short' })
 }
 
+function formatCatalogDate(value?: string): string {
+  if (!value) return ''
+  const [yearStr, monthStr, dayStr] = value.split('-')
+  const year = Number(yearStr)
+  const month = Number(monthStr)
+  const day = Number(dayStr)
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day)
+  ) {
+    return value
+  }
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return date.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
 function normalizeCatalogItems(items?: readonly string[]): string[] {
   if (!items) return []
   return items.filter((item) => item.trim().length > 0)
@@ -302,7 +324,7 @@ function ModelBackendQuickStats(props: { model: PricingModel }) {
   const contextLength = model.context_length ?? 0
   const maxOutput = model.max_output_tokens ?? 0
   const knowledgeCutoff = formatCatalogYearMonth(model.knowledge_cutoff)
-  const releaseDate = formatCatalogYearMonth(model.release_date)
+  const releaseDate = formatCatalogDate(model.release_date)
 
   const stats: {
     key: string
