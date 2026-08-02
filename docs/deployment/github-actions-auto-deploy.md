@@ -159,7 +159,7 @@ docker-compose.slots.yml  blue、green、master
    一个 master。随后再次确认非活动槽零连接，重建并执行 readiness、状态、模型、
    非流式和流式冒烟。长 SSE 必须通过 `aivrae.com` 建立，确认已经由旧活动槽返回
    首个数据帧且连接仍存活后才 reload Caddy。混合版本健康检查保持 `/api/status`。
-3. `start-upgrade` 切流后持续观察 60 分钟。候选槽 unhealthy/restart，或公共状态与
+3. `start-upgrade` 切流后持续观察 15 分钟。候选槽 unhealthy/restart，或公共状态与
    模型列表连续两次失败时，脚本立即按固定顺序回滚；全程公网探测出现非 2xx 也会
    阻断升级。成功后状态进入 `observing-complete`，旧槽仍保留原镜像。
 4. `finalize-upgrade`：从切流时间起至少保留旧槽 24 小时，并确认旧槽连续 10 分钟
