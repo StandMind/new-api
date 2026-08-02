@@ -163,8 +163,8 @@ Default 与 Classic 的 API Key 编辑器均使用可搜索多选下拉框。新
 管理后台的“官方参考价”页支持搜索、新增、编辑和删除。Default 使用右侧抽屉，Classic
 使用大尺寸弹窗；两者都编辑整个 JSON Option，不增加数据库表。
 
-本地云雾实例初始化 26 条 2026-07-30 参考价，来源为 OpenAI API Pricing 和 Gemini
-API Pricing。`gpt-5.2-chat` 映射官方 `gpt-5.2-chat-latest`；
+当前 OpenLux 分组导入沿用 26 条 2026-07-30 参考价，来源为 OpenAI API Pricing 和
+Gemini API Pricing。`gpt-5.2-chat` 映射官方 `gpt-5.2-chat-latest`；
 `gpt-5.3-codex-spark` 无公开标准 API 单价，`gemini-3-pro-preview` 已关闭，因此两者不
 初始化，也不显示比较标签。
 
@@ -434,121 +434,75 @@ Classic 前端：
 
 删除显式路线是可恢复继承行为的配置操作，不会删除 Channel 或 Ability。
 
-## 本地云雾对照实例
+## OpenLux 上游分组导入
 
-`work/aivrae-yunwu-local/` 提供一个与现有开发数据库隔离的三阶段同步工具：
+`work/aivrae-openlux/` 保存本次 OpenLux 价格准备、账号分组探测、生产导入和验收工具。
+该目录被 Git 忽略；系统访问令牌只通过终端提示或标准输入进入进程，不得写入命令
+参数、环境、清单、报告或文档。OpenLux 管理接口还要求与令牌所属账号匹配的数字型
+`New-Api-User`。
 
 ```bash
-./work/aivrae-yunwu-local/sync.py prepare
-./work/aivrae-yunwu-local/sync.py apply --execute --confirm-token-count 15
-./work/aivrae-yunwu-local/sync.py verify
-./work/aivrae-yunwu-local/run-frontend.sh start
+python3 work/aivrae-openlux/prepare_expansion.py prepare
+python3 work/aivrae-openlux/prepare_expansion.py verify
+go run ./work/aivrae-openlux/validate_expansion_billing
+python3 work/aivrae-openlux/expand_production.py --dry-run
+python3 work/aivrae-openlux/expand_production.py \
+  --execute --confirm-model-count 298 --confirm-group-count 58 \
+  --openlux-user-id <uid>
+python3 work/aivrae-openlux/verify_expansion.py
 ```
 
-`prepare` 只读取 Aivrae 和云雾的公开价格接口，保存带抓取时间和 SHA256 的原始快照，
-并生成不含令牌的 `manifest.json`、`price-audit.json` 和 `price-audit.csv`。线上
-`aivrae.com` 只用于锁定公开模型范围；同步工具不会修改线上配置、渠道或数据库。
+`prepare_expansion` 读取 Aivrae 与 OpenLux 的公开 `/api/pricing`，保存抓取时间、原始
+响应和 SHA256。导入前的候选范围是 449 个 OpenLux 公开模型；按账号可创建分组、当前
+代码已有协议和端点适配器、模型未在 Aivrae 启用等条件筛出 298 个候选模型、58 个分组
+和 1350 个 `(分组, 模型)` 组合。77 个端点协议尚不支持、46 个模型没有账号可用分组、
+28 个模型已存在，因此不会重复导入。
 
-当前清单从线上 29 个模型中选取与云雾精确同名的 28 个，排除
-`gpt-5.4-2026-03-05`：
-
-- GPT/Codex：
-  `gpt-5.4-nano`、`gpt-5.4-mini`、`gpt-5.4`、`gpt-5.4-pro`、
-  `gpt-5.2`、`gpt-5.2-chat`、`gpt-5.3-codex`、`gpt-5.3-codex-spark`、
-  `gpt-5.5`、`gpt-5.6-luna`、`gpt-5.6-sol`、`gpt-5.6-terra`。
-- Gemini：
-  `gemini-2.5-flash-lite`、`gemini-2.5-flash`、`gemini-2.5-pro`、
-  `gemini-3-flash-preview`、`gemini-3-pro-preview`、`gemini-3.1-pro-preview`、
-  `gemini-3.1-flash-lite`、`gemini-3.1-flash-image`、
-  `gemini-3.1-flash-lite-image`、`gemini-3.5-flash`、
-  `gemini-3.5-flash-lite`、`gemini-3.6-flash`、`gemini-3-pro-image`。
-- 图片按次模型：`gpt-image-1`、`gpt-image-1.5`、`gpt-image-2`。
-
-模型的 `enable_groups` 严格复制云雾公开配置，共得到 182 条模型与分组 Ability。
-当前范围没有云雾模型专属分组覆盖，因此 `GroupModelRatio` 保持空对象。15 个相关分组
-及基础倍率如下：
-
-| 分组 | 倍率 | 模型数 |
-| --- | ---: | ---: |
-| `default` | 1 | 15 |
-| `Codex专属` | 0.8 | 9 |
-| `特价codex` | 0.2 | 6 |
-| `限时特价` | 0.6 | 13 |
-| `限时体验` | 1.4 | 14 |
-| `纯AZ` | 1.5 | 14 |
-| `官转` | 3 | 14 |
-| `官转OpenAI` | 6 | 15 |
-| `优质官转OpenAI` | 8 | 15 |
-| `gemini-cli` | 1 | 9 |
-| `优质gemini` | 2.4 | 11 |
-| `官转gemini` | 3.6 | 13 |
-| `优质官转gemini` | 6 | 13 |
-| `直连Gemini` | 11 | 10 |
-| `优质官转gemini2` | 13 | 11 |
-
-本地售价使用十进制定点数计算，中间不提前舍入，配置最多保留 12 位小数。云雾积分
-先按 `2 × model_ratio × 有效分组倍率` 计算，最终售价为：
+OpenLux 使用美元计价，不做人民币或积分换算。Aivrae 对每个精确 `(分组, 模型)` 保存
+模型级分组倍率，使标准调用价格等于 OpenLux 同组合公开价的 1.3 倍：
 
 ```text
-云雾积分价 / 2 / 6.79 * 1.3
+Token 模型 GroupModelRatio
+  = OpenLux ModelRatio × OpenLux GroupRatio × 1.3
+    ÷ Aivrae ModelRatio
+
+固定价格模型 GroupModelRatio
+  = OpenLux ModelPrice × OpenLux GroupRatio × 1.3
+    ÷ Aivrae ModelPrice
 ```
 
-因此，Aivrae 的 Token 模型基础 `ModelRatio` 写为：
+所有计算使用十进制定点数，中间不提前舍入，配置最多保留 15 位小数。输出、缓存、缓存
+写入、图片和音频沿用 OpenLux 对应的相对倍率。29 个可安全复现的阶梯模型使用
+`tiered_expr`，档位条件同时覆盖输入和输出阈值；最终再乘实际成功分组的精确模型倍率。
 
-```text
-云雾 model_ratio * 1.3 / (2 * 6.79)
-```
+OpenLux 另有 11 个 Qwen 模型同时给出非思考和思考两套阶梯倍率：
+`qwen-plus`、`qwen-plus-2025-12-01`、`qwen-plus-latest`、`qwen3-0.6b`、
+`qwen3-1.7b`、`qwen3-14b`、`qwen3-235b-a22b`、`qwen3-30b-a3b`、
+`qwen3-32b`、`qwen3-4b`、`qwen3-8b`。实际探测中，仅传 `enable_thinking=true` 但没有
+返回思考内容时，OpenLux 仍使用非思考倍率；因此不能只根据请求参数预测上游最终档位。
+当前表达式又没有响应侧思考状态变量，无法可靠复现，所以这 11 个模型和对应 50 条
+Ability 保持禁用，不能用普通输出倍率代替思考倍率。
 
-运行时再乘普通 `GroupRatio`，避免把分组倍率计算两次。3 个按次模型的基础
-`ModelPrice` 写为 `云雾 model_price / 2 / 6.79 * 1.3`；输出、缓存和图片倍率沿用
-云雾相对于输入价格的倍率。
+正式导入按以下顺序执行：校验发布槽和并发指纹，创建 OpenLux 永久单组 Key，备份并
+校验 PostgreSQL，创建禁用渠道，刷新渠道缓存，写入倍率和阶梯配置，启用渠道，最后
+更新 `UserUsableGroups`。每个渠道的模型列表严格等于该组验证后清单，Priority 为 0、
+Weight 为 100；当前没有显式 `group_model_routes`，因此使用 Ability 继承路线。
 
-以下 8 个模型使用真实美元/百万 Token 的 `tiered_expr`：
-`gpt-5.4-pro`、`gpt-5.4`、`gpt-5.5`、`gpt-5.6-luna`、`gpt-5.6-sol`、
-`gpt-5.6-terra`、`gemini-2.5-pro` 和 `gemini-3.1-pro-preview`。GPT 阶梯阈值为
-272K，Gemini 阶梯阈值为 200K；第二档分别应用云雾给出的输入、输出和缓存倍率。
-5 分钟缓存创建价格保持云雾的固定相对价格，不随第二档输入倍率放大。最终成功分组的
-倍率仍由现有 tiered expression 结算逻辑统一应用。
+最终生产开放 287 个本次新增模型：240 个文本、19 个图片、17 个音频、6 个 embedding
+和 5 个 rerank；对应 58 个 OpenLux 单组渠道、58 个单组上游 Key、1300 条启用 Ability
+和 1300 条精确模型级分组倍率。加上原有 `default`，用户可选分组总数为 59；公开模型
+总数为 316。
 
-`apply` 使用 `work/aivrae-yunwu-local/one-api.db`，不会覆盖仓库根目录的
-`one-api.db`。它为每个分组创建一个云雾单组令牌、一个本地渠道和一个本地单组测试
-Key，并额外创建一个 `限时特价 -> default` 的显式分组链测试 Key。完整令牌只存在于
-进程内以及被 Git 忽略的本地 SQLite/权限受限凭据文件中。独立后端优先使用 `3001`，
-Default 前端优先使用 `5174`，端口被占用时自动顺延。
+验收覆盖 OpenAI Chat、Responses、Embedding、Rerank、图片、TTS、Gemini 原生、
+Anthropic 原生，以及真实跨组回退。`Azure-Gpt-1 -> Openai-Gpt-1` 在首组真实返回可
+重试 503 后进入第二组成功；另一次无 Ability 路径使用 `SiliconFlow-1 -> Azure-Gpt-2`
+成功。固定价 TTS 在上游成功但不返回 token usage 时仍按 `ModelPrice × 成功分组倍率`
+结算，普通音频、WSS 和文本路径均有回归测试。上游返回 429、模型不存在、渠道不可用
+或鉴权失败的组合只记为外部可用性跳过，不视为本地路由成功。
 
-同步工具不再读取、生成或验证云雾自动分组。它会删除独立数据库中的三个废弃 Option，
-为所有本地测试 Key 写入显式 `group_chain`，并写入、验证上述 26 条官方参考价。
-
-应用前会备份独立数据库并记录 SHA256。静态验证要求 `/api/pricing` 精确返回 28 个
-模型、15 个分组和 182 条关联；随后每组选择最低价文本模型发起一次最小真实请求，
-并同时核对本地和云雾消费日志。明确的 429 或 5xx 最多额外重试两次。公开
-`enable_groups` 不保证云雾运行态一定存在可用渠道；明确无渠道，或重试后仍为
-429/5xx 的分组会记为 `skipped`，但不再回滚已经通过静态校验的配置。
-
-单组检查后，工具必须使用显式链测试 Key 发起 `gpt-5.4-nano` 请求，并在本地消费日志
-中同时确认 `group_chain=["限时特价","default"]`、
-`attempted_groups=["限时特价","default"]` 和 `final_group="default"`，同时核对最终
-`default` 云雾消费日志。这个请求用于验证现有项目的真实跨组链式调用，而不只是验证
-两组都存在 Ability。非重试 4xx、传输失败、日志缺失、配置错误或链式回退不成立时，
-工具仍会恢复数据库并只删除本轮新建的云雾令牌。
-
-2026-07-30 的本地执行结果为：
-
-- `/api/pricing`、SQLite 和清单均验证为 28 个模型、15 个分组、182 条 Ability。
-- 初次应用有 12 个分组真实调用成功、3 个跳过；随后完整复验为 11 个成功、4 个
-  跳过。变化来自 `gemini-cli` 在复验时临时返回无可用渠道。
-- 最新复验中，`限时特价` 和 `gemini-cli` 因 503 无可用渠道跳过；
-  `优质gemini` 和 `优质官转OpenAI` 因三次 429 后仍不可用而跳过。该结果只是云雾
-  运行态快照，不代表这些分组永久不可用。
-- 显式链 `限时特价 -> default` 真实请求成功，尝试顺序和最终 `default` 分组均由
-  本地路由日志确认。
-- Default 模型广场的“全部分组”最低价、指定 `default` 价格和详情全分组价格已在
-  1440x1000 与 390x844 视口检查，截图保存在
-  `work/aivrae-yunwu-local/screenshots/`。
-
-运行目录位于 Windows `D:` 挂载时，DrvFS 的 `stat` 可能固定显示 `0777`。
-同步工具会额外使用 Windows ACL 将整个运行目录限制为当前 Windows 用户与 `SYSTEM`；
-在支持 POSIX mode 的文件系统上，凭据文件仍使用 `0600`。
+逐项价格审计要求 1300 个启用组合均为 OpenLux 同组合价格的 1.3 倍；完整上游 Key 只
+存在于 OpenLux 和生产 Channel 密钥字段，不出现在 manifest、报告、日志、文档或 Git。
+生产不存在 `Yunwu/` 渠道，所有临时系统访问令牌和冒烟 Key 在验证结束后清理。
 
 ## 实现索引
 

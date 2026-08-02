@@ -85,6 +85,22 @@ func calculateAudioQuota(info QuotaInfo) (int, *common.QuotaClamp) {
 	return common.QuotaFromDecimalChecked(quota)
 }
 
+func calculateAudioQuotaFromPriceData(priceData types.PriceData, modelName string, inputDetails, outputDetails TokenDetails) (int, *common.QuotaClamp) {
+	return calculateAudioQuota(QuotaInfo{
+		InputDetails:  inputDetails,
+		OutputDetails: outputDetails,
+		ModelName:     modelName,
+		UsePrice:      priceData.UsePrice,
+		ModelPrice:    priceData.ModelPrice,
+		ModelRatio:    priceData.ModelRatio,
+		GroupRatio:    priceData.GroupRatioInfo.GroupRatio,
+	})
+}
+
+func missingMeteredUsage(totalTokens int, usePrice bool) bool {
+	return totalTokens == 0 && !usePrice
+}
+
 func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.RealtimeUsage) error {
 	if relayInfo.UsePrice {
 		return nil
@@ -175,22 +191,18 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 	modelPrice := relayInfo.PriceData.ModelPrice
 	usePrice := relayInfo.PriceData.UsePrice
 
-	quotaInfo := QuotaInfo{
-		InputDetails: TokenDetails{
+	quota, clamp := calculateAudioQuotaFromPriceData(
+		relayInfo.PriceData,
+		modelName,
+		TokenDetails{
 			TextTokens:  textInputTokens,
 			AudioTokens: audioInputTokens,
 		},
-		OutputDetails: TokenDetails{
+		TokenDetails{
 			TextTokens:  textOutTokens,
 			AudioTokens: audioOutTokens,
 		},
-		ModelName:  modelName,
-		UsePrice:   usePrice,
-		ModelRatio: modelRatio,
-		GroupRatio: groupRatio,
-	}
-
-	quota, clamp := calculateAudioQuota(quotaInfo)
+	)
 	noteQuotaClamp(relayInfo, clamp)
 	if tieredOk {
 		quota = tieredQuota
@@ -206,7 +218,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 	}
 
 	// record all the consume log even if quota is 0
-	if totalTokens == 0 {
+	if missingMeteredUsage(totalTokens, usePrice) {
 		// in this case, must be some error happened
 		// we cannot just return, because we may have to return the pre-consumed quota
 		quota = 0
@@ -298,22 +310,18 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 	modelPrice := relayInfo.PriceData.ModelPrice
 	usePrice := relayInfo.PriceData.UsePrice
 
-	quotaInfo := QuotaInfo{
-		InputDetails: TokenDetails{
+	quota, clamp := calculateAudioQuotaFromPriceData(
+		relayInfo.PriceData,
+		relayInfo.OriginModelName,
+		TokenDetails{
 			TextTokens:  textInputTokens,
 			AudioTokens: audioInputTokens,
 		},
-		OutputDetails: TokenDetails{
+		TokenDetails{
 			TextTokens:  textOutTokens,
 			AudioTokens: audioOutTokens,
 		},
-		ModelName:  relayInfo.OriginModelName,
-		UsePrice:   usePrice,
-		ModelRatio: modelRatio,
-		GroupRatio: groupRatio,
-	}
-
-	quota, clamp := calculateAudioQuota(quotaInfo)
+	)
 	noteQuotaClamp(relayInfo, clamp)
 	if tieredOk {
 		quota = tieredQuota
@@ -329,7 +337,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 	}
 
 	// record all the consume log even if quota is 0
-	if totalTokens == 0 {
+	if missingMeteredUsage(totalTokens, usePrice) {
 		// in this case, must be some error happened
 		// we cannot just return, because we may have to return the pre-consumed quota
 		quota = 0
