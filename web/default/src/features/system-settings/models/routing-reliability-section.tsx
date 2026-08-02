@@ -65,6 +65,8 @@ const numericString = z.string().refine((value) => {
 
 const channelTestModes = ['scheduled_all', 'passive_recovery'] as const
 type ChannelTestMode = (typeof channelTestModes)[number]
+const routingPriorities = ['auto', 'price', 'speed', 'success_rate'] as const
+type RoutingPriority = (typeof routingPriorities)[number]
 
 const routingReliabilitySchema = z
   .object({
@@ -75,6 +77,7 @@ const routingReliabilitySchema = z
     AutomaticDisableKeywords: z.string(),
     AutomaticDisableStatusCodes: z.string(),
     AutomaticRetryStatusCodes: z.string(),
+    'smart_routing_setting.default_priority': z.enum(routingPriorities),
     monitor_setting: z.object({
       auto_test_channel_enabled: z.boolean(),
       auto_test_channel_minutes: z.coerce
@@ -124,6 +127,7 @@ type RoutingReliabilitySectionProps = {
     AutomaticDisableKeywords: string
     AutomaticDisableStatusCodes: string
     AutomaticRetryStatusCodes: string
+    'smart_routing_setting.default_priority': RoutingPriority
     'monitor_setting.auto_test_channel_enabled': boolean
     'monitor_setting.auto_test_channel_minutes': number
     'monitor_setting.channel_test_mode': ChannelTestMode
@@ -142,6 +146,7 @@ type NormalizedRoutingReliabilityValues = {
   AutomaticDisableKeywords: string
   AutomaticDisableStatusCodes: string
   AutomaticRetryStatusCodes: string
+  'smart_routing_setting.default_priority': RoutingPriority
   'monitor_setting.auto_test_channel_enabled': boolean
   'monitor_setting.auto_test_channel_minutes': number
   'monitor_setting.channel_test_mode': ChannelTestMode
@@ -163,6 +168,8 @@ const buildFormDefaults = (
   ),
   AutomaticDisableStatusCodes: defaults.AutomaticDisableStatusCodes ?? '',
   AutomaticRetryStatusCodes: defaults.AutomaticRetryStatusCodes ?? '',
+  'smart_routing_setting.default_priority':
+    defaults['smart_routing_setting.default_priority'] ?? 'price',
   monitor_setting: {
     auto_test_channel_enabled:
       defaults['monitor_setting.auto_test_channel_enabled'],
@@ -190,6 +197,8 @@ const normalizeDefaults = (
   AutomaticRetryStatusCodes: parseHttpStatusCodeRules(
     defaults.AutomaticRetryStatusCodes ?? ''
   ).normalized,
+  'smart_routing_setting.default_priority':
+    defaults['smart_routing_setting.default_priority'] ?? 'price',
   'monitor_setting.auto_test_channel_enabled':
     defaults['monitor_setting.auto_test_channel_enabled'],
   'monitor_setting.auto_test_channel_minutes':
@@ -215,6 +224,8 @@ const normalizeFormValues = (
   AutomaticRetryStatusCodes: parseHttpStatusCodeRules(
     values.AutomaticRetryStatusCodes
   ).normalized,
+  'smart_routing_setting.default_priority':
+    values['smart_routing_setting.default_priority'],
   'monitor_setting.auto_test_channel_enabled':
     values.monitor_setting.auto_test_channel_enabled,
   'monitor_setting.auto_test_channel_minutes':
@@ -289,6 +300,58 @@ export function RoutingReliabilitySection({
             onSave={form.handleSubmit(onSubmit)}
             isSaving={updateOption.isPending}
           />
+
+          <div className='flex min-w-0 flex-col gap-4'>
+            <div className='flex flex-col gap-1'>
+              <h4 className='text-sm font-medium'>{t('Smart routing')}</h4>
+            </div>
+            <div className='grid min-w-0 gap-6 xl:grid-cols-[minmax(12rem,24rem)_minmax(0,1fr)]'>
+              <FormField
+                control={form.control}
+                name='smart_routing_setting.default_priority'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Default routing priority')}</FormLabel>
+                    <Select
+                      items={[
+                        { value: 'auto', label: t('Auto') },
+                        { value: 'price', label: t('Price') },
+                        { value: 'speed', label: t('Speed') },
+                        {
+                          value: 'success_rate',
+                          label: t('Success rate'),
+                        },
+                      ]}
+                      value={field.value}
+                      onValueChange={field.onChange}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent alignItemWithTrigger={false}>
+                        <SelectGroup>
+                          <SelectItem value='auto'>{t('Auto')}</SelectItem>
+                          <SelectItem value='price'>{t('Price')}</SelectItem>
+                          <SelectItem value='speed'>{t('Speed')}</SelectItem>
+                          <SelectItem value='success_rate'>
+                            {t('Success rate')}
+                          </SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      {t('Applied when users create new API keys')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
+
+          <Separator />
 
           <div className='flex min-w-0 flex-col gap-4'>
             <div className='flex flex-col gap-1'>

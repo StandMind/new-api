@@ -28,6 +28,7 @@ type Token struct {
 	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
 	Group              string         `json:"group" gorm:"default:''"`
 	GroupChain         StringArray    `json:"group_chain" gorm:"type:text"`
+	RoutingPriority    string         `json:"routing_priority" gorm:"type:varchar(32);default:''"`
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
 }
 
@@ -352,7 +353,7 @@ func (token *Token) Update() (err error) {
 		}
 	}()
 	err = DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
-		"model_limits_enabled", "model_limits", "allow_ips", "group", "group_chain").Updates(token).Error
+		"model_limits_enabled", "model_limits", "allow_ips", "group", "group_chain", "routing_priority").Updates(token).Error
 	return err
 }
 

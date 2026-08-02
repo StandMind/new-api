@@ -5520,6 +5520,13 @@
     "{{count}} local groups will be deleted": "{{count}} local groups will be deleted",
     "{{count}} notices": "{{count}} notices",
     "{{count}} other channels in this group": "{{count}} other channels in this group",
-    "{{count}} price and billing changes": "{{count}} price and billing changes"
+    "{{count}} price and billing changes": "{{count}} price and billing changes",
+    "Applied when users create new API keys": "使用者建立新 API Key 時套用",
+    "Choose the best available group automatically": "自動選擇目前最佳可用分組",
+    "Default routing priority": "預設路由模式",
+    "Routing": "路由模式",
+    "Routing priority": "路由優先模式",
+    "Smart routing": "智慧路由",
+    "Speed": "速度"
   }
 }

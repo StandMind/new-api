@@ -61,7 +61,7 @@ func cacheGetTokenByKey(key string) (*Token, error) {
 		return nil, err
 	}
 	token.Key = key
-	if len(token.GroupChain) == 0 {
+	if len(token.GroupChain) == 0 && token.RoutingPriority == "" {
 		return nil, fmt.Errorf("cached token is missing explicit group chain")
 	}
 	return &token, nil

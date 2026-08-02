@@ -55,6 +55,11 @@ jobs:
             deploy/blue-green/test-deploy-blue-green.sh \
             deploy/blue-green/observe-public.sh
           bash deploy/blue-green/test-deploy-blue-green.sh
+          python3 -m py_compile \
+            deploy/migrations/aivrae_smart_routing_cleanup.py \
+            deploy/migrations/test_aivrae_smart_routing_cleanup.py
+          PYTHONPATH=deploy/migrations python3 -m unittest \
+            deploy/migrations/test_aivrae_smart_routing_cleanup.py
           env \
             TZ=UTC \
             POSTGRES_USER=test \

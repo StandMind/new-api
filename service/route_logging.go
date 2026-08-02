@@ -27,6 +27,10 @@ func AppendRoutingLogInfo(c *gin.Context, info *relaycommon.RelayInfo, other map
 	other["attempted_groups"] = attemptedGroups
 	other["final_group"] = info.UsingGroup
 	other["group_ratio_source"] = info.PriceData.GroupRatioInfo.Source
+	if priority := plan.RoutingPriority(); priority != constant.RoutingPriorityManual {
+		other["routing_priority"] = string(priority)
+		other["routing_basis"] = plan.RankingBasis()
+	}
 
 	adminInfo, ok := other["admin_info"].(map[string]interface{})
 	if !ok || adminInfo == nil {
@@ -34,6 +38,8 @@ func AppendRoutingLogInfo(c *gin.Context, info *relaycommon.RelayInfo, other map
 		other["admin_info"] = adminInfo
 	}
 	adminInfo["routing"] = map[string]interface{}{
+		"mode":      string(plan.RoutingPriority()),
+		"basis":     plan.RankingBasis(),
 		"planned":   plan.Attempts(),
 		"attempted": history,
 	}
@@ -49,6 +55,8 @@ func AppendRoutingAdminInfo(c *gin.Context, adminInfo map[string]interface{}) {
 	}
 	history, _ := common.GetContextKeyType[[]RouteAttempt](c, constant.ContextKeyRouteAttemptHistory)
 	adminInfo["routing"] = map[string]interface{}{
+		"mode":      string(plan.RoutingPriority()),
+		"basis":     plan.RankingBasis(),
 		"groups":    plan.ConfiguredGroups(),
 		"planned":   plan.Attempts(),
 		"attempted": history,

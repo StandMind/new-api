@@ -117,6 +117,9 @@ func run() error {
 
 		go model.SyncChannelCache(common.SyncFrequency)
 	}
+	if err := service.InitSmartRouting(); err != nil {
+		return fmt.Errorf("failed to initialize smart routing: %w", err)
+	}
 
 	// Warm pricing after channel cache initialization so Advanced Custom
 	// endpoint inference can read cached route settings on first request.

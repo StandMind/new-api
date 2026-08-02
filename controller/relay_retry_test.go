@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -116,4 +117,26 @@ func TestShouldRetryTaskRelayStopsForSpecifiedChannel(t *testing.T) {
 	}
 
 	assert.False(t, shouldRetryTaskRelay(context, taskError, 1))
+}
+
+func TestRelayRetryStopsWhenClientRequestIsCanceled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ginContext, _ := gin.CreateTestContext(httptest.NewRecorder())
+	requestContext, cancel := context.WithCancel(context.Background())
+	cancel()
+	ginContext.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).
+		WithContext(requestContext)
+
+	channelError := types.NewError(
+		errors.New("upstream request failed"),
+		types.ErrorCodeChannelModelMappedError,
+	)
+	taskError := &dto.TaskError{
+		StatusCode: http.StatusTooManyRequests,
+		RetrySafe:  true,
+		Error:      errors.New("upstream request failed"),
+	}
+
+	assert.False(t, shouldRetry(ginContext, channelError, 1))
+	assert.False(t, shouldRetryTaskRelay(ginContext, taskError, 1))
 }

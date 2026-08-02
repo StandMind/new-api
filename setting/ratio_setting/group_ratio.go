@@ -107,6 +107,18 @@ func GroupGroupRatio2JSONString() string {
 	return groupGroupRatioMap.MarshalJSONString()
 }
 
+func GetGroupGroupRatioCopy() map[string]map[string]float64 {
+	source := groupGroupRatioMap.ReadAll()
+	result := make(map[string]map[string]float64, len(source))
+	for userGroup, ratios := range source {
+		result[userGroup] = make(map[string]float64, len(ratios))
+		for group, ratio := range ratios {
+			result[userGroup][group] = ratio
+		}
+	}
+	return result
+}
+
 func UpdateGroupGroupRatioByJSONString(jsonStr string) error {
 	return types.LoadFromJsonString(groupGroupRatioMap, jsonStr)
 }

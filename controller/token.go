@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/smart_routing_setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -47,6 +49,7 @@ type tokenRequest struct {
 	AllowIps           *string            `json:"allow_ips"`
 	Group              string             `json:"group"`
 	GroupChain         *model.StringArray `json:"group_chain"`
+	RoutingPriority    *string            `json:"routing_priority"`
 }
 
 func normalizeTokenGroupChain(c *gin.Context, request *tokenRequest) error {
@@ -81,6 +84,87 @@ func normalizeTokenGroupChain(c *gin.Context, request *tokenRequest) error {
 	request.GroupChain = &normalized
 	request.Group = normalized[0]
 	return nil
+}
+
+func defaultCompatibilityGroupChain(userGroup string) model.StringArray {
+	usableGroups := service.GetUserUsableGroups(userGroup)
+	groups := make([]string, 0, len(usableGroups))
+	for group := range usableGroups {
+		if !ratio_setting.ContainsGroupRatio(group) {
+			continue
+		}
+		if len(model.GetEnabledModelsForGroups([]string{group})) == 0 {
+			continue
+		}
+		groups = append(groups, group)
+	}
+	sort.SliceStable(groups, func(i, j int) bool {
+		left, _ := ratio_setting.ResolveGroupRatio(userGroup, groups[i], "")
+		right, _ := ratio_setting.ResolveGroupRatio(userGroup, groups[j], "")
+		if left != right {
+			return left < right
+		}
+		return groups[i] < groups[j]
+	})
+	if len(groups) == 0 && ratio_setting.ContainsGroupRatio(userGroup) {
+		groups = append(groups, userGroup)
+	}
+	return model.StringArray(groups)
+}
+
+func normalizeTokenRouting(c *gin.Context, request *tokenRequest, existing *model.Token) (constant.RoutingPriority, error) {
+	priority := smart_routing_setting.GetDefaultPriority()
+	if existing != nil {
+		priority = constant.RoutingPriority(existing.RoutingPriority)
+	}
+	if request.RoutingPriority != nil {
+		priority = constant.RoutingPriority(*request.RoutingPriority)
+	}
+	if !constant.IsValidRoutingPriority(priority, true) {
+		return constant.RoutingPriorityManual, fmt.Errorf("invalid routing_priority %q", priority)
+	}
+	normalized := string(priority)
+	request.RoutingPriority = &normalized
+
+	if priority == constant.RoutingPriorityManual {
+		if err := normalizeTokenGroupChain(c, request); err != nil {
+			return priority, err
+		}
+		return priority, nil
+	}
+	if existing != nil && request.GroupChain != nil && len(*request.GroupChain) > 0 {
+		if err := normalizeTokenGroupChain(c, request); err != nil {
+			return priority, err
+		}
+		return priority, nil
+	}
+	if existing != nil && len(existing.GroupChain) > 0 {
+		chain := append(model.StringArray(nil), existing.GroupChain...)
+		request.GroupChain = &chain
+		request.Group = existing.Group
+		return priority, nil
+	}
+
+	chain := defaultCompatibilityGroupChain(common.GetContextKeyString(c, constant.ContextKeyUserGroup))
+	if len(chain) == 0 && request.GroupChain != nil && len(*request.GroupChain) > 0 {
+		if err := normalizeTokenGroupChain(c, request); err != nil {
+			return priority, err
+		}
+		return priority, nil
+	}
+	if len(chain) == 0 {
+		return priority, errors.New("no accessible group is available for the compatibility group chain")
+	}
+	request.GroupChain = &chain
+	request.Group = chain[0]
+	return priority, nil
+}
+
+func GetTokenRoutingConfig(c *gin.Context) {
+	common.ApiSuccess(c, gin.H{
+		"default_priority": smart_routing_setting.GetDefaultPriority(),
+		"priorities":       constant.SmartRoutingPriorities,
+	})
 }
 
 func GetAllTokens(c *gin.Context) {
@@ -223,7 +307,8 @@ func AddToken(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if err := normalizeTokenGroupChain(c, &token); err != nil {
+	priority, err := normalizeTokenRouting(c, &token, nil)
+	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -276,6 +361,7 @@ func AddToken(c *gin.Context) {
 		ModelLimits:        token.ModelLimits,
 		AllowIps:           token.AllowIps,
 		Group:              token.Group,
+		RoutingPriority:    string(priority),
 	}
 	cleanToken.GroupChain = append(model.StringArray(nil), (*token.GroupChain)...)
 	err = cleanToken.Insert()
@@ -312,8 +398,15 @@ func UpdateToken(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	cleanToken, err := model.GetTokenByIds(token.Id, userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	priority := constant.RoutingPriority(cleanToken.RoutingPriority)
 	if statusOnly == "" {
-		if err := normalizeTokenGroupChain(c, &token); err != nil {
+		priority, err = normalizeTokenRouting(c, &token, cleanToken)
+		if err != nil {
 			common.ApiError(c, err)
 			return
 		}
@@ -332,11 +425,6 @@ func UpdateToken(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
 			return
 		}
-	}
-	cleanToken, err := model.GetTokenByIds(token.Id, userId)
-	if err != nil {
-		common.ApiError(c, err)
-		return
 	}
 	if token.Status == common.TokenStatusEnabled {
 		if cleanToken.Status == common.TokenStatusExpired && cleanToken.ExpiredTime <= common.GetTimestamp() && cleanToken.ExpiredTime != -1 {
@@ -361,6 +449,7 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.AllowIps = token.AllowIps
 		cleanToken.Group = token.Group
 		cleanToken.GroupChain = append(model.StringArray(nil), (*token.GroupChain)...)
+		cleanToken.RoutingPriority = string(priority)
 	}
 	err = cleanToken.Update()
 	if err != nil {

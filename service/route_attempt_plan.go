@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/gin-gonic/gin"
 )
 
@@ -30,6 +31,8 @@ type RouteAttemptPlan struct {
 	nextIndex        int
 	currentIndex     int
 	exhaustive       bool
+	routingPriority  constant.RoutingPriority
+	rankingBasis     string
 }
 
 func BuildRouteAttemptPlan(groups []string, modelName, requestPath string, exhaustive bool) (*RouteAttemptPlan, error) {
@@ -166,6 +169,28 @@ func (p *RouteAttemptPlan) IsExhaustive() bool {
 	return p != nil && p.exhaustive
 }
 
+func (p *RouteAttemptPlan) SetSmartRouting(priority constant.RoutingPriority, basis string) {
+	if p == nil {
+		return
+	}
+	p.routingPriority = priority
+	p.rankingBasis = basis
+}
+
+func (p *RouteAttemptPlan) RoutingPriority() constant.RoutingPriority {
+	if p == nil {
+		return constant.RoutingPriorityManual
+	}
+	return p.routingPriority
+}
+
+func (p *RouteAttemptPlan) RankingBasis() string {
+	if p == nil {
+		return ""
+	}
+	return p.rankingBasis
+}
+
 func (p *RouteAttemptPlan) ConfiguredGroups() []string {
 	if p == nil {
 		return nil
@@ -243,9 +268,14 @@ func GetRouteAttemptPlan(c *gin.Context) *RouteAttemptPlan {
 }
 
 func ApplyRouteAttempt(c *gin.Context, attempt RouteAttempt) (*model.Channel, error) {
-	channel, err := model.CacheGetChannel(attempt.ChannelID)
-	if err != nil {
-		return nil, err
+	metricModel := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
+	if metricModel == "" {
+		metricModel = attempt.Model
+	}
+	perfmetrics.BeginGroupAttempt(c, metricModel, attempt.Group)
+	channel, ok := model.GetGroupModelRouteChannel(attempt.ChannelID)
+	if !ok {
+		return nil, fmt.Errorf("channel %d is unavailable", attempt.ChannelID)
 	}
 	if channel == nil || channel.Status != common.ChannelStatusEnabled {
 		return nil, fmt.Errorf("channel %d is unavailable", attempt.ChannelID)

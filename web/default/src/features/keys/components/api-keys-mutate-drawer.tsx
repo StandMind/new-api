@@ -18,7 +18,16 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown, KeyRound, Settings2, WalletCards } from 'lucide-react'
+import {
+  BadgeDollarSign,
+  ChevronDown,
+  Gauge,
+  KeyRound,
+  Route,
+  Settings2,
+  ShieldCheck,
+  WalletCards,
+} from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useForm, type SubmitErrorHandler } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -62,11 +71,17 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { getUserModels, getUserGroups } from '@/lib/api'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 
-import { createApiKey, updateApiKey, getApiKey } from '../api'
+import {
+  createApiKey,
+  getApiKey,
+  getTokenRoutingConfig,
+  updateApiKey,
+} from '../api'
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
   getApiKeyFormSchema,
@@ -75,7 +90,7 @@ import {
   transformFormDataToPayload,
   transformApiKeyToFormDefaults,
 } from '../lib'
-import type { ApiKey } from '../types'
+import type { ApiKey, RoutingPriority } from '../types'
 import { ApiKeyGroupChainEditor } from './api-key-group-chain-editor'
 import type { ApiKeyGroupOption } from './api-key-group-combobox'
 import { useApiKeys } from './api-keys-provider'
@@ -85,6 +100,13 @@ type ApiKeyMutateDrawerProps = {
   onOpenChange: (open: boolean) => void
   currentRow?: ApiKey
 }
+
+const routingPriorityOptions = [
+  { value: 'auto', label: 'Auto', icon: Route },
+  { value: 'price', label: 'Price', icon: BadgeDollarSign },
+  { value: 'speed', label: 'Speed', icon: Gauge },
+  { value: 'success_rate', label: 'Success rate', icon: ShieldCheck },
+] as const
 
 export function ApiKeysMutateDrawer({
   open,
@@ -111,6 +133,13 @@ export function ApiKeysMutateDrawer({
     queryFn: getUserGroups,
     enabled: open,
     staleTime: 0,
+  })
+
+  const { data: routingConfigData } = useQuery({
+    queryKey: ['token-routing-config'],
+    queryFn: getTokenRoutingConfig,
+    enabled: open && !isUpdate,
+    staleTime: 5 * 60 * 1000,
   })
 
   const models = modelsData?.data || []
@@ -144,7 +173,9 @@ export function ApiKeysMutateDrawer({
         }
       })
     } else if (open && !isUpdate) {
-      const defaults = getApiKeyFormDefaultValues()
+      const defaults = getApiKeyFormDefaultValues(
+        routingConfigData?.data?.default_priority
+      )
       const fallback =
         groups.find((group) => group.value === 'default')?.value ??
         groups[0]?.value ??
@@ -153,7 +184,7 @@ export function ApiKeysMutateDrawer({
       defaults.group = fallback
       form.reset(defaults)
     }
-  }, [open, isUpdate, currentRow, form, groups])
+  }, [open, isUpdate, currentRow, form, groups, routingConfigData])
 
   // Correct group after groups load: if the form value is not in available groups, fall back
   useEffect(() => {
@@ -256,6 +287,7 @@ export function ApiKeysMutateDrawer({
     ? t('Enter quota in tokens')
     : t('Enter quota in {{currency}}', { currency: currencyLabel })
   const unlimitedQuota = form.watch('unlimited_quota')
+  const smartRouting = form.watch('smart_routing')
 
   return (
     <Sheet
@@ -309,29 +341,98 @@ export function ApiKeysMutateDrawer({
 
               <FormField
                 control={form.control}
-                name='group_chain'
+                name='smart_routing'
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Group chain')}</FormLabel>
+                  <FormItem className={sideDrawerSwitchItemClassName()}>
+                    <div className='flex flex-col gap-0.5'>
+                      <FormLabel className='text-sm'>
+                        {t('Smart routing')}
+                      </FormLabel>
+                      <FormDescription className='text-xs'>
+                        {t('Choose the best available group automatically')}
+                      </FormDescription>
+                    </div>
                     <FormControl>
-                      <ApiKeyGroupChainEditor
-                        options={groups}
-                        value={field.value}
-                        onValueChange={(chain) => {
-                          field.onChange(chain)
-                          form.setValue('group', chain[0] || '')
-                        }}
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
                       />
                     </FormControl>
-                    <FormDescription>
-                      {t(
-                        'Requests try groups from top to bottom. Each group uses its own model channel route.'
-                      )}
-                    </FormDescription>
-                    <FormMessage />
                   </FormItem>
                 )}
               />
+
+              {smartRouting && (
+                <FormField
+                  control={form.control}
+                  name='routing_priority'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Routing priority')}</FormLabel>
+                      <FormControl>
+                        <ToggleGroup
+                          value={[field.value]}
+                          onValueChange={(values) => {
+                            const next = values.find(
+                              (value) => value !== field.value
+                            )
+                            if (next) field.onChange(next as RoutingPriority)
+                          }}
+                          aria-label={t('Routing priority')}
+                          variant='outline'
+                          spacing={2}
+                          className='grid w-full grid-cols-2 gap-2 sm:grid-cols-4'
+                        >
+                          {routingPriorityOptions.map((option) => {
+                            const Icon = option.icon
+                            return (
+                              <ToggleGroupItem
+                                key={option.value}
+                                value={option.value}
+                                className='h-16 w-full flex-col gap-1 px-2'
+                              >
+                                <Icon className='size-4' />
+                                <span className='max-w-full truncate text-xs'>
+                                  {t(option.label)}
+                                </span>
+                              </ToggleGroupItem>
+                            )
+                          })}
+                        </ToggleGroup>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              {!smartRouting && (
+                <FormField
+                  control={form.control}
+                  name='group_chain'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Group chain')}</FormLabel>
+                      <FormControl>
+                        <ApiKeyGroupChainEditor
+                          options={groups}
+                          value={field.value}
+                          onValueChange={(chain) => {
+                            field.onChange(chain)
+                            form.setValue('group', chain[0] || '')
+                          }}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Requests try groups from top to bottom. Each group uses its own model channel route.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <FormField
                 control={form.control}

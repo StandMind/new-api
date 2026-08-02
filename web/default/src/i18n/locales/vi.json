@@ -5520,6 +5520,13 @@
     "{{count}} local groups will be deleted": "{{count}} local groups will be deleted",
     "{{count}} notices": "{{count}} notices",
     "{{count}} other channels in this group": "{{count}} other channels in this group",
-    "{{count}} price and billing changes": "{{count}} price and billing changes"
+    "{{count}} price and billing changes": "{{count}} price and billing changes",
+    "Applied when users create new API keys": "Ap dung khi nguoi dung tao khoa API moi",
+    "Choose the best available group automatically": "Tu dong chon nhom kha dung tot nhat",
+    "Default routing priority": "Uu tien dinh tuyen mac dinh",
+    "Routing": "Dinh tuyen",
+    "Routing priority": "Uu tien dinh tuyen",
+    "Smart routing": "Dinh tuyen thong minh",
+    "Speed": "Toc do"
   }
 }

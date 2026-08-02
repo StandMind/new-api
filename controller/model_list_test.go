@@ -264,6 +264,51 @@ func TestListModelsReturnsUnionForExplicitGroupChain(t *testing.T) {
 	assert.Len(t, ids, 3)
 }
 
+func TestListModelsSmartRoutingReturnsAvailableUnionAndAppliesTokenLimit(t *testing.T) {
+	withSelfUseModeEnabled(t)
+	db := setupModelListControllerTestDB(t)
+	priority := int64(0)
+	weight := uint(100)
+	require.NoError(t, db.Create(&[]model.Channel{
+		{Id: 4101, Name: "smart-group-a", Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled, Group: "group-a", Models: "zz-smart-a,zz-smart-shared", Priority: &priority, Weight: &weight},
+		{Id: 4102, Name: "smart-group-b", Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled, Group: "group-b", Models: "zz-smart-b,zz-smart-shared", Priority: &priority, Weight: &weight},
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "group-a", Model: "zz-smart-a", ChannelId: 4101, Enabled: true, Priority: &priority, Weight: weight},
+		{Group: "group-a", Model: "zz-smart-shared", ChannelId: 4101, Enabled: true, Priority: &priority, Weight: weight},
+		{Group: "group-b", Model: "zz-smart-b", ChannelId: 4102, Enabled: true, Priority: &priority, Weight: weight},
+		{Group: "group-b", Model: "zz-smart-shared", ChannelId: 4102, Enabled: true, Priority: &priority, Weight: weight},
+		{Group: "default", Model: "zz-smart-disabled", ChannelId: 4101, Enabled: false, Priority: &priority, Weight: weight},
+	}).Error)
+	require.NoError(t, model.InitGroupModelRouteIndex())
+
+	newContext := func() (*gin.Context, *httptest.ResponseRecorder) {
+		recorder := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(recorder)
+		ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+		common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+		common.SetContextKey(ctx, constant.ContextKeyTokenGroup, "group-a")
+		common.SetContextKey(ctx, constant.ContextKeyTokenGroupChain, []string{"default", "group-a", "group-b"})
+		common.SetContextKey(ctx, constant.ContextKeyTokenRoutingPriority, "price")
+		return ctx, recorder
+	}
+
+	ctx, recorder := newContext()
+	ListModels(ctx, constant.ChannelTypeOpenAI)
+	ids := decodeListModelsResponse(t, recorder)
+	assert.Equal(t, map[string]struct{}{
+		"zz-smart-a": {}, "zz-smart-b": {}, "zz-smart-shared": {},
+	}, ids)
+
+	ctx, recorder = newContext()
+	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimitEnabled, true)
+	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimit, map[string]bool{
+		"zz-smart-b": true, "zz-smart-unavailable": true,
+	})
+	ListModels(ctx, constant.ChannelTypeOpenAI)
+	assert.Equal(t, map[string]struct{}{"zz-smart-b": {}}, decodeListModelsResponse(t, recorder))
+}
+
 func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 	withSelfUseModeDisabled(t)
 	withTieredBillingConfig(t, map[string]string{

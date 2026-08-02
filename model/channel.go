@@ -197,6 +197,14 @@ func (channel *Channel) GetKeys() []string {
 }
 
 func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
+	return channel.getNextEnabledKey(false)
+}
+
+func (channel *Channel) GetNextEnabledRoutingKey() (string, int, *types.NewAPIError) {
+	return channel.getNextEnabledKey(true)
+}
+
+func (channel *Channel) getNextEnabledKey(fromRoutingIndex bool) (string, int, *types.NewAPIError) {
 	// If not in multi-key mode, return the original key string directly.
 	if !channel.ChannelInfo.IsMultiKey {
 		return channel.Key, 0, nil
@@ -247,15 +255,19 @@ func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
 	case constant.MultiKeyModePolling:
 		// Use channel-specific lock to ensure thread-safe polling
 
-		channelInfo, err := CacheGetChannelInfo(channel.Id)
-		if err != nil {
-			return "", 0, types.NewError(err, types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+		channelInfo := &channel.ChannelInfo
+		if !fromRoutingIndex {
+			var err error
+			channelInfo, err = CacheGetChannelInfo(channel.Id)
+			if err != nil {
+				return "", 0, types.NewError(err, types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+			}
 		}
 		defer func() {
 			if common.DebugEnabled {
 				logger.LogDebug(nil, "channel %d polling index: %d", channel.Id, channel.ChannelInfo.MultiKeyPollingIndex)
 			}
-			if !common.MemoryCacheEnabled {
+			if !fromRoutingIndex && !common.MemoryCacheEnabled {
 				_ = channel.SaveChannelInfo()
 			} else {
 				// CacheUpdateChannel(channel)
@@ -449,7 +461,10 @@ func BatchInsertChannels(channels []Channel) error {
 			}
 		}
 	}
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	return InitGroupModelRouteIndex()
 }
 
 func BatchDeleteChannels(ids []int) error {
@@ -471,7 +486,10 @@ func BatchDeleteChannels(ids []int) error {
 			return err
 		}
 	}
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	return InitGroupModelRouteIndex()
 }
 
 func (channel *Channel) GetPriority() int64 {
@@ -519,8 +537,10 @@ func (channel *Channel) Insert() error {
 	if err != nil {
 		return err
 	}
-	err = channel.AddAbilities(nil)
-	return err
+	if err = channel.AddAbilities(nil); err != nil {
+		return err
+	}
+	return InitGroupModelRouteIndex()
 }
 
 func (channel *Channel) Update() error {
@@ -598,8 +618,10 @@ func (channel *Channel) Delete() error {
 	if err != nil {
 		return err
 	}
-	err = channel.DeleteAbilities()
-	return err
+	if err = channel.DeleteAbilities(); err != nil {
+		return err
+	}
+	return InitGroupModelRouteIndex()
 }
 
 var channelStatusLock sync.Mutex
@@ -1072,7 +1094,10 @@ func BatchSetChannelTag(ids []int, tag *string) error {
 	}
 
 	// 提交事务
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	return InitGroupModelRouteIndex()
 }
 
 // CountAllChannels returns total channels in DB

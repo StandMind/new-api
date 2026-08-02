@@ -37,12 +37,13 @@ type tokenPageResponse struct {
 }
 
 type tokenResponseItem struct {
-	ID         int      `json:"id"`
-	Name       string   `json:"name"`
-	Key        string   `json:"key"`
-	Status     int      `json:"status"`
-	Group      string   `json:"group"`
-	GroupChain []string `json:"group_chain"`
+	ID              int      `json:"id"`
+	Name            string   `json:"name"`
+	Key             string   `json:"key"`
+	Status          int      `json:"status"`
+	Group           string   `json:"group"`
+	GroupChain      []string `json:"group_chain"`
+	RoutingPriority string   `json:"routing_priority"`
 }
 
 type tokenKeyResponse struct {
@@ -593,6 +594,123 @@ func TestUpdateTokenMasksKeyInResponse(t *testing.T) {
 	if strings.Contains(recorder.Body.String(), token.Key) {
 		t.Fatalf("update response leaked raw token key: %s", recorder.Body.String())
 	}
+}
+
+func TestAddTokenRoutingPriorityContract(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+
+	tests := []struct {
+		name            string
+		routingPriority any
+		wantPriority    string
+		wantSuccess     bool
+	}{
+		{name: "default", wantPriority: "price", wantSuccess: true},
+		{name: "auto", routingPriority: "auto", wantPriority: "auto", wantSuccess: true},
+		{name: "price", routingPriority: "price", wantPriority: "price", wantSuccess: true},
+		{name: "speed", routingPriority: "speed", wantPriority: "speed", wantSuccess: true},
+		{name: "success-rate", routingPriority: "success_rate", wantPriority: "success_rate", wantSuccess: true},
+		{name: "invalid", routingPriority: "random", wantSuccess: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			body := map[string]any{
+				"name":                 "routing-" + test.name,
+				"expired_time":         -1,
+				"remain_quota":         100,
+				"unlimited_quota":      true,
+				"model_limits_enabled": false,
+				"model_limits":         "",
+			}
+			if test.routingPriority != nil {
+				body["routing_priority"] = test.routingPriority
+			}
+			ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 1)
+			common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+			AddToken(ctx)
+
+			response := decodeAPIResponse(t, recorder)
+			assert.Equal(t, test.wantSuccess, response.Success, recorder.Body.String())
+			if !test.wantSuccess {
+				var count int64
+				require.NoError(t, db.Model(&model.Token{}).Where("name = ?", body["name"]).Count(&count).Error)
+				assert.Zero(t, count)
+				return
+			}
+
+			var stored model.Token
+			require.NoError(t, db.First(&stored, "name = ?", body["name"]).Error)
+			assert.Equal(t, test.wantPriority, stored.RoutingPriority)
+			assert.Equal(t, "default", stored.Group)
+			assert.Equal(t, []string{"default"}, stored.GetGroupChain())
+		})
+	}
+
+	manualBody := map[string]any{
+		"name":                 "routing-manual-missing-chain",
+		"expired_time":         -1,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"routing_priority":     "",
+	}
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", manualBody, 1)
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+	AddToken(ctx)
+	assert.False(t, decodeAPIResponse(t, recorder).Success)
+
+	manualBody["name"] = "routing-manual"
+	manualBody["group"] = "default"
+	manualBody["group_chain"] = []string{"default"}
+	ctx, recorder = newAuthenticatedContext(t, http.MethodPost, "/api/token/", manualBody, 1)
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+	AddToken(ctx)
+	assert.True(t, decodeAPIResponse(t, recorder).Success, recorder.Body.String())
+	var manual model.Token
+	require.NoError(t, db.First(&manual, "name = ?", manualBody["name"]).Error)
+	assert.Empty(t, manual.RoutingPriority)
+}
+
+func TestUpdateTokenOldClientPreservesSmartRoutingPriority(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	token := seedToken(t, db, 1, "smart-editable-token", "smart1234token5678")
+	require.NoError(t, db.Model(token).Update("routing_priority", "price").Error)
+
+	body := map[string]any{
+		"id":                   token.Id,
+		"name":                 "smart-updated-token",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"group":                "default",
+		"group_chain":          []string{"default"},
+	}
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 1)
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+	UpdateToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, recorder.Body.String())
+	var updated model.Token
+	require.NoError(t, db.First(&updated, token.Id).Error)
+	assert.Equal(t, "price", updated.RoutingPriority)
+}
+
+func TestGetTokenRoutingConfig(t *testing.T) {
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/token/routing-config", nil, 1)
+	GetTokenRoutingConfig(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success)
+	var config struct {
+		DefaultPriority string   `json:"default_priority"`
+		Priorities      []string `json:"priorities"`
+	}
+	require.NoError(t, common.Unmarshal(response.Data, &config))
+	assert.Equal(t, "price", config.DefaultPriority)
+	assert.ElementsMatch(t, []string{"auto", "price", "speed", "success_rate"}, config.Priorities)
 }
 
 func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {

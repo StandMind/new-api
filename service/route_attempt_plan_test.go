@@ -11,9 +11,9 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
 
@@ -274,7 +274,7 @@ func TestBuildRouteAttemptPlanUsesIndependentGroupModelRoutes(t *testing.T) {
 	assert.Equal(t, databasePlan.Attempts(), memoryPlan.Attempts())
 }
 
-func TestBuildRouteAttemptPlanUsesBoundedDatabaseQueriesForFifteenGroups(t *testing.T) {
+func TestBuildRouteAttemptPlanUsesNoDatabaseQueriesAfterIndexRefresh(t *testing.T) {
 	truncate(t)
 
 	priority := int64(10)
@@ -319,15 +319,24 @@ func TestBuildRouteAttemptPlanUsesBoundedDatabaseQueriesForFifteenGroups(t *test
 	}
 	require.NoError(t, model.DB.Create(&abilities).Error)
 	require.NoError(t, model.DB.Create(&routes).Error)
+	require.NoError(t, model.InitGroupModelRouteIndex())
 
-	baseDB := model.DB
 	queryLogger := &routeQueryCountingLogger{Interface: gormlogger.Discard}
-	model.DB = baseDB.Session(&gorm.Session{Logger: queryLogger})
+	originalLogger := model.DB.Config.Logger
+	model.DB.Config.Logger = queryLogger
+	t.Cleanup(func() {
+		model.DB.Config.Logger = originalLogger
+	})
 	plan, err := BuildRouteAttemptPlan(groups, "query-budget-model", "/v1/chat/completions", true)
-	model.DB = baseDB
 	require.NoError(t, err)
 	require.Len(t, plan.Attempts(), len(groups))
-	assert.LessOrEqual(t, queryLogger.queries, 6, "route planning query budget exceeded")
+	context, _ := gin.CreateTestContext(nil)
+	first, ok := plan.Next()
+	require.True(t, ok)
+	selected, err := ApplyRouteAttempt(context, first)
+	require.NoError(t, err)
+	assert.Equal(t, channel.Id, selected.Id)
+	assert.Zero(t, queryLogger.queries, "route planning and channel selection must stay in memory")
 }
 
 func TestBuildRouteAttemptPlanNormalizesAfterRequestPathFiltering(t *testing.T) {

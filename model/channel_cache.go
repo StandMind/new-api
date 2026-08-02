@@ -100,6 +100,9 @@ func InitChannelCache() {
 	// loadPricingAdvancedCustomConfigs. channelSyncLock MUST be released before
 	// invalidating the pricing cache, otherwise the reversed order deadlocks.
 	InvalidatePricingCache()
+	if err := InitGroupModelRouteIndex(); err != nil {
+		common.SysError("failed to rebuild routing index: " + err.Error())
+	}
 	common.SysLog("channels synced from database")
 }
 

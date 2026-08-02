@@ -12,6 +12,8 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/perf_metrics_setting"
+	"github.com/bytedance/gopkg/util/gopool"
+	"github.com/gin-gonic/gin"
 )
 
 var hotBuckets sync.Map
@@ -24,17 +26,101 @@ func Init() {
 	go flushLoop()
 }
 
-func RecordRelaySample(info *relaycommon.RelayInfo, success bool, outputTokens int64) {
+const routeGroupMetricTrackerKey = "route_group_metric_tracker"
+
+type routeGroupMetricTracker struct {
+	mutex     sync.Mutex
+	model     string
+	group     string
+	startedAt time.Time
+	finished  bool
+}
+
+func BeginGroupAttempt(c *gin.Context, modelName, group string) {
+	previous, ok := beginGroupAttempt(c, modelName, group, time.Now())
+	if ok {
+		RecordAsync(previous)
+	}
+}
+
+func beginGroupAttempt(c *gin.Context, modelName, group string, now time.Time) (Sample, bool) {
+	if c == nil || modelName == "" || group == "" {
+		return Sample{}, false
+	}
+	tracker, ok := c.Get(routeGroupMetricTrackerKey)
+	if !ok {
+		c.Set(routeGroupMetricTrackerKey, &routeGroupMetricTracker{
+			model: modelName, group: group, startedAt: now,
+		})
+		return Sample{}, false
+	}
+	state, ok := tracker.(*routeGroupMetricTracker)
+	if !ok || state == nil {
+		return Sample{}, false
+	}
+	state.mutex.Lock()
+	if state.group == group && !state.finished {
+		state.mutex.Unlock()
+		return Sample{}, false
+	}
+	previous := Sample{}
+	if !state.finished && state.group != "" {
+		previous = Sample{
+			Model: state.model, Group: state.group,
+			LatencyMs: now.Sub(state.startedAt).Milliseconds(),
+		}
+	}
+	state.model = modelName
+	state.group = group
+	state.startedAt = now
+	state.finished = false
+	state.mutex.Unlock()
+	return previous, previous.Model != ""
+}
+
+func RecordRelaySampleAsync(c *gin.Context, info *relaycommon.RelayInfo, success bool, outputTokens int64) {
+	sample, ok := prepareRelaySample(c, info, success, outputTokens)
+	if ok {
+		RecordAsync(sample)
+	}
+}
+
+func RecordAsync(sample Sample) {
+	gopool.Go(func() {
+		Record(sample)
+	})
+}
+
+func prepareRelaySample(c *gin.Context, info *relaycommon.RelayInfo, success bool, outputTokens int64) (Sample, bool) {
 	if info == nil {
-		return
+		return Sample{}, false
 	}
 	now := time.Now()
+	startedAt := info.StartTime
+	modelName := info.OriginModelName
+	group := info.UsingGroup
+	if c != nil {
+		if raw, ok := c.Get(routeGroupMetricTrackerKey); ok {
+			if tracker, valid := raw.(*routeGroupMetricTracker); valid && tracker != nil {
+				tracker.mutex.Lock()
+				if tracker.finished {
+					tracker.mutex.Unlock()
+					return Sample{}, false
+				}
+				tracker.finished = true
+				startedAt = tracker.startedAt
+				modelName = tracker.model
+				group = tracker.group
+				tracker.mutex.Unlock()
+			}
+		}
+	}
 	hasTtft := info.IsStream && info.HasSendResponse()
 	ttftMs := int64(0)
 	if hasTtft {
-		ttftMs = info.FirstResponseTime.Sub(info.StartTime).Milliseconds()
+		ttftMs = info.FirstResponseTime.Sub(startedAt).Milliseconds()
 	}
-	latencyMs := now.Sub(info.StartTime).Milliseconds()
+	latencyMs := now.Sub(startedAt).Milliseconds()
 	generationMs := latencyMs
 	if hasTtft {
 		generationMs = now.Sub(info.FirstResponseTime).Milliseconds()
@@ -42,16 +128,16 @@ func RecordRelaySample(info *relaycommon.RelayInfo, success bool, outputTokens i
 	if generationMs <= 0 {
 		generationMs = latencyMs
 	}
-	Record(Sample{
-		Model:        info.OriginModelName,
-		Group:        info.UsingGroup,
+	return Sample{
+		Model:        modelName,
+		Group:        group,
 		LatencyMs:    latencyMs,
 		TtftMs:       ttftMs,
 		HasTtft:      hasTtft,
 		Success:      success,
 		OutputTokens: outputTokens,
 		GenerationMs: generationMs,
-	})
+	}, true
 }
 
 func Record(sample Sample) {
@@ -97,13 +183,14 @@ func Query(params QueryParams) (QueryResult, error) {
 			group:    row.Group,
 			bucketTs: row.BucketTs,
 		}, counters{
-			requestCount:   row.RequestCount,
-			successCount:   row.SuccessCount,
-			totalLatencyMs: row.TotalLatencyMs,
-			ttftSumMs:      row.TtftSumMs,
-			ttftCount:      row.TtftCount,
-			outputTokens:   row.OutputTokens,
-			generationMs:   row.GenerationMs,
+			requestCount:     row.RequestCount,
+			successCount:     row.SuccessCount,
+			totalLatencyMs:   row.TotalLatencyMs,
+			successLatencyMs: row.SuccessLatencyMs,
+			ttftSumMs:        row.TtftSumMs,
+			ttftCount:        row.TtftCount,
+			outputTokens:     row.OutputTokens,
+			generationMs:     row.GenerationMs,
 		})
 	}
 
@@ -198,6 +285,49 @@ func QuerySummaryAll(hours int, groups []string) (SummaryAllResult, error) {
 	return SummaryAllResult{Models: models}, nil
 }
 
+func QueryRoutingStats(hours int) (map[string]map[string]RoutingStat, error) {
+	if hours <= 0 {
+		hours = 24
+	}
+	endTs := time.Now().Unix()
+	startTs := endTs - int64(hours)*3600
+	rows, err := model.GetPerfMetricsRoutingSummary(startTs, endTs)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]map[string]RoutingStat)
+	merge := func(modelName, group string, values RoutingStat) {
+		if result[modelName] == nil {
+			result[modelName] = make(map[string]RoutingStat)
+		}
+		current := result[modelName][group]
+		current.RequestCount += values.RequestCount
+		current.SuccessCount += values.SuccessCount
+		current.SuccessLatencyMs += values.SuccessLatencyMs
+		result[modelName][group] = current
+	}
+	for _, row := range rows {
+		merge(row.ModelName, row.Group, RoutingStat{
+			RequestCount: row.RequestCount, SuccessCount: row.SuccessCount,
+			SuccessLatencyMs: row.SuccessLatencyMs,
+		})
+	}
+	hotBuckets.Range(func(key, value any) bool {
+		bucket := key.(bucketKey)
+		if bucket.bucketTs < startTs || bucket.bucketTs > endTs {
+			return true
+		}
+		current := value.(*atomicBucket).snapshot()
+		merge(bucket.model, bucket.group, RoutingStat{
+			RequestCount: current.requestCount, SuccessCount: current.successCount,
+			SuccessLatencyMs: current.successLatencyMs,
+		})
+		return true
+	})
+	return result, nil
+}
+
 func mergeModelTotals(totals map[string]counters, modelName string, value counters) {
 	if value.requestCount == 0 {
 		return
@@ -206,6 +336,7 @@ func mergeModelTotals(totals map[string]counters, modelName string, value counte
 	current.requestCount += value.requestCount
 	current.successCount += value.successCount
 	current.totalLatencyMs += value.totalLatencyMs
+	current.successLatencyMs += value.successLatencyMs
 	current.ttftSumMs += value.ttftSumMs
 	current.ttftCount += value.ttftCount
 	current.outputTokens += value.outputTokens
@@ -224,6 +355,7 @@ func mergeModelBucket(modelBuckets map[string]map[int64]counters, modelName stri
 	current.requestCount += value.requestCount
 	current.successCount += value.successCount
 	current.totalLatencyMs += value.totalLatencyMs
+	current.successLatencyMs += value.successLatencyMs
 	current.ttftSumMs += value.ttftSumMs
 	current.ttftCount += value.ttftCount
 	current.outputTokens += value.outputTokens
@@ -279,6 +411,7 @@ func mergeCounters(merged map[bucketKey]counters, key bucketKey, value counters)
 	current.requestCount += value.requestCount
 	current.successCount += value.successCount
 	current.totalLatencyMs += value.totalLatencyMs
+	current.successLatencyMs += value.successLatencyMs
 	current.ttftSumMs += value.ttftSumMs
 	current.ttftCount += value.ttftCount
 	current.outputTokens += value.outputTokens
@@ -389,6 +522,9 @@ func recordRedis(key bucketKey, sample Sample) {
 	pipe.HIncrBy(ctx, redisKey, "req", 1)
 	if sample.Success {
 		pipe.HIncrBy(ctx, redisKey, "ok", 1)
+		if sample.LatencyMs > 0 {
+			pipe.HIncrBy(ctx, redisKey, "ok_lat", sample.LatencyMs)
+		}
 	}
 	if sample.LatencyMs > 0 {
 		pipe.HIncrBy(ctx, redisKey, "lat", sample.LatencyMs)

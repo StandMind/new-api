@@ -5520,6 +5520,13 @@
     "{{count}} local groups will be deleted": "{{count}} local groups will be deleted",
     "{{count}} notices": "{{count}} notices",
     "{{count}} other channels in this group": "{{count}} other channels in this group",
-    "{{count}} price and billing changes": "{{count}} price and billing changes"
+    "{{count}} price and billing changes": "{{count}} price and billing changes",
+    "Applied when users create new API keys": "ユーザーが新しいAPIキーを作成するときに適用されます",
+    "Choose the best available group automatically": "利用可能な最適なグループを自動的に選択します",
+    "Default routing priority": "デフォルトのルーティング優先度",
+    "Routing": "ルーティング",
+    "Routing priority": "ルーティング優先度",
+    "Smart routing": "スマートルーティング",
+    "Speed": "速度"
   }
 }

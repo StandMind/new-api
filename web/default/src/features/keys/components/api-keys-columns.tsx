@@ -197,9 +197,25 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
     },
     {
       accessorKey: 'group',
-      header: t('Group'),
+      header: t('Routing'),
       cell: ({ row }) => {
         const apiKey = row.original
+        if (apiKey.routing_priority) {
+          const labels: Record<string, string> = {
+            auto: t('Auto'),
+            price: t('Price'),
+            speed: t('Speed'),
+            success_rate: t('Success rate'),
+          }
+          return (
+            <StatusBadge
+              label={labels[apiKey.routing_priority] || apiKey.routing_priority}
+              variant='info'
+              copyable={false}
+              className='-ml-1.5'
+            />
+          )
+        }
         const group = row.getValue('group') as string
         const configuredGroupChain = apiKey.group_chain ?? []
         const groupChain =

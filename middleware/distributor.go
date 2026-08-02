@@ -107,21 +107,38 @@ func Distribute() func(c *gin.Context) {
 				}
 
 				groups := common.GetContextKeyStringSlice(c, constant.ContextKeyTokenGroupChain)
+				routingPriority := constant.NormalizeRoutingPriority(common.GetContextKeyString(c, constant.ContextKeyTokenRoutingPriority))
+				rankingBasis := ""
 				if playgroundGroupOverride {
 					groups = []string{usingGroup}
+					routingPriority = constant.RoutingPriorityManual
+				} else if routingPriority != constant.RoutingPriorityManual {
+					groups, rankingBasis = service.GetSmartRoutingGroups(
+						common.GetContextKeyString(c, constant.ContextKeyUserGroup),
+						modelRequest.Model,
+						c.Request.URL.Path,
+						routingPriority,
+					)
 				} else if len(groups) == 0 {
 					groups = []string{usingGroup}
+				}
+				if len(groups) == 0 {
+					abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}), types.ErrorCodeModelNotFound)
+					return
 				}
 				routePlan, routeErr := service.BuildRouteAttemptPlan(
 					groups,
 					modelRequest.Model,
 					c.Request.URL.Path,
-					len(groups) > 1,
+					routingPriority != constant.RoutingPriorityManual || len(groups) > 1,
 				)
 				if routeErr != nil {
 					message := i18n.T(c, i18n.MsgDistributorGetChannelFailed, map[string]any{"Group": usingGroup, "Model": modelRequest.Model, "Error": routeErr.Error()})
 					abortWithOpenAiMessage(c, http.StatusServiceUnavailable, message, types.ErrorCodeModelNotFound)
 					return
+				}
+				if routingPriority != constant.RoutingPriorityManual {
+					routePlan.SetSmartRouting(routingPriority, rankingBasis)
 				}
 				service.SetRouteAttemptPlan(c, routePlan)
 
@@ -483,7 +500,14 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	common.SetContextKey(c, constant.ContextKeyChannelModelMapping, channel.GetModelMapping())
 	common.SetContextKey(c, constant.ContextKeyChannelStatusCodeMapping, channel.GetStatusCodeMapping())
 
-	key, index, newAPIError := channel.GetNextEnabledKey()
+	var key string
+	var index int
+	var newAPIError *types.NewAPIError
+	if service.GetRouteAttemptPlan(c) != nil {
+		key, index, newAPIError = channel.GetNextEnabledRoutingKey()
+	} else {
+		key, index, newAPIError = channel.GetNextEnabledKey()
+	}
 	if newAPIError != nil {
 		return newAPIError
 	}

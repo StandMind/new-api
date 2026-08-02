@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -227,6 +228,14 @@ func ListModels(c *gin.Context, modelType int) {
 		return
 	}
 	ownerGroups := groups.ownerGroups
+	routingPriority := constant.NormalizeRoutingPriority(common.GetContextKeyString(c, constant.ContextKeyTokenRoutingPriority))
+	var smartModels map[string]struct{}
+	if routingPriority != constant.RoutingPriorityManual {
+		smartModels = make(map[string]struct{})
+		for _, modelName := range model.GetEnabledModelsForGroups(ownerGroups) {
+			smartModels[modelName] = struct{}{}
+		}
+	}
 	modelLimitEnable := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
 	if modelLimitEnable {
 		s, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
@@ -237,6 +246,11 @@ func ListModels(c *gin.Context, modelType int) {
 			tokenModelLimit = map[string]bool{}
 		}
 		for allowModel, _ := range tokenModelLimit {
+			if smartModels != nil {
+				if _, available := smartModels[allowModel]; !available {
+					continue
+				}
+			}
 			if !acceptUnsetRatioModel {
 				if !helper.HasModelBillingConfig(allowModel) {
 					continue
@@ -246,7 +260,13 @@ func ListModels(c *gin.Context, modelType int) {
 		}
 	} else {
 		var models []string
-		if len(ownerGroups) > 1 {
+		if smartModels != nil {
+			models = make([]string, 0, len(smartModels))
+			for modelName := range smartModels {
+				models = append(models, modelName)
+			}
+			sort.Strings(models)
+		} else if len(ownerGroups) > 1 {
 			for _, ownerGroup := range ownerGroups {
 				groupModels := model.GetGroupEnabledModels(ownerGroup)
 				for _, g := range groupModels {

@@ -797,6 +797,10 @@ func requestDetailRoutingSnapshot(c *gin.Context, finalGroup string) map[string]
 	routing := make(map[string]interface{})
 	if plan := GetRouteAttemptPlan(c); plan != nil {
 		routing["groups"] = plan.ConfiguredGroups()
+		if priority := plan.RoutingPriority(); priority != constant.RoutingPriorityManual {
+			routing["mode"] = string(priority)
+			routing["basis"] = plan.RankingBasis()
+		}
 	}
 	history, _ := common.GetContextKeyType[[]RouteAttempt](c, constant.ContextKeyRouteAttemptHistory)
 	if len(history) > requestDetailMaxRouteAttempts {

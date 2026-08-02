@@ -22,7 +22,12 @@ import { z } from 'zod'
 import { parseQuotaFromDollars, quotaUnitsToDollars } from '@/lib/format'
 
 import { DEFAULT_GROUP } from '../constants'
-import type { ApiKey, ApiKeyFormData } from '../types'
+import {
+  routingPrioritySchema,
+  type ApiKey,
+  type ApiKeyFormData,
+  type RoutingPriority,
+} from '../types'
 
 // ============================================================================
 // Form Schema
@@ -38,10 +43,19 @@ export function getApiKeyFormSchema(t: TFunction) {
       model_limits: z.array(z.string()),
       allow_ips: z.string().optional(),
       group: z.string().optional(),
-      group_chain: z.array(z.string()).min(1, t('Select at least one group')),
+      group_chain: z.array(z.string()),
+      smart_routing: z.boolean(),
+      routing_priority: routingPrioritySchema,
       tokenCount: z.number().min(1).optional(),
     })
     .superRefine((data, ctx) => {
+      if (!data.smart_routing && data.group_chain.length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['group_chain'],
+          message: t('Select at least one group'),
+        })
+      }
       if (data.unlimited_quota) {
         return
       }
@@ -74,14 +88,19 @@ export const API_KEY_FORM_DEFAULT_VALUES: ApiKeyFormValues = {
   allow_ips: '',
   group: DEFAULT_GROUP,
   group_chain: [DEFAULT_GROUP],
+  smart_routing: true,
+  routing_priority: 'price',
   tokenCount: 1,
 }
 
-export function getApiKeyFormDefaultValues(): ApiKeyFormValues {
+export function getApiKeyFormDefaultValues(
+  defaultPriority: RoutingPriority = 'price'
+): ApiKeyFormValues {
   return {
     ...API_KEY_FORM_DEFAULT_VALUES,
     model_limits: [...API_KEY_FORM_DEFAULT_VALUES.model_limits],
     group_chain: [...API_KEY_FORM_DEFAULT_VALUES.group_chain],
+    routing_priority: defaultPriority,
   }
 }
 
@@ -110,6 +129,7 @@ export function transformFormDataToPayload(
     allow_ips: data.allow_ips || '',
     group: groupChain[0] || '',
     group_chain: groupChain,
+    routing_priority: data.smart_routing ? data.routing_priority : '',
   }
   return payload
 }
@@ -137,6 +157,8 @@ export function transformApiKeyToFormDefaults(
     allow_ips: apiKey.allow_ips || '',
     group: apiKey.group || DEFAULT_GROUP,
     group_chain: groupChain,
+    smart_routing: apiKey.routing_priority !== '',
+    routing_priority: apiKey.routing_priority || 'price',
     tokenCount: 1,
   }
 }

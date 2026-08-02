@@ -18,6 +18,15 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
+export const routingPrioritySchema = z.enum([
+  'auto',
+  'price',
+  'speed',
+  'success_rate',
+])
+
+export type RoutingPriority = z.infer<typeof routingPrioritySchema>
+
 // ============================================================================
 // API Key Schema & Types
 // ============================================================================
@@ -35,6 +44,10 @@ export const apiKeySchema = z.object({
   accessed_time: z.number(),
   group: z.string().nullish().default(''),
   group_chain: z.array(z.string()).nullish().default([]),
+  routing_priority: z
+    .union([routingPrioritySchema, z.literal('')])
+    .nullish()
+    .default(''),
   model_limits_enabled: z.boolean(),
   model_limits: z.string().nullish().default(''),
   allow_ips: z.string().nullish().default(''),
@@ -85,6 +98,12 @@ export interface ApiKeyFormData {
   allow_ips: string
   group: string
   group_chain?: string[]
+  routing_priority: RoutingPriority | ''
+}
+
+export interface TokenRoutingConfig {
+  default_priority: RoutingPriority
+  priorities: RoutingPriority[]
 }
 
 // ============================================================================

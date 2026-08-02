@@ -277,6 +277,9 @@ func updateOptionMap(key string, value string) (err error) {
 
 	// 检查是否是模型配置 - 使用更规范的方式处理
 	if handleConfigUpdate(key, value) {
+		if key == "group_ratio_setting.group_special_usable_group" {
+			notifyRoutingDataChanged()
+		}
 		return nil // 已由配置系统处理
 	}
 
@@ -547,12 +550,16 @@ func updateOptionMap(key string, value string) (err error) {
 		err = ratio_setting.UpdateModelRatioByJSONString(value)
 	case "GroupRatio":
 		err = ratio_setting.UpdateGroupRatioByJSONString(value)
+		notifyRoutingDataChanged()
 	case "GroupGroupRatio":
 		err = ratio_setting.UpdateGroupGroupRatioByJSONString(value)
+		notifyRoutingDataChanged()
 	case "GroupModelRatio":
 		err = ratio_setting.UpdateGroupModelRatioByJSONString(value)
+		notifyRoutingDataChanged()
 	case "UserUsableGroups":
 		err = setting.UpdateUserUsableGroupsByJSONString(value)
+		notifyRoutingDataChanged()
 	case "CompletionRatio":
 		err = ratio_setting.UpdateCompletionRatioByJSONString(value)
 	case "ModelPrice":

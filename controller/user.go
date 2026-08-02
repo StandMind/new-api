@@ -18,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/smart_routing_setting"
 
 	"github.com/QuantumNous/new-api/constant"
 
@@ -278,6 +279,7 @@ func Register(c *gin.Context) {
 			return
 		}
 		// 生成默认令牌
+		compatibilityGroups := defaultCompatibilityGroupChain(insertedUser.Group)
 		token := model.Token{
 			UserId:             insertedUser.Id, // 使用插入后的用户ID
 			Name:               cleanUser.Username + "的初始令牌",
@@ -289,7 +291,8 @@ func Register(c *gin.Context) {
 			UnlimitedQuota:     true,
 			ModelLimitsEnabled: false,
 			Group:              insertedUser.Group,
-			GroupChain:         model.StringArray{insertedUser.Group},
+			GroupChain:         compatibilityGroups,
+			RoutingPriority:    string(smart_routing_setting.GetDefaultPriority()),
 		}
 		if err := token.Insert(); err != nil {
 			common.ApiErrorI18n(c, i18n.MsgCreateDefaultTokenErr)

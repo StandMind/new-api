@@ -5520,6 +5520,13 @@
     "{{count}} local groups will be deleted": "{{count}} local groups will be deleted",
     "{{count}} notices": "{{count}} notices",
     "{{count}} other channels in this group": "{{count}} other channels in this group",
-    "{{count}} price and billing changes": "{{count}} price and billing changes"
+    "{{count}} price and billing changes": "{{count}} price and billing changes",
+    "Applied when users create new API keys": "Applied when users create new API keys",
+    "Choose the best available group automatically": "Choose the best available group automatically",
+    "Default routing priority": "Default routing priority",
+    "Routing": "Routing",
+    "Routing priority": "Routing priority",
+    "Smart routing": "Smart routing",
+    "Speed": "Speed"
   }
 }

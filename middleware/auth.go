@@ -418,9 +418,29 @@ func TokenAuth() func(c *gin.Context) {
 		userCache.WriteContext(c)
 
 		userGroup := userCache.Group
+		routingPriority := constant.NormalizeRoutingPriority(token.RoutingPriority)
+		if !constant.IsValidRoutingPriority(routingPriority, true) {
+			abortWithOpenAiMessage(c, http.StatusForbidden, "API Key 智能路由模式无效，请重新保存")
+			return
+		}
 		tokenGroup := token.Group
 		if tokenGroup == "auto" {
 			abortWithOpenAiMessage(c, http.StatusForbidden, "auto 分组令牌已失效，请重新创建 API Key")
+			return
+		}
+		if routingPriority != constant.RoutingPriorityManual {
+			groups := service.GetSmartRoutingAccessibleGroups(userGroup)
+			if len(groups) == 0 {
+				abortWithOpenAiMessage(c, http.StatusServiceUnavailable, "智能路由暂无可用分组")
+				return
+			}
+			common.SetContextKey(c, constant.ContextKeyUsingGroup, groups[0])
+			if err = SetupContextForToken(c, token, parts...); err != nil {
+				return
+			}
+			common.SetContextKey(c, constant.ContextKeyTokenGroupChain, groups)
+			common.SetContextKey(c, constant.ContextKeyTokenRoutingPriority, string(routingPriority))
+			c.Next()
 			return
 		}
 		groupChain := token.GetGroupChain()
@@ -483,6 +503,7 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 	}
 	common.SetContextKey(c, constant.ContextKeyTokenGroup, token.Group)
 	common.SetContextKey(c, constant.ContextKeyTokenGroupChain, token.GetGroupChain())
+	common.SetContextKey(c, constant.ContextKeyTokenRoutingPriority, token.RoutingPriority)
 	if len(parts) > 1 {
 		if model.IsAdmin(token.UserId) {
 			c.Set("specific_channel_id", parts[1])

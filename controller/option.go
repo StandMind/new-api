@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/request_detail_setting"
+	"github.com/QuantumNous/new-api/setting/smart_routing_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/gin-gonic/gin"
@@ -251,6 +252,12 @@ func UpdateOption(c *gin.Context) {
 				"success": false,
 				"message": "无效的主题值，可选值：default（新版前端）、classic（经典前端）",
 			})
+			return
+		}
+	case smart_routing_setting.ConfigName + ".default_priority":
+		value := option.Value.(string)
+		if !smart_routing_setting.ValidateDefaultPriority(value) {
+			common.ApiErrorMsg(c, "invalid smart routing default priority")
 			return
 		}
 	case "GroupRatio":
