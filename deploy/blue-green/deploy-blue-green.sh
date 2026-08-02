@@ -764,7 +764,7 @@ start_drain_sse() {
   service="$(service_for_slot "${slot}")"
   install -d -m 700 "${DEPLOY_PATH}/upgrade-sse"
   DRAIN_SSE_FILE="${DEPLOY_PATH}/upgrade-sse/$(date +%F_%H%M%S)-${slot}.log"
-  request_body="{\"model\":\"${SMOKE_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"Count from 1 to 1000, one number per line, with no other text.\"}],\"max_tokens\":1024,\"stream\":true}"
+  request_body="{\"model\":\"${SMOKE_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"Write an original fictional travel diary of at least 900 words. Begin immediately, keep writing until you reach at least 900 words, and output only the diary.\"}],\"max_tokens\":1024,\"stream\":true}"
 
   log "waiting ${SMOKE_RETRY_DELAY_SECONDS} seconds before the public drain SSE"
   sleep "${SMOKE_RETRY_DELAY_SECONDS}"
