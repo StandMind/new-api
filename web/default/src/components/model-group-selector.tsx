@@ -616,6 +616,7 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
   const [searchQuery, setSearchQuery] = useState('')
   const isMobile = useIsMobile()
   const groupScrollContainerRef = useRef<HTMLDivElement | null>(null)
+  const mobileScrollContainerRef = useRef<HTMLDivElement | null>(null)
   const selectedGroupOptionRef = useRef<HTMLButtonElement | null>(null)
   const selectedModelOptionRef = useRef<HTMLDivElement | null>(null)
 
@@ -687,6 +688,10 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
     const firstFrameId = window.requestAnimationFrame(() => {
       secondFrameId = window.requestAnimationFrame(() => {
         if (isMobile) {
+          scrollSelectedOptionIntoView(
+            selectedGroupOptionRef.current,
+            mobileScrollContainerRef.current
+          )
           return
         }
         scrollSelectedOptionIntoView(
@@ -924,7 +929,10 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
         <DrawerHeader className='pb-3 text-left'>
           <DrawerTitle>{t('Select Model')}</DrawerTitle>
         </DrawerHeader>
-        <div className='min-h-0 flex-1 overflow-y-auto px-4 pb-5'>
+        <div
+          className='min-h-0 flex-1 overflow-y-auto px-4 pb-5'
+          ref={mobileScrollContainerRef}
+        >
           {renderContent()}
         </div>
       </DrawerContent>
