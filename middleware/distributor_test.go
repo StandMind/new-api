@@ -143,6 +143,21 @@ func TestDistributeSkipsCandidateWithoutAnEnabledKey(t *testing.T) {
 func TestDistributePlaygroundUsesCanonicalChatPath(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupDistributorRouteTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.UserLevel{},
+		&model.RouteGroup{},
+		&model.UserLevelRouteGroup{},
+	))
+	require.NoError(t, db.Create(&model.UserLevel{
+		Code: "standard", Name: "Standard", IsDefault: true, Enabled: true, TopupRatio: 1,
+	}).Error)
+	require.NoError(t, db.Create(&model.RouteGroup{
+		Code: "playground-group", Name: "Playground", BaseRatio: 1, Enabled: true,
+	}).Error)
+	require.NoError(t, db.Create(&model.UserLevelRouteGroup{
+		UserLevelCode: "standard", RouteGroupCode: "playground-group",
+	}).Error)
+	require.NoError(t, model.RebuildAccessPolicySnapshot())
 
 	priority := int64(0)
 	channel := model.Channel{
@@ -175,7 +190,7 @@ func TestDistributePlaygroundUsesCanonicalChatPath(t *testing.T) {
 		"/pg/chat/completions",
 		func(c *gin.Context) {
 			common.SetContextKey(c, constant.ContextKeyUsingGroup, "playground-group")
-			common.SetContextKey(c, constant.ContextKeyUserGroup, "playground-group")
+			common.SetContextKey(c, constant.ContextKeyUserLevel, "standard")
 			c.Next()
 		},
 		Distribute(),

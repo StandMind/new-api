@@ -53,7 +53,7 @@ function referenceCount(group: RouteGroup) {
   return group.references.reduce((sum, item) => sum + item.count, 0)
 }
 
-export function RouteGroupsSection(props: { groupRatio: string }) {
+export function RouteGroupsSection() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const groupsQuery = useQuery({
@@ -220,7 +220,9 @@ export function RouteGroupsSection(props: { groupRatio: string }) {
             )}
           </p>
         </div>
-        <GroupModelRouteEditor groupRatio={props.groupRatio} />
+        <GroupModelRouteEditor
+          groupCodes={(groupsQuery.data ?? []).map((group) => group.code)}
+        />
       </section>
 
       <RouteGroupSheet

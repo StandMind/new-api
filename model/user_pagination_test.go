@@ -20,7 +20,7 @@ func insertUsersForPaginationTest(t *testing.T, total int) {
 			Email:       fmt.Sprintf("user%02d@example.com", id),
 			Role:        common.RoleCommonUser,
 			Status:      common.UserStatusEnabled,
-			Group:       "default",
+			UserLevel:   StandardUserLevelCode,
 			AffCode:     fmt.Sprintf("aff%02d", id),
 		}
 		require.NoError(t, DB.Create(user).Error)

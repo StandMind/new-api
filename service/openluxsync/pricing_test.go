@@ -29,7 +29,7 @@ func emptyLocalPricingOptions() *localPricingOptions {
 		imageRatio:           make(numberMap),
 		audioRatio:           make(numberMap),
 		audioCompletionRatio: make(numberMap),
-		groupRatio:           make(numberMap),
+		routeGroupRatio:      make(map[string]decimal.Decimal),
 		groupModelRatio:      make(nestedNumberMap),
 		billingMode:          make(stringMap),
 		billingExpr:          make(stringMap),
@@ -83,7 +83,7 @@ func TestTargetGroupModelRatioUsesOpenLuxMarkupWithoutChangingLocalBase(t *testi
 
 func TestEffectiveGroupModelRatioUsesRuntimeWildcardPrecedence(t *testing.T) {
 	options := emptyLocalPricingOptions()
-	options.groupRatio["local"] = rawNumber("0.2")
+	options.routeGroupRatio["local"] = decimal.RequireFromString("0.2")
 	options.groupModelRatio["local"] = numberMap{
 		"*":      rawNumber("0.4"),
 		"gpt-*":  rawNumber("0.6"),

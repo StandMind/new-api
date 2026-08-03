@@ -176,11 +176,7 @@ func setupLogin(user *model.User, c *gin.Context) {
 	session.Set("role", user.Role)
 	session.Set("status", user.Status)
 	userLevel := user.UserLevel
-	if userLevel == "" {
-		userLevel = model.UserLevelForLegacyGroup(user.Group)
-	}
 	session.Set("user_level", userLevel)
-	session.Set("group", model.LegacyGroupForUserLevel(userLevel))
 	err := session.Save()
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)

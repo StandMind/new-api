@@ -49,7 +49,34 @@ func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 	model.DB = db
 	model.LOG_DB = db
 
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Channel{}, &model.Ability{}, &model.Model{}, &model.Vendor{}))
+	require.NoError(t, db.AutoMigrate(
+		&model.User{}, &model.Channel{}, &model.Ability{}, &model.Model{}, &model.Vendor{},
+		&model.UserLevel{}, &model.RouteGroup{}, &model.UserLevelRouteGroup{},
+		&model.AccessPolicyState{},
+	))
+
+	vipPriceRatio := model.AccessPolicyRatio(1.4)
+	require.NoError(t, db.Create(&model.AccessPolicyState{
+		ID: 1, InitialRouteGroupCodes: `["group-a","group-b","vip"]`,
+		InitialRouteGroupFingerprint: "controller-test", ExpandedAt: 1, ContractedAt: 1,
+	}).Error)
+	require.NoError(t, db.Create(&model.UserLevel{
+		Code: model.StandardUserLevelCode, Name: "普通用户", IsDefault: true,
+		Enabled: true, TopupRatio: 1,
+	}).Error)
+	require.NoError(t, db.Create(&[]model.RouteGroup{
+		{Code: "default", Name: "Default", BaseRatio: 1, Enabled: true},
+		{Code: "vip", Name: "VIP", BaseRatio: 2, Enabled: true},
+		{Code: "group-a", Name: "Group A", BaseRatio: 1, Enabled: true},
+		{Code: "group-b", Name: "Group B", BaseRatio: 1, Enabled: true},
+	}).Error)
+	require.NoError(t, db.Create(&[]model.UserLevelRouteGroup{
+		{UserLevelCode: model.StandardUserLevelCode, RouteGroupCode: "default"},
+		{UserLevelCode: model.StandardUserLevelCode, RouteGroupCode: "vip", PriceRatio: &vipPriceRatio},
+		{UserLevelCode: model.StandardUserLevelCode, RouteGroupCode: "group-a"},
+		{UserLevelCode: model.StandardUserLevelCode, RouteGroupCode: "group-b"},
+	}).Error)
+	require.NoError(t, model.RebuildAccessPolicySnapshot())
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()
@@ -184,11 +211,11 @@ func decodeUserModelsResponse(t *testing.T, recorder *httptest.ResponseRecorder)
 func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
 	require.NoError(t, db.Create(&model.User{
-		Id:       1002,
-		Username: "playground-model-user",
-		Password: "password",
-		Group:    "default",
-		Status:   common.UserStatusEnabled,
+		Id:        1002,
+		Username:  "playground-model-user",
+		Password:  "password",
+		UserLevel: model.StandardUserLevelCode,
+		Status:    common.UserStatusEnabled,
 	}).Error)
 	require.NoError(t, db.Create(&model.Channel{
 		Id:     1,
@@ -227,11 +254,11 @@ func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 func TestGetUserModelsUsesEnabledChannelsAndChatEndpoint(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
 	require.NoError(t, db.Create(&model.User{
-		Id:       1004,
-		Username: "playground-chat-model-user",
-		Password: "password",
-		Group:    "default",
-		Status:   common.UserStatusEnabled,
+		Id:        1004,
+		Username:  "playground-chat-model-user",
+		Password:  "password",
+		UserLevel: model.StandardUserLevelCode,
+		Status:    common.UserStatusEnabled,
 	}).Error)
 
 	responseOnlyChannel := model.Channel{
@@ -333,7 +360,7 @@ func TestListModelsReturnsUnionForExplicitGroupChain(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, model.StandardUserLevelCode)
 	common.SetContextKey(ctx, constant.ContextKeyTokenGroup, "default")
 	common.SetContextKey(ctx, constant.ContextKeyTokenGroupChain, []string{
 		"default",
@@ -371,7 +398,7 @@ func TestListModelsSmartRoutingReturnsAvailableUnionAndAppliesTokenLimit(t *test
 		recorder := httptest.NewRecorder()
 		ctx, _ := gin.CreateTestContext(recorder)
 		ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-		common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+		common.SetContextKey(ctx, constant.ContextKeyUserGroup, model.StandardUserLevelCode)
 		common.SetContextKey(ctx, constant.ContextKeyTokenGroup, "group-a")
 		common.SetContextKey(ctx, constant.ContextKeyTokenGroupChain, []string{"default", "group-a", "group-b"})
 		common.SetContextKey(ctx, constant.ContextKeyTokenRoutingPriority, "price")
@@ -407,11 +434,11 @@ func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 
 	db := setupModelListControllerTestDB(t)
 	require.NoError(t, db.Create(&model.User{
-		Id:       1001,
-		Username: "model-list-user",
-		Password: "password",
-		Group:    "default",
-		Status:   common.UserStatusEnabled,
+		Id:        1001,
+		Username:  "model-list-user",
+		Password:  "password",
+		UserLevel: model.StandardUserLevelCode,
+		Status:    common.UserStatusEnabled,
 	}).Error)
 	require.NoError(t, db.Create(&[]model.Ability{
 		{Group: "default", Model: "zz-tiered-visible-model", ChannelId: 1, Enabled: true},
@@ -462,11 +489,11 @@ func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T)
 	})
 
 	require.NoError(t, db.Create(&model.User{
-		Id:       1003,
-		Username: "advanced-custom-model-list-user",
-		Password: "password",
-		Group:    "default",
-		Status:   common.UserStatusEnabled,
+		Id:        1003,
+		Username:  "advanced-custom-model-list-user",
+		Password:  "password",
+		UserLevel: model.StandardUserLevelCode,
+		Status:    common.UserStatusEnabled,
 	}).Error)
 
 	channel := &model.Channel{
@@ -536,7 +563,7 @@ func TestListModelsTokenLimitIncludesTieredBillingModel(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, model.StandardUserLevelCode)
 	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimitEnabled, true)
 	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimit, map[string]bool{
 		"zz-token-tiered-visible-model":      true,
@@ -601,11 +628,11 @@ func TestSetupLoginDoesNotTouchPasswordWhenPasswordFieldOmitted(t *testing.T) {
 	hashedPassword, err := common.Password2Hash("CurrentPassword123")
 	require.NoError(t, err)
 	user := &model.User{
-		Username: "twofa-user",
-		Password: hashedPassword,
-		Role:     common.RoleCommonUser,
-		Status:   common.UserStatusEnabled,
-		Group:    "default",
+		Username:  "twofa-user",
+		Password:  hashedPassword,
+		Role:      common.RoleCommonUser,
+		Status:    common.UserStatusEnabled,
+		UserLevel: model.StandardUserLevelCode,
 	}
 	require.NoError(t, db.Create(user).Error)
 
@@ -614,11 +641,11 @@ func TestSetupLoginDoesNotTouchPasswordWhenPasswordFieldOmitted(t *testing.T) {
 	router.Use(sessions.Sessions("session", store))
 	router.GET("/", func(c *gin.Context) {
 		setupLogin(&model.User{
-			Id:       user.Id,
-			Username: user.Username,
-			Role:     user.Role,
-			Status:   user.Status,
-			Group:    user.Group,
+			Id:        user.Id,
+			Username:  user.Username,
+			Role:      user.Role,
+			Status:    user.Status,
+			UserLevel: user.UserLevel,
 		}, c)
 	})
 

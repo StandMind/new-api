@@ -66,9 +66,9 @@ func validateBindings(requests []SaveBinding, source *sourceSnapshot, snapshot *
 	for _, channel := range snapshot.Channels {
 		channelByID[channel.Id] = channel
 	}
-	groupRatios, err := parseNumberMap(snapshot.Options[optionGroupRatio], optionGroupRatio)
-	if err != nil {
-		return nil, unprocessable(err.Error())
+	routeGroups := make(map[string]model.RouteGroup, len(snapshot.RouteGroups))
+	for _, group := range snapshot.RouteGroups {
+		routeGroups[group.Code] = group
 	}
 	seenSources := make(map[string]struct{}, len(requests))
 	seenChannels := make(map[int]struct{})
@@ -117,8 +117,8 @@ func validateBindings(requests []SaveBinding, source *sourceSnapshot, snapshot *
 			seenChannels[channelID] = struct{}{}
 			result = append(result, model.OpenLuxPriceSyncBinding{SourceGroup: sourceGroup, ChannelID: channelID})
 		}
-		if _, exists := groupRatios[localGroup]; !exists {
-			return nil, badRequest("本地组未配置 GroupRatio: " + localGroup)
+		if _, exists := routeGroups[localGroup]; !exists {
+			return nil, badRequest("本地路由分组不存在: " + localGroup)
 		}
 		if previous, duplicate := seenLocalGroups[localGroup]; duplicate && previous != sourceGroup {
 			return nil, badRequest("本地组 " + localGroup + " 不能同时绑定多个 OpenLux 来源组")

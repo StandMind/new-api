@@ -69,19 +69,23 @@ func TestModelPriceHelperTieredPreConsumeMaxTokensFallback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	saved := map[string]string{}
+	savedGroupModelRatio := ratio_setting.GroupModelRatio2JSONString()
 	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
 		saved[key] = value
 		return nil
 	}))
 	t.Cleanup(func() {
 		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
+		require.NoError(t, ratio_setting.UpdateGroupModelRatioByJSONString(savedGroupModelRatio))
 	})
 
 	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
-		"billing_setting.billing_mode":    `{"tiered-fallback-model":"tiered_expr"}`,
-		"billing_setting.billing_expr":    `{"tiered-fallback-model":"tier(\"base\", p * 3 + c * 15)"}`,
-		"group_ratio_setting.group_ratio": `{"default":1,"free":0}`,
+		"billing_setting.billing_mode": `{"tiered-fallback-model":"tiered_expr"}`,
+		"billing_setting.billing_expr": `{"tiered-fallback-model":"tier(\"base\", p * 3 + c * 15)"}`,
 	}))
+	require.NoError(t, ratio_setting.UpdateGroupModelRatioByJSONString(
+		`{"free":{"tiered-fallback-model":0}}`,
+	))
 
 	const promptTokens = 1000
 
@@ -156,9 +160,8 @@ func TestModelPriceHelperTieredRejectsPreConsumeOverflow(t *testing.T) {
 	})
 
 	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
-		"billing_setting.billing_mode":    `{"tiered-overflow-model":"tiered_expr"}`,
-		"billing_setting.billing_expr":    `{"tiered-overflow-model":"tier(\"overflow\", p * 1000000000000000)"}`,
-		"group_ratio_setting.group_ratio": `{"default":1}`,
+		"billing_setting.billing_mode": `{"tiered-overflow-model":"tiered_expr"}`,
+		"billing_setting.billing_expr": `{"tiered-overflow-model":"tier(\"overflow\", p * 1000000000000000)"}`,
 	}))
 
 	recorder := httptest.NewRecorder()

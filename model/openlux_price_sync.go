@@ -39,6 +39,7 @@ func (OpenLuxPriceSyncState) TableName() string {
 type OpenLuxSyncSnapshot struct {
 	BindingRevision int64
 	Bindings        []OpenLuxPriceSyncBinding
+	RouteGroups     []RouteGroup
 	Channels        []Channel
 	Abilities       []Ability
 	Routes          []GroupModelRoute
@@ -123,6 +124,13 @@ func LoadOpenLuxSyncSnapshot(db *gorm.DB, forUpdate bool, optionKeys []string) (
 		Options:         make(map[string]string, len(optionKeys)),
 	}
 	if err := query.Order("source_group asc, channel_id asc").Find(&snapshot.Bindings).Error; err != nil {
+		return nil, err
+	}
+	query = db
+	if forUpdate {
+		query = lockForUpdate(query)
+	}
+	if err := query.Order("code asc").Find(&snapshot.RouteGroups).Error; err != nil {
 		return nil, err
 	}
 
@@ -351,9 +359,6 @@ func ApplyOpenLuxSyncMutation(tx *gorm.DB, mutation OpenLuxSyncMutation) (int64,
 		}
 		if result.RowsAffected != int64(len(mutation.DeleteRouteGroupCodes)) {
 			return 0, fmt.Errorf("OpenLux sync expected %d route groups to exist, deleted %d", len(mutation.DeleteRouteGroupCodes), result.RowsAffected)
-		}
-		if err := SyncLegacyAccessPolicyOptions(tx); err != nil {
-			return 0, err
 		}
 	}
 

@@ -57,11 +57,14 @@ jobs:
           bash deploy/blue-green/test-deploy-blue-green.sh
           python3 -m py_compile \
             deploy/migrations/aivrae_access_policy_expand.py \
+            deploy/migrations/aivrae_access_policy_contract.py \
             deploy/migrations/aivrae_smart_routing_cleanup.py \
             deploy/migrations/test_aivrae_access_policy_expand.py \
+            deploy/migrations/test_aivrae_access_policy_contract.py \
             deploy/migrations/test_aivrae_smart_routing_cleanup.py
           PYTHONPATH=deploy/migrations python3 -m unittest \
             deploy/migrations/test_aivrae_access_policy_expand.py \
+            deploy/migrations/test_aivrae_access_policy_contract.py \
             deploy/migrations/test_aivrae_smart_routing_cleanup.py
           env \
             TZ=UTC \
@@ -280,6 +283,7 @@ jobs:
         with:
           sparse-checkout: |
             deploy/blue-green
+            deploy/migrations/aivrae_access_policy_contract.py
 
       - name: Validate deploy settings
         shell: bash
@@ -319,7 +323,7 @@ jobs:
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "install -d -m 700 '${DEPLOY_PATH}'"
+            "install -d -m 700 '${DEPLOY_PATH}' '${DEPLOY_PATH}/migrations'"
 
           scp \
             -i "${HOME}/.ssh/deploy_key" \
@@ -332,13 +336,21 @@ jobs:
             deploy/blue-green/observe-public.sh \
             "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
 
+          scp \
+            -i "${HOME}/.ssh/deploy_key" \
+            -P "${DEPLOY_PORT}" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            deploy/migrations/aivrae_access_policy_contract.py \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/migrations/"
+
           ssh \
             -i "${HOME}/.ssh/deploy_key" \
             -p "${DEPLOY_PORT}" \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "chmod 700 '${DEPLOY_PATH}/deploy-blue-green.sh' '${DEPLOY_PATH}/upgrade-preflight.sh' '${DEPLOY_PATH}/observe-public.sh' && chmod 600 '${DEPLOY_PATH}/docker-compose.slots.yml'"
+            "chmod 700 '${DEPLOY_PATH}/deploy-blue-green.sh' '${DEPLOY_PATH}/upgrade-preflight.sh' '${DEPLOY_PATH}/observe-public.sh' '${DEPLOY_PATH}/migrations/aivrae_access_policy_contract.py' && chmod 600 '${DEPLOY_PATH}/docker-compose.slots.yml'"
 
       - name: Run production operation
         shell: bash

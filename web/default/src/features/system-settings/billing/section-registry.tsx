@@ -42,16 +42,6 @@ const getModelDefaults = (settings: BillingSettings) => ({
   BillingExpr: settings['billing_setting.billing_expr'],
 })
 
-const getGroupDefaults = (settings: BillingSettings) => ({
-  TopupGroupRatio: settings.TopupGroupRatio,
-  GroupRatio: settings.GroupRatio,
-  UserUsableGroups: settings.UserUsableGroups,
-  GroupGroupRatio: settings.GroupGroupRatio,
-  GroupModelRatio: settings.GroupModelRatio,
-  GroupSpecialUsableGroup:
-    settings['group_ratio_setting.group_special_usable_group'],
-})
-
 const BILLING_SECTIONS = [
   {
     id: 'quota',
@@ -109,7 +99,6 @@ const BILLING_SECTIONS = [
       <RatioSettingsCard
         titleKey='Model Pricing'
         modelDefaults={getModelDefaults(settings)}
-        groupDefaults={getGroupDefaults(settings)}
         toolPricesDefault={settings['tool_price_setting.prices']}
         officialPricesDefault={settings['official_price_setting.model_prices']}
         visibleTabs={[
@@ -131,9 +120,7 @@ const BILLING_SECTIONS = [
   {
     id: 'route-groups',
     titleKey: 'Route Groups',
-    build: (settings: BillingSettings) => (
-      <RouteGroupsSection groupRatio={settings.GroupRatio} />
-    ),
+    build: () => <RouteGroupsSection />,
   },
   {
     id: 'payment',

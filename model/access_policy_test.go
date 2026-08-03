@@ -56,6 +56,21 @@ func writeAccessPolicyTestOption(t *testing.T, db *gorm.DB, key string, value in
 	require.NoError(t, db.Create(&Option{Key: key, Value: string(encoded)}).Error)
 }
 
+func addLegacyAccessPolicyColumns(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	statements := []string{
+		"ALTER TABLE users ADD COLUMN `group` varchar(64) DEFAULT 'default'",
+		"ALTER TABLE subscription_plans ADD COLUMN upgrade_group varchar(64) DEFAULT ''",
+		"ALTER TABLE subscription_plans ADD COLUMN downgrade_group varchar(64) DEFAULT ''",
+		"ALTER TABLE user_subscriptions ADD COLUMN upgrade_group varchar(64) DEFAULT ''",
+		"ALTER TABLE user_subscriptions ADD COLUMN downgrade_group varchar(64) DEFAULT ''",
+		"ALTER TABLE user_subscriptions ADD COLUMN prev_user_group varchar(64) DEFAULT ''",
+	}
+	for _, statement := range statements {
+		require.NoError(t, db.Exec(statement).Error)
+	}
+}
+
 func TestAccessPolicyAutoMigrateIsIdempotentOnSQLite(t *testing.T) {
 	db := setupAccessPolicyTestDB(t)
 	override := AccessPolicyRatio(0.8)
@@ -87,6 +102,7 @@ func TestAccessPolicyAutoMigrateIsIdempotentOnSQLite(t *testing.T) {
 
 func TestMigrateLegacyAccessPolicyFreezesStandardRouteGrants(t *testing.T) {
 	db := setupAccessPolicyTestDB(t)
+	addLegacyAccessPolicyColumns(t, db)
 	writeAccessPolicyTestOption(t, db, "GroupRatio", map[string]float64{
 		"default": 1.3,
 		"free":    0,
@@ -104,14 +120,17 @@ func TestMigrateLegacyAccessPolicyFreezesStandardRouteGrants(t *testing.T) {
 	})
 
 	require.NoError(t, db.Create(&[]User{
-		{Id: 1, Username: "standard-user", Group: "default", AffCode: "std1", Status: common.UserStatusEnabled},
-		{Id: 2, Username: "vip-user", Group: "vip", AffCode: "vip2", Status: common.UserStatusEnabled},
+		{Id: 1, Username: "standard-user", AffCode: "std1", Status: common.UserStatusEnabled},
+		{Id: 2, Username: "vip-user", AffCode: "vip2", Status: common.UserStatusEnabled},
 	}).Error)
+	require.NoError(t, db.Exec("UPDATE users SET `group` = 'vip' WHERE id = 2").Error)
 	require.NoError(t, db.Create(&Channel{Id: 10, Name: "channel-only", Group: "channel-only", Status: common.ChannelStatusManuallyDisabled}).Error)
 	require.NoError(t, db.Create(&Ability{Group: "ability-only", Model: "m", ChannelId: 10, Enabled: false}).Error)
 	require.NoError(t, db.Create(&Token{Id: 20, UserId: 1, Name: "chain", Key: "chain-key", Group: "free", GroupChain: StringArray{"free", "token-only"}}).Error)
 	require.NoError(t, db.Create(&GroupModelRoute{Group: "route-only", Model: "m", Tiers: GroupModelRouteTiers{}}).Error)
-	require.NoError(t, db.Create(&SubscriptionPlan{Title: "Legacy level", UpgradeGroup: "plan-only", Currency: "USD", DurationUnit: "month", DurationValue: 1}).Error)
+	plan := SubscriptionPlan{Title: "Legacy level", Currency: "USD", DurationUnit: "month", DurationValue: 1}
+	require.NoError(t, db.Create(&plan).Error)
+	require.NoError(t, db.Exec("UPDATE subscription_plans SET upgrade_group = 'plan-only' WHERE id = ?", plan.Id).Error)
 
 	require.NoError(t, MigrateLegacyAccessPolicy())
 
@@ -157,7 +176,6 @@ func TestMigrateLegacyAccessPolicyFreezesStandardRouteGrants(t *testing.T) {
 	require.Zero(t, routeOnlyLevelCount)
 
 	require.NoError(t, db.Create(&RouteGroup{Code: "later", Name: "Later", BaseRatio: 3, Enabled: true}).Error)
-	require.NoError(t, SyncLegacyAccessPolicyOptions(db))
 	require.NoError(t, MigrateLegacyAccessPolicy())
 	var laterGrantCount int64
 	require.NoError(t, db.Model(&UserLevelRouteGroup{}).
@@ -180,47 +198,29 @@ func TestMigrateLegacyAccessPolicyBlocksOrphanNonNeutralLevelConfig(t *testing.T
 	require.Zero(t, stateCount)
 }
 
-func TestMigrateLegacyAccessPolicyCleansUntouchedUnreferencedInitialLevels(t *testing.T) {
+func TestMigrateLegacyAccessPolicyRerunKeepsNewSchemaAuthoritative(t *testing.T) {
 	db := setupAccessPolicyTestDB(t)
 	writeAccessPolicyTestOption(t, db, "GroupRatio", map[string]float64{"default": 1, "route-a": 1.3})
-	writeAccessPolicyTestOption(t, db, "TopupGroupRatio", map[string]float64{"default": 1, "route-a": 1})
-	require.NoError(t, db.Create(&User{
-		Id: 1, Username: "standard-user", Group: "default", AffCode: "std1", Status: common.UserStatusEnabled,
-	}).Error)
 	require.NoError(t, MigrateLegacyAccessPolicy())
 
 	var state AccessPolicyState
 	require.NoError(t, db.First(&state, "id = ?", 1).Error)
-	require.NoError(t, db.Model(&AccessPolicyState{}).Where("id = ?", state.ID).
-		Update("initial_user_level_cleanup_at", 0).Error)
-	state.InitialUserLevelCleanupAt = 0
 	require.NoError(t, db.Create(&UserLevel{
-		Code: "route-a", Name: "route-a", Enabled: true, TopupRatio: 1,
-		CreatedAt: state.ExpandedAt, UpdatedAt: state.ExpandedAt,
+		Code: "custom", Name: "Custom", Enabled: true, TopupRatio: 1,
 	}).Error)
 	require.NoError(t, db.Create(&UserLevelRouteGroup{
-		UserLevelCode: "route-a", RouteGroupCode: "route-a",
-		CreatedAt: state.ExpandedAt, UpdatedAt: state.ExpandedAt,
+		UserLevelCode: "custom", RouteGroupCode: "route-a",
 	}).Error)
-	require.NoError(t, SyncLegacyAccessPolicyOptions(db))
 
 	require.NoError(t, MigrateLegacyAccessPolicy())
 	var levelCount int64
-	require.NoError(t, db.Model(&UserLevel{}).Where("code = ?", "route-a").Count(&levelCount).Error)
-	require.Zero(t, levelCount)
-	var routeCount int64
-	require.NoError(t, db.Model(&RouteGroup{}).Where("code = ?", "route-a").Count(&routeCount).Error)
-	require.EqualValues(t, 1, routeCount)
-	var standardGrantCount int64
+	require.NoError(t, db.Model(&UserLevel{}).Where("code = ?", "custom").Count(&levelCount).Error)
+	require.EqualValues(t, 1, levelCount)
+	var customGrantCount int64
 	require.NoError(t, db.Model(&UserLevelRouteGroup{}).
-		Where("user_level_code = ? AND route_group_code = ?", StandardUserLevelCode, "route-a").
-		Count(&standardGrantCount).Error)
-	require.EqualValues(t, 1, standardGrantCount)
-	topupRatios, err := decodeOptionMap[map[string]float64](db, "TopupGroupRatio")
-	require.NoError(t, err)
-	require.NotContains(t, topupRatios, "route-a")
-	require.NoError(t, db.First(&state, "id = ?", 1).Error)
-	require.NotZero(t, state.InitialUserLevelCleanupAt)
+		Where("user_level_code = ? AND route_group_code = ?", "custom", "route-a").
+		Count(&customGrantCount).Error)
+	require.EqualValues(t, 1, customGrantCount)
 }
 
 func mustAccessPolicyJSON(t *testing.T, value interface{}) []byte {

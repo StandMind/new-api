@@ -61,8 +61,8 @@ func TestBuildOpenAIModelFallsBackToCustomForUnknownModels(t *testing.T) {
 func TestGetModelListGroupsUsesAllGrantedRouteGroupsWhenTokenGroupIsEmpty(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupModelListControllerTestDB(t)
-	require.NoError(t, db.AutoMigrate(&model.UserLevel{}, &model.RouteGroup{}, &model.UserLevelRouteGroup{}))
-	require.NoError(t, db.Create(&model.UserLevel{Code: "standard", Name: "Standard", IsDefault: true, Enabled: true, TopupRatio: 1}).Error)
+	require.NoError(t, db.Exec("DELETE FROM user_level_route_groups").Error)
+	require.NoError(t, db.Exec("DELETE FROM route_groups").Error)
 	require.NoError(t, db.Create(&[]model.RouteGroup{
 		{Code: "route-a", Name: "Route A", BaseRatio: 1, Enabled: true},
 		{Code: "route-b", Name: "Route B", BaseRatio: 1, Enabled: true},
@@ -86,13 +86,13 @@ func TestGetModelListGroupsUsesAllGrantedRouteGroupsWhenTokenGroupIsEmpty(t *tes
 func TestGetModelListGroupsUsesExplicitTokenGroup(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, model.StandardUserLevelCode)
 	common.SetContextKey(ctx, constant.ContextKeyTokenGroup, "vip")
 
 	groups, err := getModelListGroups(ctx)
 	require.NoError(t, err)
 
-	require.Equal(t, "default", groups.userGroup)
+	require.Equal(t, model.StandardUserLevelCode, groups.userGroup)
 	require.Equal(t, "vip", groups.tokenGroup)
 	require.Equal(t, []string{"vip"}, groups.ownerGroups)
 }

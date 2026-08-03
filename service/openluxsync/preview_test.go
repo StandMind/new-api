@@ -30,7 +30,6 @@ func previewOptions(t *testing.T, localGroup, modelName string, currentGroupMode
 		optionImageRatio:           optionJSON(t, map[string]float64{modelName: 1}),
 		optionAudioRatio:           optionJSON(t, map[string]float64{modelName: 1}),
 		optionAudioCompletionRatio: optionJSON(t, map[string]float64{modelName: 1}),
-		optionGroupRatio:           optionJSON(t, map[string]float64{localGroup: 1}),
 		optionGroupModelRatio: optionJSON(t, map[string]map[string]float64{
 			localGroup: {modelName: currentGroupModelRatio},
 		}),
@@ -74,9 +73,10 @@ func previewSnapshot(t *testing.T, sourceGroup, localGroup, modelName string, cu
 		Bindings: []model.OpenLuxPriceSyncBinding{{
 			ID: 1, SourceGroup: sourceGroup, ChannelID: channels[0].Id,
 		}},
-		Channels:  channels,
-		Abilities: abilities,
-		Options:   previewOptions(t, localGroup, modelName, currentRatio),
+		RouteGroups: []model.RouteGroup{{Code: localGroup, Name: localGroup, BaseRatio: 1, Enabled: true}},
+		Channels:    channels,
+		Abilities:   abilities,
+		Options:     previewOptions(t, localGroup, modelName, currentRatio),
 	}
 }
 

@@ -162,15 +162,6 @@ func cacheDecrUserQuota(userId int, delta int64) error {
 	return cacheIncrUserQuota(userId, -delta)
 }
 
-// Helper functions to get individual fields if needed
-func getUserGroupCache(userId int) (string, error) {
-	cache, err := GetUserCache(userId)
-	if err != nil {
-		return "", err
-	}
-	return LegacyGroupForUserLevel(cache.UserLevel), nil
-}
-
 func getUserQuotaCache(userId int) (int, error) {
 	cache, err := GetUserCache(userId)
 	if err != nil {
@@ -222,19 +213,11 @@ func updateUserQuotaCache(userId int, quota int) error {
 	return common.RedisHSetField(getUserCacheKey(userId), "Quota", fmt.Sprintf("%d", quota))
 }
 
-func updateUserGroupCache(userId int, group string) error {
-	return updateUserLevelCache(userId, UserLevelForLegacyGroup(group))
-}
-
 func updateUserLevelCache(userId int, userLevel string) error {
 	if !common.RedisEnabled {
 		return nil
 	}
 	return common.RedisHSetField(getUserCacheKey(userId), "UserLevel", userLevel)
-}
-
-func UpdateUserGroupCache(userId int, group string) error {
-	return updateUserGroupCache(userId, group)
 }
 
 func UpdateUserLevelCache(userId int, userLevel string) error {

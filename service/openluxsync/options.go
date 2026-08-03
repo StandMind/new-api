@@ -10,7 +10,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/shopspring/decimal"
@@ -18,23 +17,17 @@ import (
 )
 
 const (
-	optionModelRatio             = "ModelRatio"
-	optionModelPrice             = "ModelPrice"
-	optionCompletionRatio        = "CompletionRatio"
-	optionCacheRatio             = "CacheRatio"
-	optionCreateCacheRatio       = "CreateCacheRatio"
-	optionImageRatio             = "ImageRatio"
-	optionAudioRatio             = "AudioRatio"
-	optionAudioCompletionRatio   = "AudioCompletionRatio"
-	optionGroupRatio             = "GroupRatio"
-	optionGroupModelRatio        = "GroupModelRatio"
-	optionUserUsableGroups       = "UserUsableGroups"
-	optionTopupGroupRatio        = "TopupGroupRatio"
-	optionGroupGroupRatio        = "GroupGroupRatio"
-	optionGroupSpecialUsable     = "group_ratio_setting.group_special_usable_group"
-	optionModelRequestLimitGroup = "ModelRequestRateLimitGroup"
-	optionBillingMode            = "billing_setting.billing_mode"
-	optionBillingExpr            = "billing_setting.billing_expr"
+	optionModelRatio           = "ModelRatio"
+	optionModelPrice           = "ModelPrice"
+	optionCompletionRatio      = "CompletionRatio"
+	optionCacheRatio           = "CacheRatio"
+	optionCreateCacheRatio     = "CreateCacheRatio"
+	optionImageRatio           = "ImageRatio"
+	optionAudioRatio           = "AudioRatio"
+	optionAudioCompletionRatio = "AudioCompletionRatio"
+	optionGroupModelRatio      = "GroupModelRatio"
+	optionBillingMode          = "billing_setting.billing_mode"
+	optionBillingExpr          = "billing_setting.billing_expr"
 )
 
 var managedOptionKeys = []string{
@@ -46,13 +39,7 @@ var managedOptionKeys = []string{
 	optionImageRatio,
 	optionAudioRatio,
 	optionAudioCompletionRatio,
-	optionGroupRatio,
 	optionGroupModelRatio,
-	optionUserUsableGroups,
-	optionTopupGroupRatio,
-	optionGroupGroupRatio,
-	optionGroupSpecialUsable,
-	optionModelRequestLimitGroup,
 	optionBillingMode,
 	optionBillingExpr,
 }
@@ -81,23 +68,17 @@ func loadSnapshot(db *gorm.DB, forUpdate bool) (*model.OpenLuxSyncSnapshot, erro
 
 func effectiveOptionFallbacks() (map[string]string, error) {
 	values := map[string]any{
-		optionModelRatio:             ratio_setting.GetModelRatioCopy(),
-		optionModelPrice:             ratio_setting.GetModelPriceCopy(),
-		optionCompletionRatio:        ratio_setting.GetCompletionRatioCopy(),
-		optionCacheRatio:             ratio_setting.GetCacheRatioCopy(),
-		optionCreateCacheRatio:       ratio_setting.GetCreateCacheRatioCopy(),
-		optionImageRatio:             ratio_setting.GetImageRatioCopy(),
-		optionAudioRatio:             ratio_setting.GetAudioRatioCopy(),
-		optionAudioCompletionRatio:   ratio_setting.GetAudioCompletionRatioCopy(),
-		optionGroupRatio:             ratio_setting.GetGroupRatioCopy(),
-		optionGroupModelRatio:        ratio_setting.GetGroupModelRatioCopy(),
-		optionUserUsableGroups:       setting.GetUserUsableGroupsCopy(),
-		optionTopupGroupRatio:        parseRawOrEmpty(common.TopupGroupRatio2JSONString()),
-		optionGroupGroupRatio:        parseRawOrEmpty(ratio_setting.GroupGroupRatio2JSONString()),
-		optionGroupSpecialUsable:     ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.ReadAll(),
-		optionModelRequestLimitGroup: parseRawOrEmpty(setting.ModelRequestRateLimitGroup2JSONString()),
-		optionBillingMode:            billing_setting.GetBillingModeCopy(),
-		optionBillingExpr:            billing_setting.GetBillingExprCopy(),
+		optionModelRatio:           ratio_setting.GetModelRatioCopy(),
+		optionModelPrice:           ratio_setting.GetModelPriceCopy(),
+		optionCompletionRatio:      ratio_setting.GetCompletionRatioCopy(),
+		optionCacheRatio:           ratio_setting.GetCacheRatioCopy(),
+		optionCreateCacheRatio:     ratio_setting.GetCreateCacheRatioCopy(),
+		optionImageRatio:           ratio_setting.GetImageRatioCopy(),
+		optionAudioRatio:           ratio_setting.GetAudioRatioCopy(),
+		optionAudioCompletionRatio: ratio_setting.GetAudioCompletionRatioCopy(),
+		optionGroupModelRatio:      ratio_setting.GetGroupModelRatioCopy(),
+		optionBillingMode:          billing_setting.GetBillingModeCopy(),
+		optionBillingExpr:          billing_setting.GetBillingExprCopy(),
 	}
 	result := make(map[string]string, len(values))
 	for key, value := range values {
@@ -223,17 +204,19 @@ type localFingerprintChannel struct {
 }
 
 type localFingerprintView struct {
-	Bindings  []model.OpenLuxPriceSyncBinding `json:"bindings"`
-	Channels  []localFingerprintChannel       `json:"channels"`
-	Abilities []model.Ability                 `json:"abilities"`
-	Routes    []model.GroupModelRoute         `json:"routes"`
-	Options   map[string]json.RawMessage      `json:"options"`
+	Bindings    []model.OpenLuxPriceSyncBinding `json:"bindings"`
+	RouteGroups []model.RouteGroup              `json:"route_groups"`
+	Channels    []localFingerprintChannel       `json:"channels"`
+	Abilities   []model.Ability                 `json:"abilities"`
+	Routes      []model.GroupModelRoute         `json:"routes"`
+	Options     map[string]json.RawMessage      `json:"options"`
 }
 
 func localFingerprint(snapshot *model.OpenLuxSyncSnapshot) (string, error) {
 	view := localFingerprintView{
-		Bindings: append([]model.OpenLuxPriceSyncBinding(nil), snapshot.Bindings...),
-		Options:  make(map[string]json.RawMessage, len(snapshot.Options)),
+		Bindings:    append([]model.OpenLuxPriceSyncBinding(nil), snapshot.Bindings...),
+		RouteGroups: append([]model.RouteGroup(nil), snapshot.RouteGroups...),
+		Options:     make(map[string]json.RawMessage, len(snapshot.Options)),
 	}
 	for _, channel := range snapshot.Channels {
 		keyDigest := sha256.Sum256([]byte(channel.Key))
@@ -255,6 +238,7 @@ func localFingerprint(snapshot *model.OpenLuxSyncSnapshot) (string, error) {
 	view.Abilities = append(view.Abilities, snapshot.Abilities...)
 	view.Routes = append(view.Routes, snapshot.Routes...)
 	sort.Slice(view.Channels, func(i, j int) bool { return view.Channels[i].ID < view.Channels[j].ID })
+	sort.Slice(view.RouteGroups, func(i, j int) bool { return view.RouteGroups[i].Code < view.RouteGroups[j].Code })
 	sort.Slice(view.Abilities, func(i, j int) bool {
 		if view.Abilities[i].ChannelId != view.Abilities[j].ChannelId {
 			return view.Abilities[i].ChannelId < view.Abilities[j].ChannelId
@@ -328,15 +312,10 @@ func aggregateOptionMutations(options map[string]string, mutations []optionMutat
 		switch key {
 		case optionGroupModelRatio:
 			value, err = mutateNestedNumberOption(options[key], key, byKey[key])
-		case optionGroupGroupRatio:
-			value, err = mutateNestedNumberReferences(options[key], key, byKey[key])
-		case optionGroupSpecialUsable:
-			value, err = mutateNestedStringReferences(options[key], key, byKey[key])
-		case optionBillingMode, optionBillingExpr, optionUserUsableGroups:
+		case optionBillingMode, optionBillingExpr:
 			value, err = mutateStringOption(options[key], key, byKey[key])
 		case optionModelRatio, optionModelPrice, optionCompletionRatio, optionCacheRatio,
-			optionCreateCacheRatio, optionImageRatio, optionAudioRatio, optionAudioCompletionRatio,
-			optionGroupRatio, optionTopupGroupRatio, optionModelRequestLimitGroup:
+			optionCreateCacheRatio, optionImageRatio, optionAudioRatio, optionAudioCompletionRatio:
 			value, err = mutateNumberOption(options[key], key, byKey[key])
 		default:
 			err = fmt.Errorf("unsupported OpenLux option mutation key %s", key)

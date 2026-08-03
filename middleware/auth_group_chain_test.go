@@ -12,8 +12,6 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -31,9 +29,6 @@ func TestTokenAuthRequiresValidExplicitGroupChain(t *testing.T) {
 	originalMainDatabaseType := common.MainDatabaseType()
 	originalLogDatabaseType := common.LogDatabaseType()
 	originalSQLDSN, hadSQLDSN := os.LookupEnv("SQL_DSN")
-	originalGroupRatio := ratio_setting.GroupRatio2JSONString()
-	originalUserUsableGroups := setting.UserUsableGroups2JSONString()
-
 	common.IsMasterNode = false
 	common.SQLitePath = fmt.Sprintf("file:%s_init?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
@@ -56,8 +51,6 @@ func TestTokenAuthRequiresValidExplicitGroupChain(t *testing.T) {
 		common.IsMasterNode = originalIsMasterNode
 		common.SQLitePath = originalSQLitePath
 		common.SetDatabaseTypes(originalMainDatabaseType, originalLogDatabaseType)
-		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalGroupRatio))
-		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(originalUserUsableGroups))
 		if hadSQLDSN {
 			require.NoError(t, os.Setenv("SQL_DSN", originalSQLDSN))
 		} else {
@@ -80,13 +73,10 @@ func TestTokenAuthRequiresValidExplicitGroupChain(t *testing.T) {
 		&model.GroupModelRoute{},
 		&model.PerfMetric{},
 	))
-	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"group-a":0.8,"group-b":1.2}`))
-	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"Default","group-a":"A","group-b":"B"}`))
 	require.NoError(t, db.Create(&model.User{
 		Id:        8811,
 		Username:  "auto-token-user",
 		Password:  "password",
-		Group:     "default",
 		UserLevel: "standard",
 		Status:    common.UserStatusEnabled,
 		Quota:     1000,

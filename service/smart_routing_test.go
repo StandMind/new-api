@@ -7,26 +7,43 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+func replaceSmartRoutingAccessPolicy(t *testing.T, ratios map[string]float64) {
+	t.Helper()
+	require.NoError(t, model.DB.Exec("DELETE FROM user_level_route_groups").Error)
+	require.NoError(t, model.DB.Exec("DELETE FROM route_groups").Error)
+	require.NoError(t, model.DB.Exec("DELETE FROM user_levels").Error)
+	require.NoError(t, model.DB.Create(&model.UserLevel{
+		Code: model.StandardUserLevelCode, Name: "Standard", IsDefault: true,
+		Enabled: true, TopupRatio: 1,
+	}).Error)
+	for code, ratio := range ratios {
+		require.NoError(t, model.DB.Create(&model.RouteGroup{
+			Code: code, Name: code, BaseRatio: model.AccessPolicyRatio(ratio), Enabled: true,
+		}).Error)
+		require.NoError(t, model.DB.Create(&model.UserLevelRouteGroup{
+			UserLevelCode: model.StandardUserLevelCode, RouteGroupCode: code,
+		}).Error)
+	}
+	require.NoError(t, model.RebuildAccessPolicySnapshot())
+}
+
 func TestPriceOrderedGroupsUsesEffectiveModelPrice(t *testing.T) {
-	originalGroupRatio := ratio_setting.GroupRatio2JSONString()
 	originalGroupModelRatio := ratio_setting.GroupModelRatio2JSONString()
 	t.Cleanup(func() {
-		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalGroupRatio))
 		require.NoError(t, ratio_setting.UpdateGroupModelRatioByJSONString(originalGroupModelRatio))
 	})
 
-	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"cheap":1,"middle":0.5,"expensive":1}`))
+	replaceSmartRoutingAccessPolicy(t, map[string]float64{"cheap": 1, "middle": 0.5, "expensive": 1})
 	require.NoError(t, ratio_setting.UpdateGroupModelRatioByJSONString(`{"cheap":{"smart-model":0.4},"expensive":{"smart-model":1.5}}`))
 
 	assert.Equal(t,
 		[]string{"cheap", "middle", "expensive"},
-		priceOrderedGroups("default", "smart-model", []string{"expensive", "middle", "cheap"}),
+		priceOrderedGroups(model.StandardUserLevelCode, "smart-model", []string{"expensive", "middle", "cheap"}),
 	)
 }
 
@@ -74,15 +91,11 @@ func TestPerformanceRoutingFallsBackAndKeepsSparseGroupsInPriceOrder(t *testing.
 }
 
 func TestAutoRoutingCombinesSuccessPriceAndSpeed(t *testing.T) {
-	originalGroupRatio := ratio_setting.GroupRatio2JSONString()
-	t.Cleanup(func() {
-		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalGroupRatio))
-	})
-	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"reliable":1,"cheap":0.5,"slow":1.5}`))
+	replaceSmartRoutingAccessPolicy(t, map[string]float64{"reliable": 1, "cheap": 0.5, "slow": 1.5})
 
 	ordered, basis := performanceOrderedGroups(
 		constant.RoutingPriorityAuto,
-		"default",
+		model.StandardUserLevelCode,
 		"smart-model",
 		[]string{"cheap", "reliable", "slow"},
 		map[string]perfmetrics.RoutingStat{
@@ -98,19 +111,14 @@ func TestAutoRoutingCombinesSuccessPriceAndSpeed(t *testing.T) {
 
 func TestSmartRoutingSnapshotRebuildAndFailureFallback(t *testing.T) {
 	truncate(t)
-	originalGroupRatio := ratio_setting.GroupRatio2JSONString()
 	originalGroupModelRatio := ratio_setting.GroupModelRatio2JSONString()
-	originalUsableGroups := setting.UserUsableGroups2JSONString()
 	t.Cleanup(func() {
-		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalGroupRatio))
 		require.NoError(t, ratio_setting.UpdateGroupModelRatioByJSONString(originalGroupModelRatio))
-		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(originalUsableGroups))
 		require.NoError(t, model.DB.AutoMigrate(&model.PerfMetric{}))
 	})
 
-	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"cheap":0.5,"expensive":1.5}`))
+	replaceSmartRoutingAccessPolicy(t, map[string]float64{"cheap": 0.5, "expensive": 1.5})
 	require.NoError(t, ratio_setting.UpdateGroupModelRatioByJSONString(`{}`))
-	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"Default","cheap":"Cheap","expensive":"Expensive"}`))
 
 	priority := int64(0)
 	weight := uint(100)
@@ -125,18 +133,20 @@ func TestSmartRoutingSnapshotRebuildAndFailureFallback(t *testing.T) {
 	require.NoError(t, model.InitGroupModelRouteIndex())
 	require.NoError(t, RebuildSmartRoutingSnapshot())
 
-	groups, basis := GetSmartRoutingGroups("default", "snapshot-model", "/v1/chat/completions", constant.RoutingPriorityPrice)
+	groups, basis := GetSmartRoutingGroups(model.StandardUserLevelCode, "snapshot-model", "/v1/chat/completions", constant.RoutingPriorityPrice)
 	assert.Equal(t, "price", basis)
 	assert.Equal(t, []string{"cheap", "expensive"}, groups)
 
-	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"cheap":2,"expensive":0.25}`))
+	require.NoError(t, model.DB.Model(&model.RouteGroup{}).Where("code = ?", "cheap").Update("base_ratio", 2).Error)
+	require.NoError(t, model.DB.Model(&model.RouteGroup{}).Where("code = ?", "expensive").Update("base_ratio", 0.25).Error)
+	require.NoError(t, model.RebuildAccessPolicySnapshot())
 	require.NoError(t, RebuildSmartRoutingSnapshot())
-	groups, _ = GetSmartRoutingGroups("default", "snapshot-model", "/v1/chat/completions", constant.RoutingPriorityPrice)
+	groups, _ = GetSmartRoutingGroups(model.StandardUserLevelCode, "snapshot-model", "/v1/chat/completions", constant.RoutingPriorityPrice)
 	assert.Equal(t, []string{"expensive", "cheap"}, groups)
 
 	require.NoError(t, model.DB.Migrator().DropTable(&model.PerfMetric{}))
 	assert.Error(t, RebuildSmartRoutingSnapshot())
-	groups, basis = GetSmartRoutingGroups("default", "snapshot-model", "/v1/chat/completions", constant.RoutingPriorityPrice)
+	groups, basis = GetSmartRoutingGroups(model.StandardUserLevelCode, "snapshot-model", "/v1/chat/completions", constant.RoutingPriorityPrice)
 	assert.Equal(t, "price", basis)
 	assert.Equal(t, []string{"expensive", "cheap"}, groups)
 }

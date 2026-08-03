@@ -115,17 +115,17 @@ func TestSourceGroupRemovalDeletesWholeGroupOnlyWithoutBusinessReferences(t *tes
 	require.NoError(t, db.Create(&model.UserLevel{Code: "referencing-level", Name: "Referencing", Enabled: true, TopupRatio: 1}).Error)
 	require.NoError(t, db.Create(&model.UserLevelRouteGroup{UserLevelCode: "referencing-level", RouteGroupCode: localGroup}).Error)
 
-	user := model.User{Username: "openlux-ref-user", Password: "password", Group: localGroup}
+	user := model.User{Username: "openlux-ref-user", Password: "password", UserLevel: "referencing-level"}
 	require.NoError(t, db.Create(&user).Error)
 	token := model.Token{UserId: user.Id, Key: "openlux-ref-token", Name: "ref", Group: "auto", GroupChain: model.StringArray{"fallback", localGroup}}
 	require.NoError(t, db.Create(&token).Error)
 	plan := model.SubscriptionPlan{
 		Title: "OpenLux ref plan", Currency: "USD", DurationUnit: "month", DurationValue: 1,
-		UpgradeGroup: localGroup,
+		UpgradeUserLevel: "referencing-level",
 	}
 	require.NoError(t, db.Create(&plan).Error)
 	subscription := model.UserSubscription{
-		UserId: user.Id, PlanId: plan.Id, Status: "expired", PrevUserGroup: localGroup,
+		UserId: user.Id, PlanId: plan.Id, Status: "expired", PreviousUserLevel: "referencing-level",
 	}
 	require.NoError(t, db.Create(&subscription).Error)
 	route := model.GroupModelRoute{
@@ -170,7 +170,7 @@ func TestSourceGroupRemovalInMixedGroupOnlyDetachesOpenLuxChannels(t *testing.T)
 		{ChannelId: selfHosted.Id, Group: localGroup, Model: "self-hosted-orphan", Enabled: true},
 	}).Error)
 	require.NoError(t, db.Create(&model.User{
-		Username: "mixed-ref-user", Password: "password", Group: localGroup,
+		Username: "mixed-ref-user", Password: "password", UserLevel: model.StandardUserLevelCode,
 	}).Error)
 	binding := resolvedBinding{
 		SourceGroup:       sourceGroup,

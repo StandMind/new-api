@@ -151,7 +151,7 @@ func CreateUserLevel(c *gin.Context) {
 		if err := tx.Create(&level).Error; err != nil {
 			return err
 		}
-		return model.SyncLegacyAccessPolicyOptions(tx)
+		return nil
 	})
 	if err != nil {
 		common.ApiErrorMsg(c, err.Error())
@@ -212,7 +212,7 @@ func UpdateUserLevel(c *gin.Context) {
 		if err := tx.Where("code = ?", code).First(&updated).Error; err != nil {
 			return err
 		}
-		return model.SyncLegacyAccessPolicyOptions(tx)
+		return nil
 	})
 	if err != nil {
 		common.ApiErrorMsg(c, err.Error())
@@ -256,7 +256,7 @@ func DeleteUserLevel(c *gin.Context) {
 		if err := tx.Where("code = ?", code).Delete(&model.UserLevel{}).Error; err != nil {
 			return err
 		}
-		return model.SyncLegacyAccessPolicyOptions(tx)
+		return nil
 	})
 	if err != nil {
 		if errors.Is(err, errUserLevelReferenced) {
@@ -318,7 +318,7 @@ func ReplaceUserLevelRouteGroups(c *gin.Context) {
 				return err
 			}
 		}
-		return model.SyncLegacyAccessPolicyOptions(tx)
+		return nil
 	})
 	if err != nil {
 		common.ApiErrorMsg(c, err.Error())
@@ -379,7 +379,7 @@ func CreateRouteGroup(c *gin.Context) {
 		if err := tx.Create(&group).Error; err != nil {
 			return err
 		}
-		return model.SyncLegacyAccessPolicyOptions(tx)
+		return nil
 	})
 	if err != nil {
 		common.ApiErrorMsg(c, err.Error())
@@ -418,7 +418,7 @@ func UpdateRouteGroup(c *gin.Context) {
 		if err := tx.Where("code = ?", code).First(&updated).Error; err != nil {
 			return err
 		}
-		return model.SyncLegacyAccessPolicyOptions(tx)
+		return nil
 	})
 	if err != nil {
 		common.ApiErrorMsg(c, err.Error())
@@ -465,7 +465,7 @@ func DeleteRouteGroup(c *gin.Context) {
 		if err := writeControllerOption(tx, "GroupModelRatio", groupModelRatios); err != nil {
 			return err
 		}
-		return model.SyncLegacyAccessPolicyOptions(tx)
+		return nil
 	})
 	if err != nil {
 		if errors.Is(err, errRouteGroupReferenced) {

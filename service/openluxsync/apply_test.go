@@ -67,14 +67,12 @@ func installApplyTestState(t *testing.T, db *gorm.DB, sourceResponse []byte) {
 	originalClient := pricingHTTPClient
 	originalMemoryCache := common.MemoryCacheEnabled
 	originalModelRatio := ratio_setting.ModelRatio2JSONString()
-	originalGroupRatio := ratio_setting.GroupRatio2JSONString()
 	originalGroupModelRatio := ratio_setting.GroupModelRatio2JSONString()
 	t.Cleanup(func() {
 		model.DB = originalDB
 		pricingHTTPClient = originalClient
 		common.MemoryCacheEnabled = originalMemoryCache
 		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(originalModelRatio))
-		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalGroupRatio))
 		require.NoError(t, ratio_setting.UpdateGroupModelRatioByJSONString(originalGroupModelRatio))
 	})
 
@@ -100,9 +98,11 @@ func seedApplyPriceState(t *testing.T, db *gorm.DB, sourceGroup, localGroup, mod
 	require.NoError(t, db.Create(&model.OpenLuxPriceSyncBinding{
 		SourceGroup: sourceGroup, ChannelID: bound.Id,
 	}).Error)
+	require.NoError(t, db.Create(&model.RouteGroup{
+		Code: localGroup, Name: localGroup, BaseRatio: 1, Enabled: true,
+	}).Error)
 	options := map[string]string{
 		optionModelRatio: optionJSON(t, map[string]float64{modelName: 1}),
-		optionGroupRatio: optionJSON(t, map[string]float64{localGroup: 1}),
 		optionGroupModelRatio: optionJSON(t, map[string]map[string]float64{
 			localGroup: {modelName: currentRatio},
 		}),
@@ -175,6 +175,10 @@ func TestConcurrentApplyAllowsOnlyOneCommit(t *testing.T) {
 	var ratios map[string]map[string]json.RawMessage
 	require.NoError(t, common.UnmarshalJsonStr(option.Value, &ratios))
 	assert.Equal(t, "2.6", strings.Trim(string(ratios[localGroup][modelName]), `"`))
+	runtimeRatio, runtimeSource, ok := ratio_setting.ResolveGroupModelRatio(localGroup, modelName)
+	require.True(t, ok)
+	assert.Equal(t, "2.6", decimal.NewFromFloat(runtimeRatio).String())
+	assert.Equal(t, "group_model_ratio.exact", runtimeSource)
 
 	var modelRatioOption model.Option
 	require.NoError(t, db.First(&modelRatioOption, "key = ?", optionModelRatio).Error)

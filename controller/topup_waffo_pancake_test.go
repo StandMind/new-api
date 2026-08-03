@@ -30,10 +30,8 @@ func TestFormatWaffoPancakeAmount_UsesDisplayPriceString(t *testing.T) {
 
 func TestGetWaffoPancakePayMoney(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
-	require.NoError(t, db.AutoMigrate(&model.UserLevel{}, &model.RouteGroup{}, &model.UserLevelRouteGroup{}))
-	require.NoError(t, db.Create(&[]model.UserLevel{
-		{Code: "standard", Name: "Standard", IsDefault: true, Enabled: true, TopupRatio: 1},
-		{Code: "vip", Name: "VIP", Enabled: true, TopupRatio: 1.2},
+	require.NoError(t, db.Create(&model.UserLevel{
+		Code: "vip", Name: "VIP", Enabled: true, TopupRatio: 1.2,
 	}).Error)
 	require.NoError(t, model.RebuildAccessPolicySnapshot())
 
@@ -43,13 +41,10 @@ func TestGetWaffoPancakePayMoney(t *testing.T) {
 	for k, v := range operation_setting.GetPaymentSetting().AmountDiscount {
 		originalDiscounts[k] = v
 	}
-	originalTopupGroupRatio := common.TopupGroupRatio2JSONString()
-
 	t.Cleanup(func() {
 		setting.WaffoPancakeUnitPrice = originalUnitPrice
 		operation_setting.GetGeneralSetting().QuotaDisplayType = originalQuotaDisplayType
 		operation_setting.GetPaymentSetting().AmountDiscount = originalDiscounts
-		require.NoError(t, common.UpdateTopupGroupRatioByJSONString(originalTopupGroupRatio))
 	})
 
 	setting.WaffoPancakeUnitPrice = 2.5
@@ -58,8 +53,6 @@ func TestGetWaffoPancakePayMoney(t *testing.T) {
 		int(common.QuotaPerUnit * 3): 0.5,
 		20:                           0,
 	}
-	require.NoError(t, common.UpdateTopupGroupRatioByJSONString(`{"default":1,"vip":1.2}`))
-
 	testCases := []struct {
 		name             string
 		amount           int64
@@ -84,7 +77,7 @@ func TestGetWaffoPancakePayMoney(t *testing.T) {
 		{
 			name:             "non-positive discount falls back to no discount",
 			amount:           20,
-			group:            "default",
+			group:            model.StandardUserLevelCode,
 			quotaDisplayType: operation_setting.QuotaDisplayTypeUSD,
 			expected:         50,
 		},

@@ -219,12 +219,6 @@ export type ModelSettings = {
   'billing_setting.billing_mode': string
   'billing_setting.billing_expr': string
   'tool_price_setting.prices': string
-  TopupGroupRatio: string
-  GroupRatio: string
-  UserUsableGroups: string
-  GroupGroupRatio: string
-  GroupModelRatio: string
-  'group_ratio_setting.group_special_usable_group': string
   'official_price_setting.model_prices': string
   RetryTimes: number
   ChannelDisableThreshold: string
@@ -278,12 +272,6 @@ export type BillingSettings = {
   'billing_setting.billing_mode': string
   'billing_setting.billing_expr': string
   'tool_price_setting.prices': string
-  TopupGroupRatio: string
-  GroupRatio: string
-  UserUsableGroups: string
-  GroupGroupRatio: string
-  GroupModelRatio: string
-  'group_ratio_setting.group_special_usable_group': string
   'official_price_setting.model_prices': string
   PayAddress: string
   EpayId: string

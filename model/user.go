@@ -95,7 +95,6 @@ type User struct {
 	Quota            int                        `json:"quota" gorm:"type:int;default:0"`
 	UsedQuota        int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
 	RequestCount     int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
-	Group            string                     `json:"-" gorm:"type:varchar(64);default:'default'"`
 	UserLevel        string                     `json:"user_level" gorm:"type:varchar(64);default:'';index"`
 	UserLevelName    string                     `json:"user_level_name" gorm:"-"`
 	AffCode          string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
@@ -115,9 +114,6 @@ type User struct {
 
 func (user *User) ToBaseUser() *UserBase {
 	userLevel := strings.TrimSpace(user.UserLevel)
-	if userLevel == "" {
-		userLevel = UserLevelForLegacyGroup(user.Group)
-	}
 	cache := &UserBase{
 		Id:            user.Id,
 		UserLevel:     userLevel,
@@ -135,9 +131,7 @@ func PopulateUserLevelDisplay(user *User) {
 	if user == nil {
 		return
 	}
-	if strings.TrimSpace(user.UserLevel) == "" {
-		user.UserLevel = UserLevelForLegacyGroup(user.Group)
-	}
+	user.UserLevel = strings.TrimSpace(user.UserLevel)
 	user.UserLevelName = GetUserLevelDisplayName(user.UserLevel)
 }
 
@@ -569,7 +563,6 @@ func (user *User) prepareForInsert(tx *gorm.DB) error {
 		}
 		user.UserLevel = defaultLevel
 	}
-	user.Group = LegacyGroupForUserLevel(user.UserLevel)
 	user.Email = NormalizeEmail(user.Email)
 	if err := ensureEmailAvailableWithTx(tx, user.Email, 0); err != nil {
 		return err
@@ -781,7 +774,6 @@ func (user *User) EditWithTx(tx *gorm.DB, updatePassword bool) error {
 		"username":     newUser.Username,
 		"display_name": newUser.DisplayName,
 		"user_level":   newUser.UserLevel,
-		"group":        LegacyGroupForUserLevel(newUser.UserLevel),
 		"remark":       newUser.Remark,
 	}
 	if updatePassword {
@@ -1106,36 +1098,7 @@ func GetUserEmail(id int) (email string, err error) {
 	return email, err
 }
 
-// GetUserGroup gets group from Redis first, falls back to DB if needed
-func GetUserGroup(id int, fromDB bool) (group string, err error) {
-	defer func() {
-		// Update Redis cache asynchronously on successful DB read
-		if shouldUpdateRedis(fromDB, err) {
-			gopool.Go(func() {
-				if err := updateUserGroupCache(id, group); err != nil {
-					common.SysLog("failed to update user group cache: " + err.Error())
-				}
-			})
-		}
-	}()
-	if !fromDB && common.RedisEnabled {
-		group, err := getUserGroupCache(id)
-		if err == nil {
-			return group, nil
-		}
-		// Don't return error - fall through to DB
-	}
-	fromDB = true
-	err = DB.Model(&User{}).Where("id = ?", id).Select(commonGroupCol).Find(&group).Error
-	if err != nil {
-		return "", err
-	}
-
-	return group, nil
-}
-
-// GetUserLevel gets the independent account level. During the expand phase it
-// falls back to the legacy users.group column only for rows not yet backfilled.
+// GetUserLevel gets the independent account level.
 func GetUserLevel(id int, fromDB bool) (level string, err error) {
 	if !fromDB && common.RedisEnabled {
 		cache, cacheErr := GetUserCache(id)
@@ -1143,19 +1106,11 @@ func GetUserLevel(id int, fromDB bool) (level string, err error) {
 			return cache.UserLevel, nil
 		}
 	}
-	var row struct {
-		UserLevel string
-		Group     string
-	}
-	err = DB.Model(&User{}).Where("id = ?", id).Select("user_level", commonGroupCol).Scan(&row).Error
+	err = DB.Model(&User{}).Where("id = ?", id).Select("user_level").Scan(&level).Error
 	if err != nil {
 		return "", err
 	}
-	level = strings.TrimSpace(row.UserLevel)
-	if level == "" {
-		level = UserLevelForLegacyGroup(row.Group)
-	}
-	return level, nil
+	return strings.TrimSpace(level), nil
 }
 
 // GetUserSetting gets setting from Redis first, falls back to DB if needed

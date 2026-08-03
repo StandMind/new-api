@@ -16,7 +16,6 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -120,6 +119,22 @@ func setupTokenControllerTestDB(t *testing.T) *gorm.DB {
 
 	db := openTokenControllerTestDB(t)
 	migrateTokenControllerTestDB(t, db)
+	require.NoError(t, db.AutoMigrate(
+		&model.UserLevel{}, &model.RouteGroup{}, &model.UserLevelRouteGroup{},
+	))
+	require.NoError(t, db.Create(&model.UserLevel{
+		Code: model.StandardUserLevelCode, Name: "Standard", IsDefault: true,
+		Enabled: true, TopupRatio: 1,
+	}).Error)
+	require.NoError(t, db.Create(&[]model.RouteGroup{
+		{Code: "default", Name: "Default route", BaseRatio: 1, Enabled: true},
+		{Code: "vip", Name: "VIP route", BaseRatio: 1, Enabled: true},
+	}).Error)
+	require.NoError(t, db.Create(&[]model.UserLevelRouteGroup{
+		{UserLevelCode: model.StandardUserLevelCode, RouteGroupCode: "default"},
+		{UserLevelCode: model.StandardUserLevelCode, RouteGroupCode: "vip"},
+	}).Error)
+	require.NoError(t, model.RebuildAccessPolicySnapshot())
 	return db
 }
 
@@ -214,6 +229,7 @@ func newAuthenticatedContext(t *testing.T, method string, target string, body an
 		ctx.Request.Header.Set("Content-Type", "application/json")
 	}
 	ctx.Set("id", userID)
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, model.StandardUserLevelCode)
 	return ctx, recorder
 }
 
@@ -599,10 +615,8 @@ func TestUpdateTokenMasksKeyInResponse(t *testing.T) {
 func TestAddTokenRoutingPriorityContract(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
 	require.NoError(t, db.AutoMigrate(
-		&model.UserLevel{}, &model.RouteGroup{}, &model.UserLevelRouteGroup{},
 		&model.Channel{}, &model.Ability{}, &model.GroupModelRoute{},
 	))
-	require.NoError(t, db.Create(&model.UserLevel{Code: "standard", Name: "Standard", IsDefault: true, Enabled: true, TopupRatio: 1}).Error)
 	require.NoError(t, db.Create(&model.RouteGroup{Code: "routing-a", Name: "Routing A", BaseRatio: 1, Enabled: true}).Error)
 	require.NoError(t, db.Create(&model.UserLevelRouteGroup{UserLevelCode: "standard", RouteGroupCode: "routing-a"}).Error)
 	require.NoError(t, db.Create(&model.Channel{
@@ -702,7 +716,7 @@ func TestUpdateTokenOldClientPreservesSmartRoutingPriority(t *testing.T) {
 		"group_chain":          []string{"default"},
 	}
 	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 1)
-	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, model.StandardUserLevelCode)
 	UpdateToken(ctx)
 
 	response := decodeAPIResponse(t, recorder)
@@ -762,8 +776,9 @@ func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {
 }
 
 func TestNormalizeTokenGroupChain(t *testing.T) {
+	setupTokenControllerTestDB(t)
 	context, _ := newAuthenticatedContext(t, http.MethodPost, "/api/token", nil, 1)
-	common.SetContextKey(context, constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(context, constant.ContextKeyUserGroup, model.StandardUserLevelCode)
 
 	validChain := model.StringArray{" vip ", "default"}
 	request := tokenRequest{Group: "auto", GroupChain: &validChain}
@@ -786,14 +801,11 @@ func TestNormalizeTokenGroupChain(t *testing.T) {
 	assert.Error(t, normalizeTokenGroupChain(context, &tokenRequest{Group: "default", GroupChain: &emptyChain}))
 	assert.Error(t, normalizeTokenGroupChain(context, &tokenRequest{Group: "default"}))
 
-	originalGroupRatio := ratio_setting.GroupRatio2JSONString()
-	t.Cleanup(func() {
-		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalGroupRatio))
-	})
-	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1}`))
+	require.NoError(t, model.DB.Model(&model.RouteGroup{}).Where("code = ?", "vip").Update("enabled", false).Error)
+	require.NoError(t, model.RebuildAccessPolicySnapshot())
 	deprecatedChain := model.StringArray{"vip", "default"}
 	deprecatedRequest := tokenRequest{Group: "vip", GroupChain: &deprecatedChain}
-	assert.ErrorContains(t, normalizeTokenGroupChain(context, &deprecatedRequest), "deprecated")
+	assert.ErrorContains(t, normalizeTokenGroupChain(context, &deprecatedRequest), "no access")
 }
 
 func TestSetupContextForTokenPublishesGroupChain(t *testing.T) {

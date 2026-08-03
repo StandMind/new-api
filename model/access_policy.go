@@ -187,101 +187,6 @@ func ListRouteGroups() ([]RouteGroup, error) {
 	return groups, err
 }
 
-func writeLegacyOption(tx *gorm.DB, key string, value interface{}) error {
-	var serialized string
-	switch typed := value.(type) {
-	case string:
-		serialized = typed
-	default:
-		bytes, err := common.Marshal(value)
-		if err != nil {
-			return err
-		}
-		serialized = string(bytes)
-	}
-	return tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "key"}}, DoUpdates: clause.AssignmentColumns([]string{"value"})}).
-		Create(&Option{Key: key, Value: serialized}).Error
-}
-
-// SyncLegacyAccessPolicyOptions mirrors the independent policy into the old
-// Option representation during the expand release. The global legacy usable
-// set is intentionally empty; every old-version permission is expressed as an
-// explicit per-level addition, so a new route group cannot be granted by
-// accident.
-func SyncLegacyAccessPolicyOptions(tx *gorm.DB) error {
-	if tx == nil {
-		tx = DB
-	}
-	var levels []UserLevel
-	if err := tx.Find(&levels).Error; err != nil {
-		return err
-	}
-	var routeGroups []RouteGroup
-	if err := tx.Find(&routeGroups).Error; err != nil {
-		return err
-	}
-	var grants []UserLevelRouteGroup
-	if err := tx.Find(&grants).Error; err != nil {
-		return err
-	}
-
-	groupRatios := make(map[string]float64, len(routeGroups))
-	routeNames := make(map[string]string, len(routeGroups))
-	routeEnabled := make(map[string]bool, len(routeGroups))
-	for _, group := range routeGroups {
-		groupRatios[group.Code] = float64(group.BaseRatio)
-		routeNames[group.Code] = group.Name
-		routeEnabled[group.Code] = group.Enabled
-	}
-	topupRatios := make(map[string]float64, len(levels))
-	rateLimits := make(map[string][2]int)
-	specialUsable := make(map[string]map[string]string, len(levels))
-	priceOverrides := make(map[string]map[string]float64)
-	levelEnabled := make(map[string]bool, len(levels))
-	for _, level := range levels {
-		legacyLevel := LegacyGroupForUserLevel(level.Code)
-		topupRatios[legacyLevel] = float64(level.TopupRatio)
-		if level.RequestLimit > 0 || level.SuccessRequestLimit > 0 {
-			rateLimits[legacyLevel] = [2]int{level.RequestLimit, level.SuccessRequestLimit}
-		}
-		specialUsable[legacyLevel] = make(map[string]string)
-		levelEnabled[legacyLevel] = level.Enabled
-	}
-	for _, grant := range grants {
-		legacyLevel := LegacyGroupForUserLevel(grant.UserLevelCode)
-		if !levelEnabled[legacyLevel] || !routeEnabled[grant.RouteGroupCode] {
-			continue
-		}
-		if specialUsable[legacyLevel] == nil {
-			specialUsable[legacyLevel] = make(map[string]string)
-		}
-		specialUsable[legacyLevel]["+:"+grant.RouteGroupCode] = routeNames[grant.RouteGroupCode]
-		if grant.PriceRatio != nil {
-			if priceOverrides[legacyLevel] == nil {
-				priceOverrides[legacyLevel] = make(map[string]float64)
-			}
-			priceOverrides[legacyLevel][grant.RouteGroupCode] = float64(*grant.PriceRatio)
-		}
-	}
-	options := []struct {
-		key   string
-		value interface{}
-	}{
-		{"GroupRatio", groupRatios},
-		{"UserUsableGroups", map[string]string{}},
-		{"TopupGroupRatio", topupRatios},
-		{"ModelRequestRateLimitGroup", rateLimits},
-		{"GroupGroupRatio", priceOverrides},
-		{"group_ratio_setting.group_special_usable_group", specialUsable},
-	}
-	for _, option := range options {
-		if err := writeLegacyOption(tx, option.key, option.value); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func RefreshAccessPolicyCaches() error {
 	InitOptionMap()
 	if err := RebuildAccessPolicySnapshot(); err != nil {
@@ -312,14 +217,13 @@ func InspectUserLevelReferences(db *gorm.DB, code string) ([]AccessPolicyReferen
 	if db == nil {
 		return nil, errors.New("database is not initialized")
 	}
-	legacyCode := LegacyGroupForUserLevel(code)
 	checks := []struct {
 		kind  string
 		model interface{}
 		query string
 		args  []interface{}
 	}{
-		{"users", &User{}, "user_level = ? OR ((user_level = '' OR user_level IS NULL) AND " + commonGroupCol + " = ?)", []interface{}{code, legacyCode}},
+		{"users", &User{}, "user_level = ?", []interface{}{code}},
 		{"subscription_plans", &SubscriptionPlan{}, "upgrade_user_level = ? OR downgrade_user_level = ?", []interface{}{code, code}},
 		{"user_subscriptions", &UserSubscription{}, "upgrade_user_level = ? OR downgrade_user_level = ? OR previous_user_level = ?", []interface{}{code, code, code}},
 	}
@@ -731,12 +635,14 @@ func collectLegacyRouteGroupCodes(
 
 func collectReferencedLegacyUserLevelCodes(tx *gorm.DB) (map[string]struct{}, error) {
 	levelCodes := map[string]struct{}{StandardUserLevelCode: {}}
-	var legacyUserGroups []string
-	if err := tx.Model(&User{}).Where("deleted_at IS NULL").Distinct("group").Pluck("group", &legacyUserGroups).Error; err != nil {
-		return nil, err
-	}
-	for _, code := range legacyUserGroups {
-		levelCodes[UserLevelForLegacyGroup(code)] = struct{}{}
+	if tx.Migrator().HasColumn(&User{}, "group") {
+		var legacyUserGroups []string
+		if err := tx.Model(&User{}).Where("deleted_at IS NULL").Distinct(commonGroupCol).Pluck(commonGroupCol, &legacyUserGroups).Error; err != nil {
+			return nil, err
+		}
+		for _, code := range legacyUserGroups {
+			levelCodes[UserLevelForLegacyGroup(code)] = struct{}{}
+		}
 	}
 
 	legacySubscriptionColumns := []struct {
@@ -834,6 +740,15 @@ func cleanupInitialUnreferencedUserLevels(tx *gorm.DB, state AccessPolicyState) 
 // empty compatibility fields and missing records are populated.
 func MigrateLegacyAccessPolicy() error {
 	return DB.Transaction(func(tx *gorm.DB) error {
+		var existingState AccessPolicyState
+		existingStateErr := lockForUpdate(tx).Where("id = ?", 1).First(&existingState).Error
+		if existingStateErr == nil {
+			return nil
+		}
+		if !errors.Is(existingStateErr, gorm.ErrRecordNotFound) {
+			return existingStateErr
+		}
+
 		migrationGuard, err := lockPendingAccessPolicyMigrationGuard(tx)
 		if err != nil {
 			return err
@@ -949,16 +864,18 @@ func MigrateLegacyAccessPolicy() error {
 			}
 		}
 
-		var users []struct {
-			ID    int
-			Group string
-		}
-		if err := tx.Model(&User{}).Select("id", "group").Where("user_level = '' OR user_level IS NULL").Scan(&users).Error; err != nil {
-			return err
-		}
-		for _, user := range users {
-			if err := tx.Model(&User{}).Where("id = ?", user.ID).Update("user_level", UserLevelForLegacyGroup(user.Group)).Error; err != nil {
+		if tx.Migrator().HasColumn(&User{}, "group") {
+			var users []struct {
+				ID    int
+				Group string
+			}
+			if err := tx.Model(&User{}).Select("id", commonGroupCol).Where("user_level = '' OR user_level IS NULL").Scan(&users).Error; err != nil {
 				return err
+			}
+			for _, user := range users {
+				if err := tx.Model(&User{}).Where("id = ?", user.ID).Update("user_level", UserLevelForLegacyGroup(user.Group)).Error; err != nil {
+					return err
+				}
 			}
 		}
 
@@ -995,6 +912,9 @@ func MigrateLegacyAccessPolicy() error {
 				InitialRouteGroupFingerprint: fmt.Sprintf("%x", sha256.Sum256(encodedCodes)),
 				ExpandedAt:                   expandedAt,
 				InitialUserLevelCleanupAt:    expandedAt,
+			}
+			if !legacyAccessPolicyColumnsPresent(tx) {
+				migrationState.ContractedAt = expandedAt
 			}
 			if err := tx.Create(&migrationState).Error; err != nil {
 				return err
@@ -1062,9 +982,6 @@ func MigrateLegacyAccessPolicy() error {
 				return err
 			}
 		}
-		if err := SyncLegacyAccessPolicyOptions(tx); err != nil {
-			return err
-		}
 		if migrationGuard != nil {
 			if err := tx.Model(&AccessPolicyMigrationGuard{}).Where("id = ? AND applied_at = 0", migrationGuard.ID).
 				Update("applied_at", time.Now().Unix()).Error; err != nil {
@@ -1077,24 +994,43 @@ func MigrateLegacyAccessPolicy() error {
 
 func backfillSubscriptionUserLevels(tx *gorm.DB) error {
 	if tx.Migrator().HasTable(&SubscriptionPlan{}) {
-		if err := tx.Exec(`UPDATE subscription_plans SET upgrade_user_level = CASE WHEN upgrade_group = 'default' THEN 'standard' ELSE upgrade_group END WHERE (upgrade_user_level = '' OR upgrade_user_level IS NULL) AND upgrade_group <> ''`).Error; err != nil {
-			return err
+		if tx.Migrator().HasColumn(&SubscriptionPlan{}, "upgrade_group") {
+			if err := tx.Exec(`UPDATE subscription_plans SET upgrade_user_level = CASE WHEN upgrade_group = 'default' THEN 'standard' ELSE upgrade_group END WHERE (upgrade_user_level = '' OR upgrade_user_level IS NULL) AND upgrade_group <> ''`).Error; err != nil {
+				return err
+			}
 		}
-		if err := tx.Exec(`UPDATE subscription_plans SET downgrade_user_level = CASE WHEN downgrade_group = 'default' THEN 'standard' ELSE downgrade_group END WHERE (downgrade_user_level = '' OR downgrade_user_level IS NULL) AND downgrade_group <> ''`).Error; err != nil {
-			return err
+		if tx.Migrator().HasColumn(&SubscriptionPlan{}, "downgrade_group") {
+			if err := tx.Exec(`UPDATE subscription_plans SET downgrade_user_level = CASE WHEN downgrade_group = 'default' THEN 'standard' ELSE downgrade_group END WHERE (downgrade_user_level = '' OR downgrade_user_level IS NULL) AND downgrade_group <> ''`).Error; err != nil {
+				return err
+			}
 		}
 	}
 	if tx.Migrator().HasTable(&UserSubscription{}) {
-		updates := []string{
-			`UPDATE user_subscriptions SET upgrade_user_level = CASE WHEN upgrade_group = 'default' THEN 'standard' ELSE upgrade_group END WHERE (upgrade_user_level = '' OR upgrade_user_level IS NULL) AND upgrade_group <> ''`,
-			`UPDATE user_subscriptions SET downgrade_user_level = CASE WHEN downgrade_group = 'default' THEN 'standard' ELSE downgrade_group END WHERE (downgrade_user_level = '' OR downgrade_user_level IS NULL) AND downgrade_group <> ''`,
-			`UPDATE user_subscriptions SET previous_user_level = CASE WHEN prev_user_group = 'default' THEN 'standard' ELSE prev_user_group END WHERE (previous_user_level = '' OR previous_user_level IS NULL) AND prev_user_group <> ''`,
+		updates := []struct {
+			column string
+			query  string
+		}{
+			{"upgrade_group", `UPDATE user_subscriptions SET upgrade_user_level = CASE WHEN upgrade_group = 'default' THEN 'standard' ELSE upgrade_group END WHERE (upgrade_user_level = '' OR upgrade_user_level IS NULL) AND upgrade_group <> ''`},
+			{"downgrade_group", `UPDATE user_subscriptions SET downgrade_user_level = CASE WHEN downgrade_group = 'default' THEN 'standard' ELSE downgrade_group END WHERE (downgrade_user_level = '' OR downgrade_user_level IS NULL) AND downgrade_group <> ''`},
+			{"prev_user_group", `UPDATE user_subscriptions SET previous_user_level = CASE WHEN prev_user_group = 'default' THEN 'standard' ELSE prev_user_group END WHERE (previous_user_level = '' OR previous_user_level IS NULL) AND prev_user_group <> ''`},
 		}
-		for _, query := range updates {
-			if err := tx.Exec(query).Error; err != nil {
+		for _, update := range updates {
+			if !tx.Migrator().HasColumn(&UserSubscription{}, update.column) {
+				continue
+			}
+			if err := tx.Exec(update.query).Error; err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+func legacyAccessPolicyColumnsPresent(tx *gorm.DB) bool {
+	return tx.Migrator().HasColumn(&User{}, "group") ||
+		tx.Migrator().HasColumn(&SubscriptionPlan{}, "upgrade_group") ||
+		tx.Migrator().HasColumn(&SubscriptionPlan{}, "downgrade_group") ||
+		tx.Migrator().HasColumn(&UserSubscription{}, "upgrade_group") ||
+		tx.Migrator().HasColumn(&UserSubscription{}, "downgrade_group") ||
+		tx.Migrator().HasColumn(&UserSubscription{}, "prev_user_group")
 }

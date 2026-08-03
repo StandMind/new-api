@@ -53,6 +53,10 @@ func TestMain(m *testing.M) {
 		&model.SystemTask{},
 		&model.SystemTaskLock{},
 		&model.PerfMetric{},
+		&model.UserLevel{},
+		&model.RouteGroup{},
+		&model.UserLevelRouteGroup{},
+		&model.AccessPolicyState{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -550,6 +554,33 @@ func TestRecalculateTaskQuotaByTokensUsesSuccessfulGroupRatioSnapshot(t *testing
 		initialQuota+(preConsumedQuota-expectedQuota),
 		getUserQuota(t, userID),
 	)
+}
+
+func TestRecalculateTaskQuotaByTokensSkipsHistoricalTaskWithoutRouteGroup(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	originalModelRatio := ratio_setting.ModelRatio2JSONString()
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(
+		`{"historical-task-model":2}`,
+	))
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(originalModelRatio))
+	})
+
+	const userID = 132
+	const initialQuota, preConsumedQuota = 10_000, 1_000
+	seedUser(t, userID, initialQuota)
+	task := makeTask(userID, 0, preConsumedQuota, 0, BillingSourceWallet, 0)
+	task.Group = ""
+	task.Properties.OriginModelName = "historical-task-model"
+	task.PrivateData.BillingContext = nil
+
+	RecalculateTaskQuotaByTokens(ctx, task, 100)
+
+	assert.Equal(t, preConsumedQuota, task.Quota)
+	assert.Equal(t, initialQuota, getUserQuota(t, userID))
+	assert.Equal(t, int64(0), countLogs(t))
 }
 
 func TestRecalculate_Subscription_NegativeDelta(t *testing.T) {

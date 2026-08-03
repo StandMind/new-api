@@ -40,14 +40,6 @@ func setupAccessPolicyControllerTestDB(t *testing.T) {
 		&model.UserLevel{}, &model.RouteGroup{}, &model.UserLevelRouteGroup{},
 		&model.AccessPolicyState{}, &model.AccessPolicyMigrationGuard{},
 	))
-	require.NoError(t, db.Create(&model.AccessPolicyState{
-		ID: 1, InitialRouteGroupCodes: "[]",
-		InitialRouteGroupFingerprint: "controller-test", ExpandedAt: 1,
-	}).Error)
-	require.NoError(t, db.Create(&model.UserLevel{
-		Code: model.StandardUserLevelCode, Name: "普通用户", IsDefault: true,
-		Enabled: true, TopupRatio: 1,
-	}).Error)
 	require.NoError(t, model.RebuildAccessPolicySnapshot())
 }
 
@@ -133,7 +125,7 @@ func TestAccessPolicyRejectsReservedLevelAndReferencedDeletes(t *testing.T) {
 	}).Error)
 	require.NoError(t, model.DB.Create(&model.User{
 		Id: 9901, Username: "access-policy-user", Password: "password",
-		UserLevel: "referenced", Group: "referenced", Status: common.UserStatusEnabled,
+		UserLevel: "referenced", Status: common.UserStatusEnabled,
 		AffCode: "ap9901",
 	}).Error)
 	require.NoError(t, model.RebuildAccessPolicySnapshot())

@@ -293,21 +293,22 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 	}
 	if !hasGroupRatioSnapshot {
 		usingGroup := task.Group
-		userGroup := ""
-		if user, err := model.GetUserById(task.UserId, false); err == nil {
-			userGroup = user.UserLevel
-			if userGroup == "" {
-				userGroup = model.UserLevelForLegacyGroup(user.Group)
-			}
-			if usingGroup == "" {
-				usingGroup = model.LegacyGroupForUserLevel(userGroup)
-			}
-		}
 		if usingGroup == "" {
+			logger.LogWarn(ctx, fmt.Sprintf("跳过缺少路由分组的历史任务 token 重算 (task=%s)", task.TaskID))
+			return
+		}
+		user, err := model.GetUserById(task.UserId, false)
+		if err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("跳过无法读取用户等级的历史任务 token 重算 (task=%s, user=%d): %s", task.TaskID, task.UserId, err.Error()))
+			return
+		}
+		userLevel := strings.TrimSpace(user.UserLevel)
+		if userLevel == "" {
+			logger.LogWarn(ctx, fmt.Sprintf("跳过缺少用户等级的历史任务 token 重算 (task=%s, user=%d)", task.TaskID, task.UserId))
 			return
 		}
 		finalGroupRatio, _ = model.ResolveAccessPolicyRatio(
-			userGroup,
+			userLevel,
 			usingGroup,
 			modelName,
 		)

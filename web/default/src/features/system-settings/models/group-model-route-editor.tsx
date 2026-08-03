@@ -51,7 +51,6 @@ import {
 
 import { deleteGroupModelRoute, listGroupModelRoutes } from '../api'
 import type { GroupModelRouteListItem } from '../types'
-import { safeJsonParse } from '../utils/json-parser'
 import {
   GroupModelRouteEditorSheet,
   type GroupModelRouteEditorTarget,
@@ -63,7 +62,7 @@ import {
 } from './group-model-route-utils'
 
 type GroupModelRouteEditorProps = {
-  groupRatio: string
+  groupCodes: string[]
 }
 
 const groupModelRoutesQueryKey = ['group-model-routes'] as const
@@ -81,17 +80,13 @@ export function GroupModelRouteEditor(props: GroupModelRouteEditorProps) {
     [savedRoutesQuery.data]
   )
   const groupOptions = useMemo(() => {
-    const ratios = safeJsonParse<Record<string, number>>(props.groupRatio, {
-      fallback: {},
-      silent: true,
-    })
     return [
       ...new Set([
-        ...Object.keys(ratios),
+        ...props.groupCodes,
         ...savedRoutes.map((route) => route.group),
       ]),
     ].sort()
-  }, [props.groupRatio, savedRoutes])
+  }, [props.groupCodes, savedRoutes])
   const routeGroupOptions = useMemo(
     () => [...new Set(savedRoutes.map((route) => route.group))].sort(),
     [savedRoutes]

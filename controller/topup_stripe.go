@@ -386,11 +386,7 @@ func genStripeLink(referenceId string, customerId string, email string, amount i
 }
 
 func GetChargedAmount(count float64, user model.User) float64 {
-	userLevel := user.UserLevel
-	if userLevel == "" {
-		userLevel = model.UserLevelForLegacyGroup(user.Group)
-	}
-	topUpGroupRatio := model.GetUserLevelTopupRatio(userLevel)
+	topUpGroupRatio := model.GetUserLevelTopupRatio(user.UserLevel)
 	if topUpGroupRatio == 0 {
 		topUpGroupRatio = 1
 	}

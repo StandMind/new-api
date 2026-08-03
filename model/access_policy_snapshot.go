@@ -6,7 +6,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"gorm.io/gorm"
 )
@@ -104,10 +103,6 @@ func GetDefaultUserLevelFromSnapshot() string {
 func GetUserLevelFromSnapshot(code string) (UserLevel, bool) {
 	snapshot := getAccessPolicySnapshot()
 	if snapshot == nil {
-		legacy := LegacyGroupForUserLevel(code)
-		if code == StandardUserLevelCode || ratio_setting.ContainsGroupRatio(legacy) {
-			return UserLevel{Code: code, Name: code, Enabled: true, TopupRatio: 1}, true
-		}
 		return UserLevel{}, false
 	}
 	level, ok := snapshot.levels[code]
@@ -131,9 +126,6 @@ func GetRouteGroupDisplayName(code string) string {
 func GetRouteGroupFromSnapshot(code string) (RouteGroup, bool) {
 	snapshot := getAccessPolicySnapshot()
 	if snapshot == nil {
-		if ratio_setting.ContainsGroupRatio(code) {
-			return RouteGroup{Code: code, Name: code, BaseRatio: AccessPolicyRatio(ratio_setting.GetGroupRatio(code)), Enabled: true}, true
-		}
 		return RouteGroup{}, false
 	}
 	group, ok := snapshot.routeGroups[code]
@@ -143,13 +135,7 @@ func GetRouteGroupFromSnapshot(code string) (RouteGroup, bool) {
 func GetEnabledRouteGroupCodes() []string {
 	snapshot := getAccessPolicySnapshot()
 	if snapshot == nil {
-		groups := ratio_setting.GetGroupRatioCopy()
-		result := make([]string, 0, len(groups))
-		for code := range groups {
-			result = append(result, code)
-		}
-		sort.Strings(result)
-		return result
+		return nil
 	}
 	result := make([]string, 0, len(snapshot.routeGroups))
 	for code, group := range snapshot.routeGroups {
@@ -164,14 +150,7 @@ func GetEnabledRouteGroupCodes() []string {
 func GetKnownUserLevelCodes() []string {
 	snapshot := getAccessPolicySnapshot()
 	if snapshot == nil {
-		groups := ratio_setting.GetGroupRatioCopy()
-		result := make([]string, 0, len(groups)+1)
-		result = append(result, "")
-		for code := range groups {
-			result = append(result, code)
-		}
-		sort.Strings(result)
-		return result
+		return nil
 	}
 	result := make([]string, 0, len(snapshot.levels))
 	for code, level := range snapshot.levels {
@@ -211,7 +190,7 @@ func GetUserLevelRouteGroups(userLevel string, includeDisabled bool) []AccessPol
 func UserLevelCanAccessRouteGroup(userLevel, routeGroup string) bool {
 	snapshot := getAccessPolicySnapshot()
 	if snapshot == nil {
-		return ratio_setting.ContainsGroupRatio(routeGroup)
+		return false
 	}
 	level, levelExists := snapshot.levels[userLevel]
 	group, groupExists := snapshot.routeGroups[routeGroup]
@@ -228,7 +207,7 @@ func ResolveAccessPolicyRatio(userLevel, routeGroup, modelName string) (float64,
 	}
 	snapshot := getAccessPolicySnapshot()
 	if snapshot == nil {
-		return ratio_setting.ResolveGroupRatio(LegacyGroupForUserLevel(userLevel), routeGroup, modelName)
+		return 1, "access_policy_snapshot.missing"
 	}
 	if grant, ok := snapshot.grants[userLevel][routeGroup]; ok && grant.PriceRatio != nil {
 		return float64(*grant.PriceRatio), "user_level_route_group.price_ratio"
@@ -242,11 +221,6 @@ func ResolveAccessPolicyRatio(userLevel, routeGroup, modelName string) (float64,
 func GetUserLevelTopupRatio(userLevel string) float64 {
 	if level, ok := GetUserLevelFromSnapshot(userLevel); ok && level.TopupRatio > 0 {
 		return float64(level.TopupRatio)
-	}
-	if !AccessPolicySnapshotReady() {
-		if ratio := common.GetTopupGroupRatio(LegacyGroupForUserLevel(userLevel)); ratio > 0 {
-			return ratio
-		}
 	}
 	return 1
 }

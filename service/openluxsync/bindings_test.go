@@ -24,10 +24,11 @@ func TestBindingsResolveRenamedGroupsAllowMixedChannelsAndKeepCandidatesUnpersis
 		Bindings: []model.OpenLuxPriceSyncBinding{{
 			SourceGroup: sourceA, ChannelID: boundA.Id,
 		}},
-		Channels: []model.Channel{boundA, selfHosted, candidateB},
-		Options: map[string]string{
-			optionGroupRatio: optionJSON(t, map[string]float64{localA: 1, localB: 1}),
+		RouteGroups: []model.RouteGroup{
+			{Code: localA, Name: localA, BaseRatio: 1, Enabled: true},
+			{Code: localB, Name: localB, BaseRatio: 1, Enabled: true},
 		},
+		Channels: []model.Channel{boundA, selfHosted, candidateB},
 	}
 	source := previewSource(nil, map[string]decimal.Decimal{
 		sourceA: decimal.NewFromInt(1),

@@ -78,11 +78,11 @@ func TestGetUserGroupsPublishesUsableGroups(t *testing.T) {
 	withGroupRoutingSettings(t)
 	db := setupModelListControllerTestDB(t)
 	require.NoError(t, db.Create(&model.User{
-		Id:       9101,
-		Username: "group-chain-metadata-user",
-		Password: "password",
-		Group:    "default",
-		Status:   common.UserStatusEnabled,
+		Id:        9101,
+		Username:  "group-chain-metadata-user",
+		Password:  "password",
+		UserLevel: model.StandardUserLevelCode,
+		Status:    common.UserStatusEnabled,
 	}).Error)
 
 	recorder := httptest.NewRecorder()
@@ -117,11 +117,11 @@ func TestGetPricingReturnsRawAndEffectiveGroupModelRatios(t *testing.T) {
 	}))
 	db := setupModelListControllerTestDB(t)
 	require.NoError(t, db.Create(&model.User{
-		Id:       9102,
-		Username: "group-model-pricing-user",
-		Password: "password",
-		Group:    "default",
-		Status:   common.UserStatusEnabled,
+		Id:        9102,
+		Username:  "group-model-pricing-user",
+		Password:  "password",
+		UserLevel: model.StandardUserLevelCode,
+		Status:    common.UserStatusEnabled,
 	}).Error)
 	require.NoError(t, db.Create(&model.Channel{
 		Id:     9102,
@@ -173,12 +173,12 @@ func TestGroupModelRouteControllerSaveGetAndRestore(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
 	require.NoError(t, db.AutoMigrate(&model.GroupModelRoute{}, &model.Log{}))
 	require.NoError(t, db.Create(&model.User{
-		Id:       9103,
-		Username: "route-admin",
-		Password: "password",
-		Group:    "default",
-		Role:     common.RoleRootUser,
-		Status:   common.UserStatusEnabled,
+		Id:        9103,
+		Username:  "route-admin",
+		Password:  "password",
+		UserLevel: model.StandardUserLevelCode,
+		Role:      common.RoleRootUser,
+		Status:    common.UserStatusEnabled,
 	}).Error)
 
 	priorityHigh := int64(100)

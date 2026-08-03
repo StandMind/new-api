@@ -27,7 +27,7 @@ type localPricingOptions struct {
 	imageRatio           numberMap
 	audioRatio           numberMap
 	audioCompletionRatio numberMap
-	groupRatio           numberMap
+	routeGroupRatio      map[string]decimal.Decimal
 	groupModelRatio      nestedNumberMap
 	billingMode          stringMap
 	billingExpr          stringMap
@@ -65,8 +65,9 @@ func parseLocalPricingOptions(snapshot *model.OpenLuxSyncSnapshot) (*localPricin
 	if result.audioCompletionRatio, err = parseNumberMap(snapshot.Options[optionAudioCompletionRatio], optionAudioCompletionRatio); err != nil {
 		return nil, err
 	}
-	if result.groupRatio, err = parseNumberMap(snapshot.Options[optionGroupRatio], optionGroupRatio); err != nil {
-		return nil, err
+	result.routeGroupRatio = make(map[string]decimal.Decimal, len(snapshot.RouteGroups))
+	for _, group := range snapshot.RouteGroups {
+		result.routeGroupRatio[group.Code] = decimal.NewFromFloat(float64(group.BaseRatio))
 	}
 	if result.groupModelRatio, err = parseNestedNumberMap(snapshot.Options[optionGroupModelRatio], optionGroupModelRatio); err != nil {
 		return nil, err
@@ -123,7 +124,10 @@ func (options *localPricingOptions) effectiveGroupModelRatio(localGroup, modelNa
 			return matched
 		}
 	}
-	return numberMapValue(options.groupRatio, localGroup, decimal.NewFromInt(1))
+	if ratio, ok := options.routeGroupRatio[localGroup]; ok {
+		return ratio
+	}
+	return decimal.NewFromInt(1)
 }
 
 func buildModelBillingChange(item sourceModel, options *localPricingOptions, affectedGroups []string) modelBillingResult {

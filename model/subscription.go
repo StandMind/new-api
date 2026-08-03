@@ -179,10 +179,6 @@ type SubscriptionPlan struct {
 	UpgradeUserLevelName   string `json:"upgrade_user_level_name" gorm:"-"`
 	DowngradeUserLevelName string `json:"downgrade_user_level_name" gorm:"-"`
 
-	// Expand-stage compatibility columns. They are not part of the external API.
-	UpgradeGroup   string `json:"-" gorm:"type:varchar(64);default:''"`
-	DowngradeGroup string `json:"-" gorm:"type:varchar(64);default:''"`
-
 	// Total quota (amount in quota units, 0 = unlimited)
 	TotalAmount int64 `json:"total_amount" gorm:"type:bigint;not null;default:0"`
 
@@ -195,7 +191,6 @@ type SubscriptionPlan struct {
 }
 
 func (p *SubscriptionPlan) BeforeCreate(tx *gorm.DB) error {
-	p.syncLegacyUserLevels()
 	now := common.GetTimestamp()
 	p.CreatedAt = now
 	p.UpdatedAt = now
@@ -203,13 +198,11 @@ func (p *SubscriptionPlan) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (p *SubscriptionPlan) BeforeUpdate(tx *gorm.DB) error {
-	p.syncLegacyUserLevels()
 	p.UpdatedAt = common.GetTimestamp()
 	return nil
 }
 
 func (p *SubscriptionPlan) NormalizeDefaults() {
-	p.normalizeUserLevels()
 	p.populateUserLevelNames()
 	if p.AllowBalancePay == nil {
 		p.AllowBalancePay = common.GetPointer(true)
@@ -225,27 +218,6 @@ func (p *SubscriptionPlan) populateUserLevelNames() {
 	}
 	if p.DowngradeUserLevel != "" {
 		p.DowngradeUserLevelName = GetUserLevelDisplayName(p.DowngradeUserLevel)
-	}
-}
-
-func (p *SubscriptionPlan) normalizeUserLevels() {
-	if p.UpgradeUserLevel == "" && p.UpgradeGroup != "" {
-		p.UpgradeUserLevel = UserLevelForLegacyGroup(p.UpgradeGroup)
-	}
-	if p.DowngradeUserLevel == "" && p.DowngradeGroup != "" {
-		p.DowngradeUserLevel = UserLevelForLegacyGroup(p.DowngradeGroup)
-	}
-}
-
-func (p *SubscriptionPlan) syncLegacyUserLevels() {
-	p.normalizeUserLevels()
-	p.UpgradeGroup = LegacyGroupForUserLevel(p.UpgradeUserLevel)
-	if p.UpgradeUserLevel == "" {
-		p.UpgradeGroup = ""
-	}
-	p.DowngradeGroup = LegacyGroupForUserLevel(p.DowngradeUserLevel)
-	if p.DowngradeUserLevel == "" {
-		p.DowngradeGroup = ""
 	}
 }
 
@@ -313,11 +285,6 @@ type UserSubscription struct {
 	PreviousUserLevelName  string `json:"previous_user_level_name" gorm:"-"`
 	DowngradeUserLevelName string `json:"downgrade_user_level_name" gorm:"-"`
 
-	// Expand-stage compatibility columns. They are removed in the contract step.
-	UpgradeGroup   string `json:"-" gorm:"type:varchar(64);default:''"`
-	PrevUserGroup  string `json:"-" gorm:"type:varchar(64);default:''"`
-	DowngradeGroup string `json:"-" gorm:"type:varchar(64);default:''"`
-
 	// Whether wallet fallback is allowed after this subscription's quota is exhausted (snapshot from plan)
 	AllowWalletOverflow bool `json:"allow_wallet_overflow"`
 
@@ -326,7 +293,6 @@ type UserSubscription struct {
 }
 
 func (s *UserSubscription) BeforeCreate(tx *gorm.DB) error {
-	s.syncLegacyUserLevels()
 	now := common.GetTimestamp()
 	s.CreatedAt = now
 	s.UpdatedAt = now
@@ -334,21 +300,8 @@ func (s *UserSubscription) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (s *UserSubscription) BeforeUpdate(tx *gorm.DB) error {
-	s.syncLegacyUserLevels()
 	s.UpdatedAt = common.GetTimestamp()
 	return nil
-}
-
-func (s *UserSubscription) normalizeUserLevels() {
-	if s.UpgradeUserLevel == "" && s.UpgradeGroup != "" {
-		s.UpgradeUserLevel = UserLevelForLegacyGroup(s.UpgradeGroup)
-	}
-	if s.PreviousUserLevel == "" && s.PrevUserGroup != "" {
-		s.PreviousUserLevel = UserLevelForLegacyGroup(s.PrevUserGroup)
-	}
-	if s.DowngradeUserLevel == "" && s.DowngradeGroup != "" {
-		s.DowngradeUserLevel = UserLevelForLegacyGroup(s.DowngradeGroup)
-	}
 }
 
 func (s *UserSubscription) populateUserLevelNames() {
@@ -360,22 +313,6 @@ func (s *UserSubscription) populateUserLevelNames() {
 	}
 	if s.DowngradeUserLevel != "" {
 		s.DowngradeUserLevelName = GetUserLevelDisplayName(s.DowngradeUserLevel)
-	}
-}
-
-func (s *UserSubscription) syncLegacyUserLevels() {
-	s.normalizeUserLevels()
-	s.UpgradeGroup = LegacyGroupForUserLevel(s.UpgradeUserLevel)
-	if s.UpgradeUserLevel == "" {
-		s.UpgradeGroup = ""
-	}
-	s.PrevUserGroup = LegacyGroupForUserLevel(s.PreviousUserLevel)
-	if s.PreviousUserLevel == "" {
-		s.PrevUserGroup = ""
-	}
-	s.DowngradeGroup = LegacyGroupForUserLevel(s.DowngradeUserLevel)
-	if s.DowngradeUserLevel == "" {
-		s.DowngradeGroup = ""
 	}
 }
 
@@ -517,24 +454,15 @@ func getUserLevelByIdTx(tx *gorm.DB, userId int) (string, error) {
 	if tx == nil {
 		tx = DB
 	}
-	var user struct {
-		UserLevel string
-		Group     string
-	}
-	if err := tx.Model(&User{}).Where("id = ?", userId).Select("user_level", commonGroupCol).Scan(&user).Error; err != nil {
+	var userLevel string
+	if err := tx.Model(&User{}).Where("id = ?", userId).Select("user_level").Scan(&userLevel).Error; err != nil {
 		return "", err
 	}
-	if strings.TrimSpace(user.UserLevel) != "" {
-		return user.UserLevel, nil
-	}
-	return UserLevelForLegacyGroup(user.Group), nil
+	return strings.TrimSpace(userLevel), nil
 }
 
 func updateUserLevelTx(tx *gorm.DB, userId int, userLevel string) error {
-	return tx.Model(&User{}).Where("id = ?", userId).Updates(map[string]interface{}{
-		"user_level": userLevel,
-		"group":      LegacyGroupForUserLevel(userLevel),
-	}).Error
+	return tx.Model(&User{}).Where("id = ?", userId).Update("user_level", userLevel).Error
 }
 
 func downgradeUserLevelForSubscriptionTx(tx *gorm.DB, sub *UserSubscription, now int64) (string, error) {
@@ -989,7 +917,6 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 	result := make([]SubscriptionSummary, 0, len(subs))
 	for _, sub := range subs {
 		subCopy := sub
-		subCopy.normalizeUserLevels()
 		subCopy.populateUserLevelNames()
 		result = append(result, SubscriptionSummary{
 			Subscription: &subCopy,

@@ -127,11 +127,16 @@ func TestRelayGroupRouteRetryBoundariesWithProgrammableUpstream(t *testing.T) {
 	require.NoError(t, ratio_setting.UpdateGroupModelRatioByJSONString(`{}`))
 
 	require.NoError(t, db.Create(&model.User{
-		Id:       99001,
-		Username: "route-integration-user",
-		Status:   common.UserStatusEnabled,
-		Group:    "default",
-		Quota:    1_000_000,
+		Id:        99001,
+		Username:  "route-integration-user",
+		Status:    common.UserStatusEnabled,
+		UserLevel: model.StandardUserLevelCode,
+		Quota:     1_000_000,
+	}).Error)
+	require.NoError(t, db.Create(&model.Token{
+		Id: 99001, UserId: 99001, Key: "route-integration-token", Name: "route-integration-token",
+		Status: common.TokenStatusEnabled, UnlimitedQuota: true,
+		Group: "group-a", GroupChain: model.StringArray{"group-a", "group-b"},
 	}).Error)
 
 	upstream := &programmableRouteUpstream{}
@@ -192,7 +197,7 @@ func TestRelayGroupRouteRetryBoundariesWithProgrammableUpstream(t *testing.T) {
 		groups := strings.Split(c.GetHeader("X-Test-Group-Chain"), ",")
 		common.SetContextKey(c, constant.ContextKeyUserId, 99001)
 		common.SetContextKey(c, constant.ContextKeyUserName, "route-integration-user")
-		common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
+		common.SetContextKey(c, constant.ContextKeyUserGroup, model.StandardUserLevelCode)
 		common.SetContextKey(c, constant.ContextKeyUserQuota, 1_000_000)
 		common.SetContextKey(c, constant.ContextKeyTokenId, 0)
 		common.SetContextKey(c, constant.ContextKeyTokenKey, "route-integration-token")
