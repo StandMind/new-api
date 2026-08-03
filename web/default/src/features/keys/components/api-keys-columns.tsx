@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 
@@ -31,7 +30,6 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { toIntlLocale } from '@/i18n/languages'
-import { getUserGroups } from '@/lib/api'
 import dayjs from '@/lib/dayjs'
 import { formatQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -52,29 +50,8 @@ function getQuotaProgressColor(percentage: number): string {
   return '[&_[data-slot=progress-indicator]]:bg-emerald-500'
 }
 
-function useGroupRatios(): Record<string, number> {
-  const { data } = useQuery({
-    queryKey: ['user-groups'],
-    queryFn: getUserGroups,
-    staleTime: 0,
-    select: (res) => {
-      if (!res.success || !res.data) return {}
-      const ratios: Record<string, number> = {}
-      for (const [group, info] of Object.entries(res.data)) {
-        if (typeof info.ratio === 'number') {
-          ratios[group] = info.ratio
-        }
-      }
-      return ratios
-    },
-  })
-
-  return data ?? {}
-}
-
 export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
   const { t, i18n } = useTranslation()
-  const groupRatios = useGroupRatios()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const justNowLabel = t('Just now')
   const staleAccessThreshold = dayjs(now).subtract(3, 'month').valueOf()
@@ -220,8 +197,12 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
         const configuredGroupChain = apiKey.group_chain ?? []
         const groupChain =
           configuredGroupChain.length > 0 ? configuredGroupChain : [group]
+        const configuredGroupChainNames = apiKey.group_chain_names ?? []
+        const groupChainNames = groupChain.map(
+          (code, index) => configuredGroupChainNames[index] || code
+        )
         if (groupChain.length > 1) {
-          const chainLabel = groupChain.join(' → ')
+          const chainLabel = groupChainNames.join(' → ')
           return (
             <TruncatedCell
               className='-ml-1.5'
@@ -229,25 +210,22 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
               tooltipClassName='break-all'
             >
               <span className='inline-flex max-w-full items-center gap-1'>
-                <GroupBadge
-                  group={groupChain[0]}
-                  ratio={groupRatios[groupChain[0]]}
-                />
+                <GroupBadge group={groupChainNames[0]} />
                 <span className='text-muted-foreground truncate text-xs'>
-                  → {groupChain.slice(1).join(' → ')}
+                  → {groupChainNames.slice(1).join(' → ')}
                 </span>
               </span>
             </TruncatedCell>
           )
         }
-        const ratio = group ? groupRatios[group] : undefined
+        const groupName = apiKey.group_name || group
         return (
           <TruncatedCell
             className='-ml-1.5'
-            tooltipContent={group || '-'}
+            tooltipContent={groupName || '-'}
             tooltipClassName='break-all'
           >
-            <GroupBadge group={group} ratio={ratio} />
+            <GroupBadge group={groupName} />
           </TruncatedCell>
         )
       },

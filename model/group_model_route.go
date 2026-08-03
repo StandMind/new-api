@@ -109,6 +109,11 @@ func NormalizeGroupModelRoute(route *GroupModelRoute) error {
 	if route.Model == "" {
 		return errors.New("model is required")
 	}
+	if AccessPolicySnapshotReady() {
+		if _, exists := GetRouteGroupFromSnapshot(route.Group); !exists {
+			return fmt.Errorf("route group %s does not exist", route.Group)
+		}
+	}
 	if len(route.Tiers) == 0 {
 		return errors.New("at least one priority tier is required")
 	}
@@ -305,30 +310,9 @@ func LoadGroupModelRoutePlans(groups []string, modelName, requestPath string) ([
 	if err != nil {
 		return nil, err
 	}
-	normalizedModel := ratio_setting.FormatMatchingModelName(modelName)
-
 	plans := make([]GroupModelRoutePlan, 0, len(uniqueGroups))
 	for _, group := range uniqueGroups {
-		exactKey := groupModelRouteIndexKey{group: group, model: modelName}
-		routeModel := modelName
-		route := index.routes[exactKey]
-		candidates := cachedRouteCandidates(index, exactKey, requestPath, modelName)
-		if len(candidates) == 0 && normalizedModel != modelName {
-			candidates = cachedRouteCandidates(index, groupModelRouteIndexKey{group: group, model: normalizedModel}, requestPath, modelName)
-		}
-		if route == nil && normalizedModel != modelName {
-			route = index.routes[groupModelRouteIndexKey{group: group, model: normalizedModel}]
-			if route != nil {
-				routeModel = normalizedModel
-			}
-		}
-		plans = append(plans, GroupModelRoutePlan{
-			Group:      group,
-			RouteModel: routeModel,
-			Route:      route,
-			Explicit:   route != nil,
-			Candidates: candidates,
-		})
+		plans = append(plans, cachedGroupModelRoutePlan(index, group, modelName, requestPath))
 	}
 	return plans, nil
 }

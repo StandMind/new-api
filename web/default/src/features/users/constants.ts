@@ -100,7 +100,7 @@ export const getUserRoleOptions = (t: (key: string) => string) => [
 // Default Values
 // ============================================================================
 
-export const DEFAULT_GROUP = 'default' as const
+export const DEFAULT_USER_LEVEL = 'standard' as const
 
 // ============================================================================
 // Third-party Binding Fields

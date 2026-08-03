@@ -91,7 +91,7 @@ func getWaffoPayMoney(amount float64, group string) float64 {
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
 		amount = amount / common.QuotaPerUnit
 	}
-	topupGroupRatio := common.GetTopupGroupRatio(group)
+	topupGroupRatio := model.GetUserLevelTopupRatio(group)
 	if topupGroupRatio == 0 {
 		topupGroupRatio = 1
 	}
@@ -125,7 +125,7 @@ func RequestWaffoAmount(c *gin.Context) {
 	}
 
 	id := c.GetInt("id")
-	group, err := model.GetUserGroup(id, true)
+	group, err := model.GetUserLevel(id, true)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
 		return
@@ -197,7 +197,7 @@ func RequestWaffoPay(c *gin.Context) {
 	}
 	// resolvedPayMethodType/Name 为空时，Waffo 自动选择支付方式
 
-	group, _ := model.GetUserGroup(id, true)
+	group, _ := model.GetUserLevel(id, true)
 	payMoney := getWaffoPayMoney(float64(req.Amount), group)
 	if payMoney < 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})

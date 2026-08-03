@@ -123,7 +123,7 @@ const DEFAULT_OTHER_FLOW_NODE_LABELS: Record<FlowNodeKind, string> = {
   user: 'Other users',
   node: 'Other nodes',
   token: 'Other tokens',
-  group: 'Other groups',
+  group: 'Other route groups',
   model: 'Other models',
   channel: 'Other channels',
 }

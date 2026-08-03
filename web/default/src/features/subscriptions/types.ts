@@ -39,8 +39,10 @@ export const subscriptionPlanSchema = z.object({
   allow_wallet_overflow: z.boolean().optional().default(true),
   max_purchase_per_user: z.number(),
   total_amount: z.number(),
-  upgrade_group: z.string().optional(),
-  downgrade_group: z.string().optional(),
+  upgrade_user_level: z.string().optional(),
+  upgrade_user_level_name: z.string().optional(),
+  downgrade_user_level: z.string().optional(),
+  downgrade_user_level_name: z.string().optional(),
   stripe_price_id: z.string().optional(),
   creem_product_id: z.string().optional(),
   creem_test_product_id: z.string().optional(),
@@ -68,6 +70,12 @@ export const userSubscriptionSchema = z.object({
   amount_total: z.number(),
   amount_used: z.number(),
   next_reset_time: z.number().optional(),
+  upgrade_user_level: z.string().optional(),
+  upgrade_user_level_name: z.string().optional(),
+  previous_user_level: z.string().optional(),
+  previous_user_level_name: z.string().optional(),
+  downgrade_user_level: z.string().optional(),
+  downgrade_user_level_name: z.string().optional(),
 })
 
 export type UserSubscription = z.infer<typeof userSubscriptionSchema>

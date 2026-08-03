@@ -152,10 +152,12 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
                   <span className='truncate'>{profile.email}</span>
                 </>
               )}
-              {profile.group && (
+              {profile.user_level && (
                 <>
                   <span>•</span>
-                  <span className='truncate'>{profile.group}</span>
+                  <span className='truncate'>
+                    {profile.user_level_name || profile.user_level}
+                  </span>
                 </>
               )}
             </div>

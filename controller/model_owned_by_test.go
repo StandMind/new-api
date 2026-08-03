@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -57,17 +58,29 @@ func TestBuildOpenAIModelFallsBackToCustomForUnknownModels(t *testing.T) {
 	require.Equal(t, "custom", modelItem.OwnedBy)
 }
 
-func TestGetModelListGroupsUsesUserGroupWhenTokenGroupIsEmpty(t *testing.T) {
+func TestGetModelListGroupsUsesAllGrantedRouteGroupsWhenTokenGroupIsEmpty(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.UserLevel{}, &model.RouteGroup{}, &model.UserLevelRouteGroup{}))
+	require.NoError(t, db.Create(&model.UserLevel{Code: "standard", Name: "Standard", IsDefault: true, Enabled: true, TopupRatio: 1}).Error)
+	require.NoError(t, db.Create(&[]model.RouteGroup{
+		{Code: "route-a", Name: "Route A", BaseRatio: 1, Enabled: true},
+		{Code: "route-b", Name: "Route B", BaseRatio: 1, Enabled: true},
+	}).Error)
+	require.NoError(t, db.Create(&[]model.UserLevelRouteGroup{
+		{UserLevelCode: "standard", RouteGroupCode: "route-a"},
+		{UserLevelCode: "standard", RouteGroupCode: "route-b"},
+	}).Error)
+	require.NoError(t, model.RebuildAccessPolicySnapshot())
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "standard")
 
 	groups, err := getModelListGroups(ctx)
 	require.NoError(t, err)
 
-	require.Equal(t, "default", groups.userGroup)
+	require.Equal(t, "standard", groups.userGroup)
 	require.Empty(t, groups.tokenGroup)
-	require.Equal(t, []string{"default"}, groups.ownerGroups)
+	require.Equal(t, []string{"route-a", "route-b"}, groups.ownerGroups)
 }
 
 func TestGetModelListGroupsUsesExplicitTokenGroup(t *testing.T) {

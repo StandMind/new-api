@@ -81,6 +81,7 @@ func SetApiRouter(router *gin.Engine) {
 			selfRoute.Use(middleware.UserAuth())
 			{
 				selfRoute.GET("/self/groups", controller.GetUserGroups)
+				selfRoute.GET("/route-groups", controller.GetMyRouteGroups)
 				selfRoute.GET("/self", controller.GetSelf)
 				selfRoute.GET("/models", controller.GetUserModels)
 				selfRoute.PUT("/self", middleware.CriticalRateLimit(), controller.UpdateSelf)
@@ -241,6 +242,23 @@ func SetApiRouter(router *gin.Engine) {
 			openLuxPriceSyncRoute.PUT("/bindings", controller.PutOpenLuxPriceSyncBindings)
 			openLuxPriceSyncRoute.POST("/preview", controller.PreviewOpenLuxPriceSync)
 			openLuxPriceSyncRoute.POST("/apply", controller.ApplyOpenLuxPriceSync)
+		}
+		userLevelRoute := apiRouter.Group("/user-levels")
+		userLevelRoute.Use(middleware.RootAuth())
+		{
+			userLevelRoute.GET("", controller.ListUserLevels)
+			userLevelRoute.POST("", controller.CreateUserLevel)
+			userLevelRoute.PUT("/:code", controller.UpdateUserLevel)
+			userLevelRoute.DELETE("/:code", controller.DeleteUserLevel)
+			userLevelRoute.PUT("/:code/route-groups", controller.ReplaceUserLevelRouteGroups)
+		}
+		routeGroupPolicyRoute := apiRouter.Group("/route-groups")
+		routeGroupPolicyRoute.Use(middleware.RootAuth())
+		{
+			routeGroupPolicyRoute.GET("", controller.ListRouteGroups)
+			routeGroupPolicyRoute.POST("", controller.CreateRouteGroup)
+			routeGroupPolicyRoute.PUT("/:code", controller.UpdateRouteGroup)
+			routeGroupPolicyRoute.DELETE("/:code", controller.DeleteRouteGroup)
 		}
 		registerChannelRoutes(apiRouter)
 		registerAuthzRoutes(apiRouter)

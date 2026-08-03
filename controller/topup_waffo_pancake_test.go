@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/stretchr/testify/require"
@@ -28,6 +29,14 @@ func TestFormatWaffoPancakeAmount_UsesDisplayPriceString(t *testing.T) {
 }
 
 func TestGetWaffoPancakePayMoney(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.UserLevel{}, &model.RouteGroup{}, &model.UserLevelRouteGroup{}))
+	require.NoError(t, db.Create(&[]model.UserLevel{
+		{Code: "standard", Name: "Standard", IsDefault: true, Enabled: true, TopupRatio: 1},
+		{Code: "vip", Name: "VIP", Enabled: true, TopupRatio: 1.2},
+	}).Error)
+	require.NoError(t, model.RebuildAccessPolicySnapshot())
+
 	originalUnitPrice := setting.WaffoPancakeUnitPrice
 	originalQuotaDisplayType := operation_setting.GetGeneralSetting().QuotaDisplayType
 	originalDiscounts := make(map[int]float64, len(operation_setting.GetPaymentSetting().AmountDiscount))

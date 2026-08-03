@@ -46,10 +46,8 @@ type OpenLuxSyncSnapshot struct {
 }
 
 type OpenLuxGroupReferences struct {
-	Users                      []int
+	UserLevelGrants            []string
 	Tokens                     []int
-	SubscriptionPlans          []int
-	Subscriptions              []int
 	GroupRoutes                []string
 	BoundChannelRoutes         []string
 	NonBoundChannels           []int
@@ -58,10 +56,8 @@ type OpenLuxGroupReferences struct {
 }
 
 func (references OpenLuxGroupReferences) HasBusinessReferences() bool {
-	return len(references.Users) > 0 ||
+	return len(references.UserLevelGrants) > 0 ||
 		len(references.Tokens) > 0 ||
-		len(references.SubscriptionPlans) > 0 ||
-		len(references.Subscriptions) > 0 ||
 		len(references.GroupRoutes) > 0 ||
 		len(references.BoundChannelRoutes) > 0 ||
 		references.UnexpectedAbilityRows > 0
@@ -79,6 +75,7 @@ type OpenLuxSyncMutation struct {
 	AbilityRemovals           []OpenLuxAbilityRemoval
 	DeleteChannelIDs          []int
 	DeleteBindingSourceGroups []string
+	DeleteRouteGroupCodes     []string
 }
 
 type openLuxAbilityTuple struct {
@@ -196,7 +193,7 @@ func InspectOpenLuxGroupReferences(db *gorm.DB, group string, boundChannelIDs []
 	if forUpdate {
 		query = lockForUpdate(query)
 	}
-	if err := query.Model(&User{}).Where(commonGroupCol+" = ?", group).Pluck("id", &references.Users).Error; err != nil {
+	if err := query.Model(&UserLevelRouteGroup{}).Where("route_group_code = ?", group).Pluck("user_level_code", &references.UserLevelGrants).Error; err != nil {
 		return references, err
 	}
 
@@ -212,26 +209,6 @@ func InspectOpenLuxGroupReferences(db *gorm.DB, group string, boundChannelIDs []
 		if token.Group == group || stringSliceContains(token.GroupChain, group) {
 			references.Tokens = append(references.Tokens, token.Id)
 		}
-	}
-
-	query = db
-	if forUpdate {
-		query = lockForUpdate(query)
-	}
-	if err := query.Model(&SubscriptionPlan{}).
-		Where("upgrade_group = ? OR downgrade_group = ?", group, group).
-		Pluck("id", &references.SubscriptionPlans).Error; err != nil {
-		return references, err
-	}
-
-	query = db
-	if forUpdate {
-		query = lockForUpdate(query)
-	}
-	if err := query.Model(&UserSubscription{}).
-		Where("upgrade_group = ? OR downgrade_group = ? OR prev_user_group = ?", group, group, group).
-		Pluck("id", &references.Subscriptions).Error; err != nil {
-		return references, err
 	}
 
 	bound := make(map[int]struct{}, len(boundChannelIDs))
@@ -312,10 +289,8 @@ func InspectOpenLuxGroupReferences(db *gorm.DB, group string, boundChannelIDs []
 		}
 	}
 
-	sort.Ints(references.Users)
+	sort.Strings(references.UserLevelGrants)
 	sort.Ints(references.Tokens)
-	sort.Ints(references.SubscriptionPlans)
-	sort.Ints(references.Subscriptions)
 	sort.Ints(references.NonBoundChannels)
 	sort.Strings(references.GroupRoutes)
 	sort.Strings(references.BoundChannelRoutes)
@@ -323,6 +298,11 @@ func InspectOpenLuxGroupReferences(db *gorm.DB, group string, boundChannelIDs []
 }
 
 func ApplyOpenLuxSyncMutation(tx *gorm.DB, mutation OpenLuxSyncMutation) (int64, error) {
+	if len(mutation.DeleteRouteGroupCodes) > 0 {
+		if err := LockAccessPolicyState(tx); err != nil {
+			return 0, err
+		}
+	}
 	for key, value := range mutation.Options {
 		option := Option{Key: key}
 		if err := tx.FirstOrCreate(&option, Option{Key: key}).Error; err != nil {
@@ -362,6 +342,18 @@ func ApplyOpenLuxSyncMutation(tx *gorm.DB, mutation OpenLuxSyncMutation) (int64,
 		}
 		if result.RowsAffected != int64(len(mutation.DeleteChannelIDs)) {
 			return 0, fmt.Errorf("OpenLux sync expected %d channels to exist, deleted %d", len(mutation.DeleteChannelIDs), result.RowsAffected)
+		}
+	}
+	if len(mutation.DeleteRouteGroupCodes) > 0 {
+		result := tx.Where("code IN ?", mutation.DeleteRouteGroupCodes).Delete(&RouteGroup{})
+		if result.Error != nil {
+			return 0, result.Error
+		}
+		if result.RowsAffected != int64(len(mutation.DeleteRouteGroupCodes)) {
+			return 0, fmt.Errorf("OpenLux sync expected %d route groups to exist, deleted %d", len(mutation.DeleteRouteGroupCodes), result.RowsAffected)
+		}
+		if err := SyncLegacyAccessPolicyOptions(tx); err != nil {
+			return 0, err
 		}
 	}
 

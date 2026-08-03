@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { parseCurrencyDisplayType } from '@/lib/currency'
 
+import { RouteGroupsSection } from '../access-policy/route-groups-section'
+import { UserLevelsSection } from '../access-policy/user-levels-section'
 import { CheckinSettingsSection } from '../general/checkin-settings-section'
 import { PricingSection } from '../general/pricing-section'
 import { QuotaSettingsSection } from '../general/quota-settings-section'
@@ -122,17 +124,15 @@ const BILLING_SECTIONS = [
     ),
   },
   {
-    id: 'group-pricing',
-    titleKey: 'Group Pricing',
+    id: 'user-levels',
+    titleKey: 'User Levels',
+    build: () => <UserLevelsSection />,
+  },
+  {
+    id: 'route-groups',
+    titleKey: 'Route Groups',
     build: (settings: BillingSettings) => (
-      <RatioSettingsCard
-        titleKey='Group Pricing'
-        modelDefaults={getModelDefaults(settings)}
-        groupDefaults={getGroupDefaults(settings)}
-        toolPricesDefault={settings['tool_price_setting.prices']}
-        officialPricesDefault={settings['official_price_setting.model_prices']}
-        visibleTabs={['groups', 'routes']}
-      />
+      <RouteGroupsSection groupRatio={settings.GroupRatio} />
     ),
   },
   {

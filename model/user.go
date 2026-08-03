@@ -23,7 +23,7 @@ var userSortColumns = map[string]string{
 	"id":            "id",
 	"username":      "username",
 	"quota":         "quota",
-	"group":         "group",
+	"user_level":    "user_level",
 	"created_at":    "created_at",
 	"last_login_at": "last_login_at",
 }
@@ -95,7 +95,9 @@ type User struct {
 	Quota            int                        `json:"quota" gorm:"type:int;default:0"`
 	UsedQuota        int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
 	RequestCount     int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
-	Group            string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
+	Group            string                     `json:"-" gorm:"type:varchar(64);default:'default'"`
+	UserLevel        string                     `json:"user_level" gorm:"type:varchar(64);default:'';index"`
+	UserLevelName    string                     `json:"user_level_name" gorm:"-"`
 	AffCode          string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
 	AffCount         int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
 	AffQuota         int                        `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
@@ -112,16 +114,37 @@ type User struct {
 }
 
 func (user *User) ToBaseUser() *UserBase {
+	userLevel := strings.TrimSpace(user.UserLevel)
+	if userLevel == "" {
+		userLevel = UserLevelForLegacyGroup(user.Group)
+	}
 	cache := &UserBase{
-		Id:       user.Id,
-		Group:    user.Group,
-		Quota:    user.Quota,
-		Status:   user.Status,
-		Username: user.Username,
-		Setting:  user.Setting,
-		Email:    user.Email,
+		Id:            user.Id,
+		UserLevel:     userLevel,
+		UserLevelName: GetUserLevelDisplayName(userLevel),
+		Quota:         user.Quota,
+		Status:        user.Status,
+		Username:      user.Username,
+		Setting:       user.Setting,
+		Email:         user.Email,
 	}
 	return cache
+}
+
+func PopulateUserLevelDisplay(user *User) {
+	if user == nil {
+		return
+	}
+	if strings.TrimSpace(user.UserLevel) == "" {
+		user.UserLevel = UserLevelForLegacyGroup(user.Group)
+	}
+	user.UserLevelName = GetUserLevelDisplayName(user.UserLevel)
+}
+
+func PopulateUserLevelDisplays(users []*User) {
+	for _, user := range users {
+		PopulateUserLevelDisplay(user)
+	}
 }
 
 func (user *User) GetAccessToken() string {
@@ -373,11 +396,12 @@ func GetAllUsers(pageInfo *common.PageInfo, sortOptions ...UserSortOptions) (use
 	if err = tx.Commit().Error; err != nil {
 		return nil, 0, err
 	}
+	PopulateUserLevelDisplays(users)
 
 	return users, total, nil
 }
 
-func SearchUsers(keyword string, group string, role *int, status *int, startIdx int, num int, sortOptions ...UserSortOptions) ([]*User, int64, error) {
+func SearchUsers(keyword string, userLevel string, role *int, status *int, startIdx int, num int, sortOptions ...UserSortOptions) ([]*User, int64, error) {
 	var users []*User
 	var total int64
 	var err error
@@ -409,8 +433,8 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 	}
 
 	query = query.Where("("+likeCondition+")", likeArgs...)
-	if group != "" {
-		query = query.Where(commonGroupCol+" = ?", group)
+	if userLevel != "" {
+		query = query.Where("user_level = ?", userLevel)
 	}
 	if role != nil {
 		query = query.Where("role = ?", *role)
@@ -442,6 +466,7 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 	if err = tx.Commit().Error; err != nil {
 		return nil, 0, err
 	}
+	PopulateUserLevelDisplays(users)
 
 	return users, total, nil
 }
@@ -456,6 +481,9 @@ func GetUserById(id int, selectAll bool) (*User, error) {
 		err = DB.First(&user, "id = ?", id).Error
 	} else {
 		err = DB.Omit("password", "access_token").First(&user, "id = ?", id).Error
+	}
+	if err == nil {
+		PopulateUserLevelDisplay(&user)
 	}
 	return &user, err
 }
@@ -534,6 +562,14 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 }
 
 func (user *User) prepareForInsert(tx *gorm.DB) error {
+	if strings.TrimSpace(user.UserLevel) == "" {
+		defaultLevel, err := GetDefaultUserLevelCode(tx)
+		if err != nil {
+			return err
+		}
+		user.UserLevel = defaultLevel
+	}
+	user.Group = LegacyGroupForUserLevel(user.UserLevel)
 	user.Email = NormalizeEmail(user.Email)
 	if err := ensureEmailAvailableWithTx(tx, user.Email, 0); err != nil {
 		return err
@@ -744,7 +780,8 @@ func (user *User) EditWithTx(tx *gorm.DB, updatePassword bool) error {
 	updates := map[string]interface{}{
 		"username":     newUser.Username,
 		"display_name": newUser.DisplayName,
-		"group":        newUser.Group,
+		"user_level":   newUser.UserLevel,
+		"group":        LegacyGroupForUserLevel(newUser.UserLevel),
 		"remark":       newUser.Remark,
 	}
 	if updatePassword {
@@ -871,6 +908,7 @@ func (user *User) ValidateAndFill() (err error) {
 	if !okay || user.Status != common.UserStatusEnabled {
 		return ErrInvalidCredentials
 	}
+	PopulateUserLevelDisplay(user)
 	return nil
 }
 
@@ -1094,6 +1132,30 @@ func GetUserGroup(id int, fromDB bool) (group string, err error) {
 	}
 
 	return group, nil
+}
+
+// GetUserLevel gets the independent account level. During the expand phase it
+// falls back to the legacy users.group column only for rows not yet backfilled.
+func GetUserLevel(id int, fromDB bool) (level string, err error) {
+	if !fromDB && common.RedisEnabled {
+		cache, cacheErr := GetUserCache(id)
+		if cacheErr == nil && cache.UserLevel != "" {
+			return cache.UserLevel, nil
+		}
+	}
+	var row struct {
+		UserLevel string
+		Group     string
+	}
+	err = DB.Model(&User{}).Where("id = ?", id).Select("user_level", commonGroupCol).Scan(&row).Error
+	if err != nil {
+		return "", err
+	}
+	level = strings.TrimSpace(row.UserLevel)
+	if level == "" {
+		level = UserLevelForLegacyGroup(row.Group)
+	}
+	return level, nil
 }
 
 // GetUserSetting gets setting from Redis first, falls back to DB if needed

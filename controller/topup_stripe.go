@@ -48,7 +48,7 @@ func (*StripeAdaptor) RequestAmount(c *gin.Context, req *StripePayRequest) {
 		return
 	}
 	id := c.GetInt("id")
-	group, err := model.GetUserGroup(id, true)
+	group, err := model.GetUserLevel(id, true)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
 		return
@@ -386,7 +386,11 @@ func genStripeLink(referenceId string, customerId string, email string, amount i
 }
 
 func GetChargedAmount(count float64, user model.User) float64 {
-	topUpGroupRatio := common.GetTopupGroupRatio(user.Group)
+	userLevel := user.UserLevel
+	if userLevel == "" {
+		userLevel = model.UserLevelForLegacyGroup(user.Group)
+	}
+	topUpGroupRatio := model.GetUserLevelTopupRatio(userLevel)
 	if topUpGroupRatio == 0 {
 		topUpGroupRatio = 1
 	}
@@ -400,7 +404,7 @@ func getStripePayMoney(amount float64, group string) float64 {
 		amount = amount / common.QuotaPerUnit
 	}
 	// Using float64 for monetary calculations is acceptable here due to the small amounts involved
-	topupGroupRatio := common.GetTopupGroupRatio(group)
+	topupGroupRatio := model.GetUserLevelTopupRatio(group)
 	if topupGroupRatio == 0 {
 		topupGroupRatio = 1
 	}

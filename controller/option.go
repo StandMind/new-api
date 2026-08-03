@@ -179,6 +179,11 @@ func UpdateOption(c *gin.Context) {
 			common.ApiErrorMsg(c, "合规确认字段不允许通过通用设置接口修改")
 			return
 		}
+		switch option.Key {
+		case "GroupRatio", "GroupGroupRatio", "UserUsableGroups", "TopupGroupRatio", "ModelRequestRateLimitGroup", "group_ratio_setting.group_special_usable_group":
+			common.ApiErrorMsg(c, "该配置已迁移到用户等级与路由分组管理接口")
+			return
+		}
 	}
 	switch option.Key {
 	case "GitHubOAuthEnabled":

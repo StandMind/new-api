@@ -190,14 +190,23 @@ func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 		Group:    "default",
 		Status:   common.UserStatusEnabled,
 	}).Error)
+	require.NoError(t, db.Create(&model.Channel{
+		Id:     1,
+		Name:   "playground-default-channel",
+		Type:   constant.ChannelTypeOpenAI,
+		Status: common.ChannelStatusEnabled,
+		Group:  "default",
+		Models: "zz-default-only-model",
+	}).Error)
 	require.NoError(t, db.Create(&[]model.Ability{
 		{Group: "default", Model: "zz-default-only-model", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-disabled-model", ChannelId: 1, Enabled: false},
 	}).Error)
+	require.NoError(t, model.InitGroupModelRouteIndex())
 
 	defaultRecorder := httptest.NewRecorder()
 	defaultContext, _ := gin.CreateTestContext(defaultRecorder)
-	defaultContext.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?group=default", nil)
+	defaultContext.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?route_group=default", nil)
 	defaultContext.Set("id", 1002)
 
 	GetUserModels(defaultContext)
@@ -207,12 +216,88 @@ func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 
 	vipRecorder := httptest.NewRecorder()
 	vipContext, _ := gin.CreateTestContext(vipRecorder)
-	vipContext.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?group=vip", nil)
+	vipContext.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?route_group=vip", nil)
 	vipContext.Set("id", 1002)
 
 	GetUserModels(vipContext)
 
 	require.Empty(t, decodeUserModelsResponse(t, vipRecorder))
+}
+
+func TestGetUserModelsUsesEnabledChannelsAndChatEndpoint(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{
+		Id:       1004,
+		Username: "playground-chat-model-user",
+		Password: "password",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+	}).Error)
+
+	responseOnlyChannel := model.Channel{
+		Id:     4203,
+		Name:   "playground-response-only",
+		Type:   constant.ChannelTypeAdvancedCustom,
+		Status: common.ChannelStatusEnabled,
+		Group:  "default",
+		Models: "zz-response-only-model",
+	}
+	responseOnlyChannel.SetOtherSettings(dto.ChannelOtherSettings{
+		AdvancedCustom: &dto.AdvancedCustomConfig{Routes: []dto.AdvancedCustomRoute{
+			{IncomingPath: "/v1/responses", UpstreamPath: "/v1/responses"},
+		}},
+	})
+	chatChannel := model.Channel{
+		Id:     4204,
+		Name:   "playground-chat-channel",
+		Type:   constant.ChannelTypeAdvancedCustom,
+		Status: common.ChannelStatusEnabled,
+		Group:  "default",
+		Models: "zz-chat-model",
+	}
+	chatChannel.SetOtherSettings(dto.ChannelOtherSettings{
+		AdvancedCustom: &dto.AdvancedCustomConfig{Routes: []dto.AdvancedCustomRoute{
+			{IncomingPath: "/v1/chat/completions", UpstreamPath: "/v1/chat/completions"},
+		}},
+	})
+	require.NoError(t, db.Create(&[]model.Channel{
+		{Id: 4201, Name: "playground-native", Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled, Group: "default", Models: "zz-native-chat-model"},
+		{Id: 4202, Name: "playground-disabled", Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusManuallyDisabled, Group: "default", Models: "zz-disabled-channel-model"},
+		responseOnlyChannel,
+		chatChannel,
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: "zz-native-chat-model", ChannelId: 4201, Enabled: true},
+		{Group: "default", Model: "zz-disabled-channel-model", ChannelId: 4202, Enabled: true},
+		{Group: "default", Model: "zz-response-only-model", ChannelId: 4203, Enabled: true},
+		{Group: "default", Model: "zz-chat-model", ChannelId: 4204, Enabled: true},
+	}).Error)
+	require.NoError(t, model.InitGroupModelRouteIndex())
+
+	requestModels := func(target string) (*httptest.ResponseRecorder, []string) {
+		recorder := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(recorder)
+		ctx.Request = httptest.NewRequest(http.MethodGet, target, nil)
+		ctx.Set("id", 1004)
+		GetUserModels(ctx)
+		if recorder.Code != http.StatusOK {
+			return recorder, nil
+		}
+		return recorder, decodeUserModelsResponse(t, recorder)
+	}
+
+	_, allModels := requestModels("/api/user/models?group=default")
+	assert.ElementsMatch(t, []string{
+		"zz-chat-model",
+		"zz-native-chat-model",
+		"zz-response-only-model",
+	}, allModels)
+
+	_, chatModels := requestModels("/api/user/models?group=default&endpoint=chat")
+	assert.ElementsMatch(t, []string{"zz-chat-model", "zz-native-chat-model"}, chatModels)
+
+	invalidRecorder, _ := requestModels("/api/user/models?group=default&endpoint=/v1/responses")
+	assert.Equal(t, http.StatusBadRequest, invalidRecorder.Code)
 }
 
 func TestListModelsReturnsUnionForExplicitGroupChain(t *testing.T) {

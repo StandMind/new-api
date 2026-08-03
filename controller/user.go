@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -37,13 +38,38 @@ var (
 	errOriginalPasswordFail = errors.New("original password is incorrect")
 )
 
+var errLegacyUserGroupField = errors.New("group 字段已废弃，请使用 user_level")
+
+func decodeUserPayload(c *gin.Context, user *model.User) error {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := common.Unmarshal(body, &fields); err != nil {
+		return err
+	}
+	if _, exists := fields["group"]; exists {
+		return errLegacyUserGroupField
+	}
+	return common.Unmarshal(body, user)
+}
+
+func handleUserPayloadError(c *gin.Context, err error) bool {
+	if !errors.Is(err, errLegacyUserGroupField) {
+		return false
+	}
+	c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+	return true
+}
+
 func Login(c *gin.Context) {
 	if !common.PasswordLoginEnabled {
 		common.ApiErrorI18n(c, i18n.MsgUserPasswordLoginDisabled)
 		return
 	}
 	var loginRequest LoginRequest
-	err := json.NewDecoder(c.Request.Body).Decode(&loginRequest)
+	err := common.DecodeJson(c.Request.Body, &loginRequest)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
@@ -143,12 +169,18 @@ func recordLoginAudit(user *model.User, c *gin.Context) {
 // setup session & cookies and then return user info
 func setupLogin(user *model.User, c *gin.Context) {
 	model.UpdateUserLastLoginAt(user.Id)
+	model.PopulateUserLevelDisplay(user)
 	session := sessions.Default(c)
 	session.Set("id", user.Id)
 	session.Set("username", user.Username)
 	session.Set("role", user.Role)
 	session.Set("status", user.Status)
-	session.Set("group", user.Group)
+	userLevel := user.UserLevel
+	if userLevel == "" {
+		userLevel = model.UserLevelForLegacyGroup(user.Group)
+	}
+	session.Set("user_level", userLevel)
+	session.Set("group", model.LegacyGroupForUserLevel(userLevel))
 	err := session.Save()
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)
@@ -159,12 +191,13 @@ func setupLogin(user *model.User, c *gin.Context) {
 		"message": "",
 		"success": true,
 		"data": map[string]any{
-			"id":           user.Id,
-			"username":     user.Username,
-			"display_name": user.DisplayName,
-			"role":         user.Role,
-			"status":       user.Status,
-			"group":        user.Group,
+			"id":              user.Id,
+			"username":        user.Username,
+			"display_name":    user.DisplayName,
+			"role":            user.Role,
+			"status":          user.Status,
+			"user_level":      userLevel,
+			"user_level_name": user.UserLevelName,
 		},
 	})
 }
@@ -196,8 +229,11 @@ func Register(c *gin.Context) {
 		return
 	}
 	var user model.User
-	err := json.NewDecoder(c.Request.Body).Decode(&user)
+	err := decodeUserPayload(c, &user)
 	if err != nil {
+		if handleUserPayloadError(c, err) {
+			return
+		}
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
@@ -279,7 +315,11 @@ func Register(c *gin.Context) {
 			return
 		}
 		// 生成默认令牌
-		compatibilityGroups := defaultCompatibilityGroupChain(insertedUser.Group)
+		compatibilityGroups := defaultCompatibilityGroupChain(insertedUser.UserLevel)
+		compatibilityGroup := ""
+		if len(compatibilityGroups) > 0 {
+			compatibilityGroup = compatibilityGroups[0]
+		}
 		token := model.Token{
 			UserId:             insertedUser.Id, // 使用插入后的用户ID
 			Name:               cleanUser.Username + "的初始令牌",
@@ -290,7 +330,7 @@ func Register(c *gin.Context) {
 			RemainQuota:        500000, // 示例额度
 			UnlimitedQuota:     true,
 			ModelLimitsEnabled: false,
-			Group:              insertedUser.Group,
+			Group:              compatibilityGroup,
 			GroupChain:         compatibilityGroups,
 			RoutingPriority:    string(smart_routing_setting.GetDefaultPriority()),
 		}
@@ -325,7 +365,7 @@ func GetAllUsers(c *gin.Context) {
 
 func SearchUsers(c *gin.Context) {
 	keyword := c.Query("keyword")
-	group := c.Query("group")
+	group := c.Query("user_level")
 	var role *int
 	if roleStr := c.Query("role"); roleStr != "" {
 		if parsed, err := strconv.Atoi(roleStr); err == nil {
@@ -479,6 +519,7 @@ func GetSelf(c *gin.Context) {
 	}
 	// Hide admin remarks: set to empty to trigger omitempty tag, ensuring the remark field is not included in JSON returned to regular users
 	user.Remark = ""
+	model.PopulateUserLevelDisplay(user)
 
 	// 计算用户权限信息
 	permissions := calculateUserPermissions(userRole)
@@ -500,7 +541,8 @@ func GetSelf(c *gin.Context) {
 		"oidc_id":           user.OidcId,
 		"wechat_id":         user.WeChatId,
 		"telegram_id":       user.TelegramId,
-		"group":             user.Group,
+		"user_level":        user.UserLevel,
+		"user_level_name":   user.UserLevelName,
 		"quota":             user.Quota,
 		"used_quota":        user.UsedQuota,
 		"request_count":     user.RequestCount,
@@ -605,7 +647,7 @@ func generateDefaultSidebarConfig(userRole int) string {
 	// 普通用户不包含admin区域
 
 	// 转换为JSON字符串
-	configBytes, err := json.Marshal(defaultConfig)
+	configBytes, err := common.Marshal(defaultConfig)
 	if err != nil {
 		common.SysLog("生成默认边栏配置失败: " + err.Error())
 		return ""
@@ -615,6 +657,20 @@ func generateDefaultSidebarConfig(userRole int) string {
 }
 
 func GetUserModels(c *gin.Context) {
+	requestPath := ""
+	switch c.Query("endpoint") {
+	case "":
+	case "chat":
+		requestPath = "/v1/chat/completions"
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "unsupported model endpoint",
+			"data":    []string{},
+		})
+		return
+	}
+
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		id = c.GetInt("id")
@@ -624,8 +680,8 @@ func GetUserModels(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	groups := service.GetUserUsableGroups(user.Group)
-	group := c.Query("group")
+	groups := service.GetUserUsableGroups(user.UserLevel)
+	group := c.Query("route_group")
 	if group != "" {
 		if _, ok := groups[group]; !ok {
 			c.JSON(http.StatusOK, gin.H{
@@ -639,30 +695,29 @@ func GetUserModels(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"message": "",
-			"data":    model.GetGroupEnabledModels(group),
+			"data":    model.GetEnabledModelsForGroupsForRequest([]string{group}, requestPath),
 		})
 		return
 	}
 
-	var models []string
+	selectedGroups := make([]string, 0, len(groups))
 	for group := range groups {
-		for _, g := range model.GetGroupEnabledModels(group) {
-			if !common.StringsContains(models, g) {
-				models = append(models, g)
-			}
-		}
+		selectedGroups = append(selectedGroups, group)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    models,
+		"data":    model.GetEnabledModelsForGroupsForRequest(selectedGroups, requestPath),
 	})
 	return
 }
 
 func UpdateUser(c *gin.Context) {
 	var updatedUser model.User
-	err := json.NewDecoder(c.Request.Body).Decode(&updatedUser)
+	err := decodeUserPayload(c, &updatedUser)
+	if handleUserPayloadError(c, err) {
+		return
+	}
 	if err != nil || updatedUser.Id == 0 {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
@@ -689,6 +744,13 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 	updatedUser.Role = originUser.Role
+	if updatedUser.UserLevel == "" {
+		updatedUser.UserLevel = originUser.UserLevel
+	}
+	if level, ok := model.GetUserLevelFromSnapshot(updatedUser.UserLevel); !ok || !level.Enabled {
+		common.ApiErrorMsg(c, "用户等级不存在或未启用")
+		return
+	}
 	myRole := c.GetInt("role")
 	if !canManageTargetRole(myRole, originUser.Role) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
@@ -775,6 +837,10 @@ func UpdateSelf(c *gin.Context) {
 	var requestData map[string]interface{}
 	if err := common.DecodeJson(c.Request.Body, &requestData); err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if _, exists := requestData["group"]; exists {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": errLegacyUserGroupField.Error()})
 		return
 	}
 
@@ -963,7 +1029,10 @@ func DeleteSelf(c *gin.Context) {
 
 func CreateUser(c *gin.Context) {
 	var user model.User
-	err := json.NewDecoder(c.Request.Body).Decode(&user)
+	err := decodeUserPayload(c, &user)
+	if handleUserPayloadError(c, err) {
+		return
+	}
 	user.Username = strings.TrimSpace(user.Username)
 	if err != nil || user.Username == "" || user.Password == "" {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
@@ -987,6 +1056,13 @@ func CreateUser(c *gin.Context) {
 		Password:    user.Password,
 		DisplayName: user.DisplayName,
 		Role:        user.Role, // 保持管理员设置的角色
+		UserLevel:   user.UserLevel,
+	}
+	if cleanUser.UserLevel != "" {
+		if level, ok := model.GetUserLevelFromSnapshot(cleanUser.UserLevel); !ok || !level.Enabled {
+			common.ApiErrorMsg(c, "用户等级不存在或未启用")
+			return
+		}
 	}
 	authzTouched := false
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {
@@ -1045,7 +1121,7 @@ type ManageRequest struct {
 // ManageUser Only admin user can do this
 func ManageUser(c *gin.Context) {
 	var req ManageRequest
-	err := json.NewDecoder(c.Request.Body).Decode(&req)
+	err := common.DecodeJson(c.Request.Body, &req)
 
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)

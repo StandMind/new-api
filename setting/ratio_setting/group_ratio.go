@@ -150,9 +150,19 @@ func UpdateGroupModelRatioByJSONString(jsonStr string) error {
 // user-group and ordinary group ratios. Wildcards are trailing-* prefixes and
 // the longest matching prefix wins.
 func ResolveGroupRatio(userGroup, usingGroup, originalModel string) (float64, string) {
+	if ratio, source, ok := ResolveGroupModelRatio(usingGroup, originalModel); ok {
+		return ratio, source
+	}
+	if ratio, ok := GetGroupGroupRatio(userGroup, usingGroup); ok {
+		return ratio, "group_group_ratio"
+	}
+	return GetGroupRatio(usingGroup), "group_ratio"
+}
+
+func ResolveGroupModelRatio(usingGroup, originalModel string) (float64, string, bool) {
 	if modelRatios, ok := groupModelRatioMap.Get(usingGroup); ok {
 		if ratio, found := modelRatios[originalModel]; found {
-			return ratio, "group_model_ratio.exact"
+			return ratio, "group_model_ratio.exact", true
 		}
 		longestPrefix := ""
 		wildcardRatio := 0.0
@@ -170,13 +180,10 @@ func ResolveGroupRatio(userGroup, usingGroup, originalModel string) (float64, st
 			}
 		}
 		if wildcardFound {
-			return wildcardRatio, "group_model_ratio.prefix"
+			return wildcardRatio, "group_model_ratio.prefix", true
 		}
 	}
-	if ratio, ok := GetGroupGroupRatio(userGroup, usingGroup); ok {
-		return ratio, "group_group_ratio"
-	}
-	return GetGroupRatio(usingGroup), "group_ratio"
+	return 0, "", false
 }
 
 func CheckGroupModelRatio(jsonStr string) error {

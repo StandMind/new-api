@@ -34,9 +34,16 @@ func openLuxTestDB(t *testing.T, extraModels ...any) *gorm.DB {
 		&model.Option{},
 		&model.OpenLuxPriceSyncBinding{},
 		&model.OpenLuxPriceSyncState{},
+		&model.UserLevel{},
+		&model.RouteGroup{},
+		&model.UserLevelRouteGroup{},
+		&model.AccessPolicyState{},
 	}
 	models = append(models, extraModels...)
 	require.NoError(t, db.AutoMigrate(models...))
+	require.NoError(t, db.Create(&model.AccessPolicyState{
+		ID: 1, InitialRouteGroupCodes: "[]", InitialRouteGroupFingerprint: strings.Repeat("0", 64),
+	}).Error)
 	return db
 }
 
@@ -87,6 +94,7 @@ func TestSourceGroupRemovalDeletesWholeGroupOnlyWithoutBusinessReferences(t *tes
 		modelName   = "openlux-sync-delete-group-model"
 	)
 	db := openLuxTestDB(t)
+	require.NoError(t, db.Create(&model.RouteGroup{Code: localGroup, Name: localGroup, BaseRatio: 1, Enabled: true}).Error)
 	bound := createReferenceChannel(t, db, "OpenLux/deleted-source", localGroup, modelName, "https://api.openlux.ai")
 	require.NoError(t, db.Create(&model.Ability{
 		ChannelId: bound.Id, Group: localGroup, Model: modelName, Enabled: true,
@@ -102,7 +110,10 @@ func TestSourceGroupRemovalDeletesWholeGroupOnlyWithoutBusinessReferences(t *tes
 	require.NoError(t, err)
 	assert.True(t, change.Actionable)
 	assert.Equal(t, "delete_local_group", change.RemoveMode)
-	assert.Len(t, change.mutations, 7)
+	assert.Len(t, change.mutations, 1)
+
+	require.NoError(t, db.Create(&model.UserLevel{Code: "referencing-level", Name: "Referencing", Enabled: true, TopupRatio: 1}).Error)
+	require.NoError(t, db.Create(&model.UserLevelRouteGroup{UserLevelCode: "referencing-level", RouteGroupCode: localGroup}).Error)
 
 	user := model.User{Username: "openlux-ref-user", Password: "password", Group: localGroup}
 	require.NoError(t, db.Create(&user).Error)
@@ -134,10 +145,10 @@ func TestSourceGroupRemovalDeletesWholeGroupOnlyWithoutBusinessReferences(t *tes
 	require.NoError(t, err)
 	assert.False(t, blocked.Actionable)
 	reasons := strings.Join(blocked.BlockedReasons, " ")
-	assert.Contains(t, reasons, "用户仍使用")
+	assert.Contains(t, reasons, "用户等级仍授权")
 	assert.Contains(t, reasons, "Token 或分组链")
-	assert.Contains(t, reasons, "订阅计划")
-	assert.Contains(t, reasons, "订阅记录")
+	assert.NotContains(t, reasons, "订阅计划")
+	assert.NotContains(t, reasons, "订阅记录")
 	assert.Contains(t, reasons, "显式模型路由")
 	assert.Contains(t, reasons, "显式路由引用待删渠道")
 	assert.Contains(t, reasons, localGroup+"/"+modelName)

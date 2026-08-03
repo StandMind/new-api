@@ -43,7 +43,9 @@ export const apiKeySchema = z.object({
   created_time: z.number(),
   accessed_time: z.number(),
   group: z.string().nullish().default(''),
+  group_name: z.string().nullish().optional(),
   group_chain: z.array(z.string()).nullish().default([]),
+  group_chain_names: z.array(z.string()).nullish().optional(),
   routing_priority: z
     .union([routingPrioritySchema, z.literal('')])
     .nullish()

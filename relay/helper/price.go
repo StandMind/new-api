@@ -46,14 +46,14 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.
 		GroupSpecialRatio: -1,
 	}
 
-	groupRatio, source := ratio_setting.ResolveGroupRatio(
+	groupRatio, source := model.ResolveAccessPolicyRatio(
 		relayInfo.UserGroup,
 		relayInfo.UsingGroup,
 		relayInfo.OriginModelName,
 	)
 	groupRatioInfo.GroupRatio = groupRatio
 	groupRatioInfo.Source = source
-	if source == "group_group_ratio" {
+	if source == "user_level_route_group.price_ratio" {
 		groupRatioInfo.GroupSpecialRatio = groupRatio
 		groupRatioInfo.HasSpecialRatio = true
 	}

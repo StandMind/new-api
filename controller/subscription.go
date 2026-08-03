@@ -8,7 +8,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -25,6 +24,14 @@ type BillingPreferenceRequest struct {
 
 type SubscriptionBalancePayRequest struct {
 	PlanId int `json:"plan_id"`
+}
+
+func validateSubscriptionUserLevel(code string) bool {
+	if code == "" {
+		return true
+	}
+	level, ok := model.GetUserLevelFromSnapshot(code)
+	return ok && level.Enabled
 }
 
 // ---- User APIs ----
@@ -185,17 +192,17 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "总额度不能为负数")
 		return
 	}
-	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
-	if req.Plan.UpgradeGroup != "" {
-		if _, ok := ratio_setting.GetGroupRatioCopy()[req.Plan.UpgradeGroup]; !ok {
-			common.ApiErrorMsg(c, "升级分组不存在")
+	req.Plan.UpgradeUserLevel = strings.TrimSpace(req.Plan.UpgradeUserLevel)
+	if req.Plan.UpgradeUserLevel != "" {
+		if !validateSubscriptionUserLevel(req.Plan.UpgradeUserLevel) {
+			common.ApiErrorMsg(c, "升级用户等级不存在或未启用")
 			return
 		}
 	}
-	req.Plan.DowngradeGroup = strings.TrimSpace(req.Plan.DowngradeGroup)
-	if req.Plan.DowngradeGroup != "" {
-		if _, ok := ratio_setting.GetGroupRatioCopy()[req.Plan.DowngradeGroup]; !ok {
-			common.ApiErrorMsg(c, "降级分组不存在")
+	req.Plan.DowngradeUserLevel = strings.TrimSpace(req.Plan.DowngradeUserLevel)
+	if req.Plan.DowngradeUserLevel != "" {
+		if !validateSubscriptionUserLevel(req.Plan.DowngradeUserLevel) {
+			common.ApiErrorMsg(c, "降级用户等级不存在或未启用")
 			return
 		}
 	}
@@ -259,17 +266,17 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "总额度不能为负数")
 		return
 	}
-	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
-	if req.Plan.UpgradeGroup != "" {
-		if _, ok := ratio_setting.GetGroupRatioCopy()[req.Plan.UpgradeGroup]; !ok {
-			common.ApiErrorMsg(c, "升级分组不存在")
+	req.Plan.UpgradeUserLevel = strings.TrimSpace(req.Plan.UpgradeUserLevel)
+	if req.Plan.UpgradeUserLevel != "" {
+		if !validateSubscriptionUserLevel(req.Plan.UpgradeUserLevel) {
+			common.ApiErrorMsg(c, "升级用户等级不存在或未启用")
 			return
 		}
 	}
-	req.Plan.DowngradeGroup = strings.TrimSpace(req.Plan.DowngradeGroup)
-	if req.Plan.DowngradeGroup != "" {
-		if _, ok := ratio_setting.GetGroupRatioCopy()[req.Plan.DowngradeGroup]; !ok {
-			common.ApiErrorMsg(c, "降级分组不存在")
+	req.Plan.DowngradeUserLevel = strings.TrimSpace(req.Plan.DowngradeUserLevel)
+	if req.Plan.DowngradeUserLevel != "" {
+		if !validateSubscriptionUserLevel(req.Plan.DowngradeUserLevel) {
+			common.ApiErrorMsg(c, "降级用户等级不存在或未启用")
 			return
 		}
 	}
@@ -297,8 +304,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"waffo_pancake_product_id":   req.Plan.WaffoPancakeProductId,
 			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
 			"total_amount":               req.Plan.TotalAmount,
-			"upgrade_group":              req.Plan.UpgradeGroup,
-			"downgrade_group":            req.Plan.DowngradeGroup,
+			"upgrade_user_level":         req.Plan.UpgradeUserLevel,
+			"downgrade_user_level":       req.Plan.DowngradeUserLevel,
+			"upgrade_group":              model.LegacyGroupForUserLevel(req.Plan.UpgradeUserLevel),
+			"downgrade_group":            model.LegacyGroupForUserLevel(req.Plan.DowngradeUserLevel),
 			"quota_reset_period":         req.Plan.QuotaResetPeriod,
 			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
 			"updated_at":                 common.GetTimestamp(),

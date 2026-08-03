@@ -98,9 +98,12 @@ export function Pricing() {
 
   const availableGroups = useMemo(
     () =>
-      Object.keys(usableGroup || {}).filter(
-        (g) => !EXCLUDED_GROUPS.includes(g)
-      ),
+      Object.entries(usableGroup || {})
+        .filter(([code]) => !EXCLUDED_GROUPS.includes(code))
+        .map(([code, group]) => ({
+          value: code,
+          label: group.name || code,
+        })),
     [usableGroup]
   )
 

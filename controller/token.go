@@ -14,7 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/smart_routing_setting"
 
 	"github.com/gin-gonic/gin"
@@ -26,6 +25,11 @@ func buildMaskedTokenResponse(token *model.Token) *model.Token {
 	}
 	maskedToken := *token
 	maskedToken.Key = token.GetMaskedKey()
+	maskedToken.GroupName = model.GetRouteGroupDisplayName(maskedToken.Group)
+	maskedToken.GroupChainNames = make([]string, 0, len(maskedToken.GroupChain))
+	for _, group := range maskedToken.GroupChain {
+		maskedToken.GroupChainNames = append(maskedToken.GroupChainNames, model.GetRouteGroupDisplayName(group))
+	}
 	return &maskedToken
 }
 
@@ -75,7 +79,7 @@ func normalizeTokenGroupChain(c *gin.Context, request *tokenRequest) error {
 		if _, allowed := usableGroups[group]; !allowed {
 			return fmt.Errorf("no access to group %s", group)
 		}
-		if !ratio_setting.ContainsGroupRatio(group) {
+		if routeGroup, exists := model.GetRouteGroupFromSnapshot(group); !exists || !routeGroup.Enabled {
 			return fmt.Errorf("group %s is deprecated", group)
 		}
 		seen[group] = struct{}{}
@@ -90,7 +94,7 @@ func defaultCompatibilityGroupChain(userGroup string) model.StringArray {
 	usableGroups := service.GetUserUsableGroups(userGroup)
 	groups := make([]string, 0, len(usableGroups))
 	for group := range usableGroups {
-		if !ratio_setting.ContainsGroupRatio(group) {
+		if routeGroup, exists := model.GetRouteGroupFromSnapshot(group); !exists || !routeGroup.Enabled {
 			continue
 		}
 		if len(model.GetEnabledModelsForGroups([]string{group})) == 0 {
@@ -99,16 +103,13 @@ func defaultCompatibilityGroupChain(userGroup string) model.StringArray {
 		groups = append(groups, group)
 	}
 	sort.SliceStable(groups, func(i, j int) bool {
-		left, _ := ratio_setting.ResolveGroupRatio(userGroup, groups[i], "")
-		right, _ := ratio_setting.ResolveGroupRatio(userGroup, groups[j], "")
+		left, _ := model.ResolveAccessPolicyRatio(userGroup, groups[i], "")
+		right, _ := model.ResolveAccessPolicyRatio(userGroup, groups[j], "")
 		if left != right {
 			return left < right
 		}
 		return groups[i] < groups[j]
 	})
-	if len(groups) == 0 && ratio_setting.ContainsGroupRatio(userGroup) {
-		groups = append(groups, userGroup)
-	}
 	return model.StringArray(groups)
 }
 

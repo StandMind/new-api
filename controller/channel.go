@@ -69,6 +69,10 @@ func clearChannelInfo(channel *model.Channel) {
 		channel.ChannelInfo.MultiKeyDisabledReason = nil
 		channel.ChannelInfo.MultiKeyDisabledTime = nil
 	}
+	channel.RouteGroupNames = make(map[string]string)
+	for _, group := range channel.GetGroups() {
+		channel.RouteGroupNames[group] = model.GetRouteGroupDisplayName(group)
+	}
 }
 
 func applyChannelStatusFilter(query *gorm.DB, statusFilter int) *gorm.DB {
@@ -474,6 +478,21 @@ func validateTwoFactorAuth(twoFA *model.TwoFA, code string) bool {
 func validateChannel(channel *model.Channel, isAdd bool) error {
 	if channel == nil {
 		return fmt.Errorf("channel cannot be empty")
+	}
+	seenGroups := make(map[string]struct{})
+	for _, groupCode := range channel.GetGroups() {
+		if groupCode == "" {
+			return fmt.Errorf("路由分组不能为空")
+		}
+		if _, exists := seenGroups[groupCode]; exists {
+			return fmt.Errorf("路由分组不能重复: %s", groupCode)
+		}
+		seenGroups[groupCode] = struct{}{}
+		if model.AccessPolicySnapshotReady() {
+			if _, exists := model.GetRouteGroupFromSnapshot(groupCode); !exists {
+				return fmt.Errorf("路由分组不存在: %s", groupCode)
+			}
+		}
 	}
 
 	// 校验 channel settings

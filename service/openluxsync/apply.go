@@ -67,7 +67,9 @@ func Apply(ctx context.Context, request ApplyRequest) (*ApplyResponse, error) {
 		return nil, err
 	}
 
-	model.InitOptionMap()
+	if err := model.RefreshAccessPolicyCaches(); err != nil {
+		return nil, err
+	}
 	model.InitChannelCache()
 	return response, nil
 }
@@ -146,6 +148,7 @@ func aggregateChanges(snapshot *model.OpenLuxSyncSnapshot, changes []Change) (mo
 	abilityByKey := make(map[string]abilityRemoval)
 	deleteChannels := make(map[int]struct{})
 	deleteBindings := make(map[string]struct{})
+	deleteRouteGroups := make(map[string]struct{})
 	updatedModels := make(map[string]struct{})
 	updatedGroups := make(map[string]struct{})
 
@@ -159,6 +162,9 @@ func aggregateChanges(snapshot *model.OpenLuxSyncSnapshot, changes []Change) (mo
 		}
 		for _, sourceGroup := range change.deleteBindings {
 			deleteBindings[sourceGroup] = struct{}{}
+		}
+		if change.Kind == "source_group_remove" && change.RemoveMode == "delete_local_group" && change.LocalGroup != "" {
+			deleteRouteGroups[change.LocalGroup] = struct{}{}
 		}
 		if change.Model != "" {
 			updatedModels[change.Model] = struct{}{}
@@ -233,6 +239,7 @@ func aggregateChanges(snapshot *model.OpenLuxSyncSnapshot, changes []Change) (mo
 		AbilityRemovals:           abilityRemovals,
 		DeleteChannelIDs:          deleteChannelIDs,
 		DeleteBindingSourceGroups: deleteBindingGroups,
+		DeleteRouteGroupCodes:     stringSetValues(deleteRouteGroups),
 	}
 	response := &ApplyResponse{
 		AppliedCount:    len(changes),

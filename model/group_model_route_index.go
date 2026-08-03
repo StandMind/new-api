@@ -18,13 +18,16 @@ type groupModelRouteIndexKey struct {
 }
 
 type groupModelRouteIndex struct {
-	db            *gorm.DB
-	routes        map[groupModelRouteIndexKey]*GroupModelRoute
-	candidates    map[groupModelRouteIndexKey][]GroupModelRouteCandidate
-	channels      map[int]*Channel
-	groupsByModel map[string][]string
-	modelsByGroup map[string][]string
+	db                *gorm.DB
+	routes            map[groupModelRouteIndexKey]*GroupModelRoute
+	candidates        map[groupModelRouteIndexKey][]GroupModelRouteCandidate
+	channels          map[int]*Channel
+	groupsByModel     map[string][]string
+	modelsByGroup     map[string][]string
+	chatModelsByGroup map[string][]string
 }
+
+const openAIChatCompletionsPath = "/v1/chat/completions"
 
 var (
 	groupModelRouteIndexValue atomic.Pointer[groupModelRouteIndex]
@@ -100,12 +103,13 @@ func InitGroupModelRouteIndex() error {
 	}
 
 	index := &groupModelRouteIndex{
-		db:            DB,
-		routes:        make(map[groupModelRouteIndexKey]*GroupModelRoute, len(routes)),
-		candidates:    make(map[groupModelRouteIndexKey][]GroupModelRouteCandidate),
-		channels:      channels,
-		groupsByModel: make(map[string][]string),
-		modelsByGroup: make(map[string][]string),
+		db:                DB,
+		routes:            make(map[groupModelRouteIndexKey]*GroupModelRoute, len(routes)),
+		candidates:        make(map[groupModelRouteIndexKey][]GroupModelRouteCandidate),
+		channels:          channels,
+		groupsByModel:     make(map[string][]string),
+		modelsByGroup:     make(map[string][]string),
+		chatModelsByGroup: make(map[string][]string),
 	}
 	for routeIndex := range routes {
 		route := routes[routeIndex]
@@ -161,6 +165,22 @@ func InitGroupModelRouteIndex() error {
 	}
 	for group, models := range modelSetsByGroup {
 		index.modelsByGroup[group] = sortedStringSet(models)
+	}
+	for group, models := range index.modelsByGroup {
+		routableModels := make([]string, 0, len(models))
+		chatModels := make([]string, 0, len(models))
+		for _, modelName := range models {
+			plan := cachedGroupModelRoutePlan(index, group, modelName, "")
+			if cachedGroupModelRoutePlanHasCandidate(plan) {
+				routableModels = append(routableModels, modelName)
+			}
+			chatPlan := cachedGroupModelRoutePlan(index, group, modelName, openAIChatCompletionsPath)
+			if cachedGroupModelRoutePlanHasCandidate(chatPlan) {
+				chatModels = append(chatModels, modelName)
+			}
+		}
+		index.modelsByGroup[group] = routableModels
+		index.chatModelsByGroup[group] = chatModels
 	}
 
 	groupModelRouteIndexValue.Store(index)
@@ -221,6 +241,52 @@ func cachedRouteCandidates(index *groupModelRouteIndex, key groupModelRouteIndex
 	return filtered
 }
 
+func cachedGroupModelRoutePlan(index *groupModelRouteIndex, group, modelName, requestPath string) GroupModelRoutePlan {
+	normalizedModel := ratio_setting.FormatMatchingModelName(modelName)
+	exactKey := groupModelRouteIndexKey{group: group, model: modelName}
+	routeModel := modelName
+	route := index.routes[exactKey]
+	candidates := cachedRouteCandidates(index, exactKey, requestPath, modelName)
+	if len(candidates) == 0 && normalizedModel != modelName {
+		candidates = cachedRouteCandidates(index, groupModelRouteIndexKey{group: group, model: normalizedModel}, requestPath, modelName)
+	}
+	if route == nil && normalizedModel != modelName {
+		route = index.routes[groupModelRouteIndexKey{group: group, model: normalizedModel}]
+		if route != nil {
+			routeModel = normalizedModel
+		}
+	}
+	return GroupModelRoutePlan{
+		Group:      group,
+		RouteModel: routeModel,
+		Route:      route,
+		Explicit:   route != nil,
+		Candidates: candidates,
+	}
+}
+
+func cachedGroupModelRoutePlanHasCandidate(plan GroupModelRoutePlan) bool {
+	if len(plan.Candidates) == 0 {
+		return false
+	}
+	if !plan.Explicit {
+		return true
+	}
+
+	candidateIDs := make(map[int]struct{}, len(plan.Candidates))
+	for _, candidate := range plan.Candidates {
+		candidateIDs[candidate.ChannelID] = struct{}{}
+	}
+	for _, tier := range plan.Route.Tiers {
+		for _, channel := range tier.Channels {
+			if _, ok := candidateIDs[channel.ChannelID]; ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func GetRouteIndexGroupsByModel() map[string][]string {
 	index := groupModelRouteIndexValue.Load()
 	if index == nil {
@@ -238,15 +304,10 @@ func FilterRouteGroupsForRequest(groups []string, modelName, requestPath string)
 	if index == nil {
 		return nil
 	}
-	normalizedModel := ratio_setting.FormatMatchingModelName(modelName)
 	result := make([]string, 0, len(groups))
 	for _, group := range groups {
-		exactKey := groupModelRouteIndexKey{group: group, model: modelName}
-		candidates := cachedRouteCandidates(index, exactKey, requestPath, modelName)
-		if len(candidates) == 0 && normalizedModel != modelName {
-			candidates = cachedRouteCandidates(index, groupModelRouteIndexKey{group: group, model: normalizedModel}, requestPath, modelName)
-		}
-		if len(candidates) > 0 {
+		plan := cachedGroupModelRoutePlan(index, group, modelName, requestPath)
+		if cachedGroupModelRoutePlanHasCandidate(plan) {
 			result = append(result, group)
 		}
 	}
@@ -254,21 +315,38 @@ func FilterRouteGroupsForRequest(groups []string, modelName, requestPath string)
 }
 
 func GetEnabledModelsForGroups(groups []string) []string {
+	return GetEnabledModelsForGroupsForRequest(groups, "")
+}
+
+func GetEnabledModelsForGroupsForRequest(groups []string, requestPath string) []string {
 	index := groupModelRouteIndexValue.Load()
 	if index == nil {
 		return nil
 	}
+	modelsByGroup := index.modelsByGroup
+	precomputed := requestPath == ""
+	if requestPath == openAIChatCompletionsPath {
+		modelsByGroup = index.chatModelsByGroup
+		precomputed = true
+	}
 	seen := make(map[string]struct{})
 	models := make([]string, 0)
 	for _, group := range groups {
-		for _, modelName := range index.modelsByGroup[group] {
+		for _, modelName := range modelsByGroup[group] {
 			if _, ok := seen[modelName]; ok {
 				continue
+			}
+			if !precomputed {
+				plan := cachedGroupModelRoutePlan(index, group, modelName, requestPath)
+				if !cachedGroupModelRoutePlanHasCandidate(plan) {
+					continue
+				}
 			}
 			seen[modelName] = struct{}{}
 			models = append(models, modelName)
 		}
 	}
+	sort.Strings(models)
 	return models
 }
 

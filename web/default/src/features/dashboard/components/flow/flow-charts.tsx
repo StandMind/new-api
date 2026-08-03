@@ -141,8 +141,8 @@ const FLOW_STAGE_META: Record<
     descKey: 'The API key used for the requests',
   },
   group: {
-    labelKey: 'Group',
-    descKey: 'The user group applied to the requests',
+    labelKey: 'Route Group',
+    descKey: 'The route group that handled the requests',
   },
   model: {
     labelKey: 'Model',
@@ -167,7 +167,7 @@ const FLOW_OTHER_NODE_LABEL_KEYS: Record<FlowNodeKind, string> = {
   user: 'Other users',
   node: 'Other nodes',
   token: 'Other tokens',
-  group: 'Other groups',
+  group: 'Other route groups',
   model: 'Other models',
   channel: 'Other channels',
 }

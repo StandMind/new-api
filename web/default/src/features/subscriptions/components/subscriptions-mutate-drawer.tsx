@@ -66,7 +66,7 @@ import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import {
   createPlan,
   updatePlan,
-  getGroups,
+  getUserLevels,
   createWaffoPancakeSubscriptionProduct,
   listWaffoPancakeSubscriptionProductOptions,
 } from '../api'
@@ -99,7 +99,9 @@ export function SubscriptionsMutateDrawer({
   const tokensOnly = currencyMeta.kind === 'tokens'
   const currencyLabel = getCurrencyLabel()
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [groupOptions, setGroupOptions] = useState<string[]>([])
+  const [userLevelOptions, setUserLevelOptions] = useState<
+    { code: string; name: string }[]
+  >([])
   const [creatingPancakeProduct, setCreatingPancakeProduct] = useState(false)
   const [pancakeProducts, setPancakeProducts] = useState<
     { id: string; name: string; status: string }[]
@@ -118,9 +120,13 @@ export function SubscriptionsMutateDrawer({
       } else {
         form.reset(PLAN_FORM_DEFAULTS)
       }
-      getGroups()
+      getUserLevels()
         .then((res) => {
-          if (res.success) setGroupOptions(res.data || [])
+          if (res.success) {
+            setUserLevelOptions(
+              (res.data || []).filter((level) => level.enabled)
+            )
+          }
         })
         .catch(() => {})
       // Best-effort — empty list still lets the operator use "+ Create".
@@ -389,14 +395,17 @@ export function SubscriptionsMutateDrawer({
               <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
                 <FormField
                   control={form.control}
-                  name='upgrade_group'
+                  name='upgrade_user_level'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{t('Upgrade Group')}</FormLabel>
+                      <FormLabel>{t('Upgrade user level')}</FormLabel>
                       <Select
                         items={[
                           { value: '__none__', label: t('No Upgrade') },
-                          ...groupOptions.map((g) => ({ value: g, label: g })),
+                          ...userLevelOptions.map((level) => ({
+                            value: level.code,
+                            label: level.name,
+                          })),
                         ]}
                         onValueChange={(v) =>
                           field.onChange(v === '__none__' ? '' : v)
@@ -413,9 +422,9 @@ export function SubscriptionsMutateDrawer({
                             <SelectItem value='__none__'>
                               {t('No Upgrade')}
                             </SelectItem>
-                            {groupOptions.map((g) => (
-                              <SelectItem key={g} value={g}>
-                                {g}
+                            {userLevelOptions.map((level) => (
+                              <SelectItem key={level.code} value={level.code}>
+                                {level.name}
                               </SelectItem>
                             ))}
                           </SelectGroup>
@@ -428,17 +437,20 @@ export function SubscriptionsMutateDrawer({
 
                 <FormField
                   control={form.control}
-                  name='downgrade_group'
+                  name='downgrade_user_level'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{t('Downgrade Group')}</FormLabel>
+                      <FormLabel>{t('Downgrade user level')}</FormLabel>
                       <Select
                         items={[
                           {
                             value: '__none__',
-                            label: t('Downgrade to pre-purchase group'),
+                            label: t('Restore the pre-purchase user level'),
                           },
-                          ...groupOptions.map((g) => ({ value: g, label: g })),
+                          ...userLevelOptions.map((level) => ({
+                            value: level.code,
+                            label: level.name,
+                          })),
                         ]}
                         onValueChange={(v) =>
                           field.onChange(v === '__none__' ? '' : v)
@@ -448,18 +460,20 @@ export function SubscriptionsMutateDrawer({
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue
-                              placeholder={t('Downgrade to pre-purchase group')}
+                              placeholder={t(
+                                'Restore the pre-purchase user level'
+                              )}
                             />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent alignItemWithTrigger={false}>
                           <SelectGroup>
                             <SelectItem value='__none__'>
-                              {t('Downgrade to pre-purchase group')}
+                              {t('Restore the pre-purchase user level')}
                             </SelectItem>
-                            {groupOptions.map((g) => (
-                              <SelectItem key={g} value={g}>
-                                {g}
+                            {userLevelOptions.map((level) => (
+                              <SelectItem key={level.code} value={level.code}>
+                                {level.name}
                               </SelectItem>
                             ))}
                           </SelectGroup>
@@ -467,7 +481,7 @@ export function SubscriptionsMutateDrawer({
                       </Select>
                       <FormDescription>
                         {t(
-                          'Downgrade to this group after the subscription expires'
+                          'Change to this user level after the subscription expires'
                         )}
                       </FormDescription>
                       <FormMessage />

@@ -164,7 +164,11 @@ function ChannelCardComponent({
                 <GroupBadge
                   key={g}
                   group={g}
-                  label={sensitiveVisible ? undefined : SENSITIVE_MASK}
+                  label={
+                    sensitiveVisible
+                      ? row.original.route_group_names?.[g] || g
+                      : SENSITIVE_MASK
+                  }
                   size='sm'
                 />
               ))}

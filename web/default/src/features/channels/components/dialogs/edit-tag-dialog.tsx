@@ -304,12 +304,10 @@ export function EditTagDialog({ open, onOpenChange }: EditTagDialogProps) {
 
                 <div className='flex gap-2'>
                   <Select<string>
-                    items={[
-                      ...availableModels.map((model) => ({
-                        value: model,
-                        label: model,
-                      })),
-                    ]}
+                    items={availableModels.map((model) => ({
+                      value: model,
+                      label: model,
+                    }))}
                     onValueChange={(value) => {
                       if (value === null) return
                       if (!selectedModels.includes(value)) {
@@ -429,6 +427,7 @@ export function EditTagDialog({ open, onOpenChange }: EditTagDialogProps) {
                 <GroupBadge
                   key={group}
                   group={group}
+                  label={groupsData?.route_group_names?.[group] || group}
                   className={`cursor-pointer rounded-sm transition-opacity hover:opacity-70 ${
                     selectedGroups.includes(group) ? 'bg-muted/70 px-1' : ''
                   }`}

@@ -64,6 +64,7 @@ export type PricingModel = {
   audio_ratio?: number | null
   audio_completion_ratio?: number | null
   enable_groups: string[]
+  route_group_names?: Record<string, string>
   tags?: string
   supported_endpoint_types?: string[]
   key?: string
@@ -116,7 +117,10 @@ export type PricingData = {
   group_ratio: Record<string, number>
   group_model_ratio?: Record<string, Record<string, number>>
   effective_group_model_ratio?: Record<string, Record<string, number>>
-  usable_group: Record<string, { desc: string; ratio: number }>
+  usable_group: Record<
+    string,
+    { code: string; name: string; desc: string; ratio: number }
+  >
   supported_endpoint: Record<string, string>
 }
 

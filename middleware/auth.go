@@ -15,7 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-contrib/sessions"
@@ -41,6 +40,7 @@ func authHelper(c *gin.Context, minRole int) {
 	id := session.Get("id")
 	status := session.Get("status")
 	useAccessToken := false
+	accessTokenUserLevel := ""
 	if username == nil {
 		// Check access token
 		accessToken := c.Request.Header.Get("Authorization")
@@ -83,6 +83,8 @@ func authHelper(c *gin.Context, minRole int) {
 			role = user.Role
 			id = user.Id
 			status = user.Status
+			model.PopulateUserLevelDisplay(user)
+			accessTokenUserLevel = user.UserLevel
 			useAccessToken = true
 		} else {
 			c.JSON(http.StatusOK, gin.H{
@@ -150,8 +152,17 @@ func authHelper(c *gin.Context, minRole int) {
 	c.Set("username", username)
 	c.Set("role", role)
 	c.Set("id", id)
-	c.Set("group", session.Get("group"))
-	c.Set("user_group", session.Get("group"))
+	userLevel := accessTokenUserLevel
+	if !useAccessToken {
+		userLevel, _ = session.Get("user_level").(string)
+		if userLevel == "" {
+			legacyGroup, _ := session.Get("group").(string)
+			userLevel = model.UserLevelForLegacyGroup(legacyGroup)
+		}
+	}
+	c.Set("group", userLevel)
+	c.Set("user_group", userLevel)
+	c.Set("user_level", userLevel)
 	c.Set("use_access_token", useAccessToken)
 
 	// 管理/root 写操作审计兜底：内聚在鉴权链路里，保证任何经过 AdminAuth/RootAuth
@@ -417,7 +428,7 @@ func TokenAuth() func(c *gin.Context) {
 
 		userCache.WriteContext(c)
 
-		userGroup := userCache.Group
+		userGroup := userCache.UserLevel
 		routingPriority := constant.NormalizeRoutingPriority(token.RoutingPriority)
 		if !constant.IsValidRoutingPriority(routingPriority, true) {
 			abortWithOpenAiMessage(c, http.StatusForbidden, "API Key 智能路由模式无效，请重新保存")
@@ -468,7 +479,8 @@ func TokenAuth() func(c *gin.Context) {
 				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", group))
 				return
 			}
-			if !ratio_setting.ContainsGroupRatio(group) {
+			routeGroup, exists := model.GetRouteGroupFromSnapshot(group)
+			if !exists || !routeGroup.Enabled {
 				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("分组 %s 已被弃用", group))
 				return
 			}

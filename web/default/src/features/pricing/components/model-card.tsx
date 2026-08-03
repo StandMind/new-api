@@ -80,6 +80,9 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
     : null
 
   const primaryGroup = groups[0]
+  const primaryGroupName = primaryGroup
+    ? props.model.route_group_names?.[primaryGroup] || primaryGroup
+    : ''
   const bottomTags = [...endpoints.slice(0, 2), ...tags.slice(0, 2)]
   const hiddenCount =
     Math.max(groups.length - 1, 0) +
@@ -248,9 +251,9 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
       {/* Footer: left metadata and right performance summary share row alignment */}
       <div className='mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 sm:mt-4'>
         <div className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
-          {primaryGroup && (
+          {primaryGroupName && (
             <span className='text-muted-foreground text-sm font-medium'>
-              {primaryGroup}
+              {primaryGroupName}
             </span>
           )}
           <ModelBillingModeBadge model={props.model} />

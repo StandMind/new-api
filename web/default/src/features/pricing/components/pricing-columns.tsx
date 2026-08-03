@@ -400,7 +400,12 @@ export function usePricingColumns(
         return (
           <BadgeListCell
             items={groups.map((group) => (
-              <GroupBadge key={group} group={group} size='sm' />
+              <GroupBadge
+                key={group}
+                group={group}
+                label={row.original.route_group_names?.[group] || group}
+                size='sm'
+              />
             ))}
             tooltipClassName='max-w-[280px] p-2'
           />

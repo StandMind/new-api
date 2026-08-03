@@ -411,17 +411,11 @@ func buildSourceGroupRemoval(db *gorm.DB, binding resolvedBinding, snapshot *mod
 
 func referenceBlockers(references model.OpenLuxGroupReferences) []string {
 	result := make([]string, 0)
-	if len(references.Users) > 0 {
-		result = append(result, fmt.Sprintf("%d 个用户仍使用该分组", len(references.Users)))
+	if len(references.UserLevelGrants) > 0 {
+		result = append(result, fmt.Sprintf("%d 个用户等级仍授权该路由分组: %s", len(references.UserLevelGrants), strings.Join(references.UserLevelGrants, ", ")))
 	}
 	if len(references.Tokens) > 0 {
 		result = append(result, fmt.Sprintf("%d 个 Token 或分组链仍引用该分组", len(references.Tokens)))
-	}
-	if len(references.SubscriptionPlans) > 0 {
-		result = append(result, fmt.Sprintf("%d 个订阅计划仍引用该分组", len(references.SubscriptionPlans)))
-	}
-	if len(references.Subscriptions) > 0 {
-		result = append(result, fmt.Sprintf("%d 个订阅记录仍引用该分组", len(references.Subscriptions)))
 	}
 	if len(references.GroupRoutes) > 0 {
 		result = append(result, routeReferenceReason("显式模型路由属于该分组", references.GroupRoutes))
@@ -442,13 +436,7 @@ func routeReferenceReason(label string, routeKeys []string) string {
 
 func groupDeletionMutations(group string) []optionMutation {
 	return []optionMutation{
-		{Key: optionGroupRatio, Action: "delete", Model: group},
 		{Key: optionGroupModelRatio, Action: "delete", Model: group},
-		{Key: optionUserUsableGroups, Action: "delete", Model: group},
-		{Key: optionTopupGroupRatio, Action: "delete", Model: group},
-		{Key: optionGroupGroupRatio, Action: "delete_references", Model: group},
-		{Key: optionGroupSpecialUsable, Action: "delete_references", Model: group},
-		{Key: optionModelRequestLimitGroup, Action: "delete", Model: group},
 	}
 }
 

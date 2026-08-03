@@ -48,6 +48,11 @@ type FilterOption = {
   icon?: ReactNode
 }
 
+export type RouteGroupFilterOption = {
+  value: string
+  label: string
+}
+
 type FilterSectionProps = {
   title: string
   value: string
@@ -68,7 +73,7 @@ export interface PricingSidebarProps {
   onGroupChange: (value: string) => void
   onTagChange: (value: string) => void
   vendors: PricingVendor[]
-  groups: string[]
+  groups: RouteGroupFilterOption[]
   tags: string[]
   models: PricingModel[]
   hasActiveFilters: boolean
@@ -177,10 +182,7 @@ export function PricingSidebar(props: PricingSidebarProps) {
       value: FILTER_ALL,
       label: t('All Groups'),
     },
-    ...props.groups.map((group) => ({
-      value: group,
-      label: group,
-    })),
+    ...props.groups,
   ]
 
   const quotaOptions: FilterOption[] = [

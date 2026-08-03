@@ -28,6 +28,8 @@ type Token struct {
 	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
 	Group              string         `json:"group" gorm:"default:''"`
 	GroupChain         StringArray    `json:"group_chain" gorm:"type:text"`
+	GroupName          string         `json:"group_name" gorm:"-"`
+	GroupChainNames    []string       `json:"group_chain_names" gorm:"-"`
 	RoutingPriority    string         `json:"routing_priority" gorm:"type:varchar(32);default:''"`
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
 }

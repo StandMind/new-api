@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -15,6 +16,13 @@ import (
 
 func TestModelRequestRateLimitCountsMultiGroupRequestAgainstFirstGroupOnce(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	db := setupDistributorRouteTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.UserLevel{}, &model.RouteGroup{}, &model.UserLevelRouteGroup{}))
+	require.NoError(t, db.Create(&model.UserLevel{
+		Code: "rate-limited", Name: "Rate limited", Enabled: true,
+		TopupRatio: 1, RequestLimit: 1, SuccessRequestLimit: 1000,
+	}).Error)
+	require.NoError(t, model.RebuildAccessPolicySnapshot())
 	originalEnabled := setting.ModelRequestRateLimitEnabled
 	originalDuration := setting.ModelRequestRateLimitDurationMinutes
 	originalCount := setting.ModelRequestRateLimitCount
@@ -42,6 +50,7 @@ func TestModelRequestRateLimitCountsMultiGroupRequestAgainstFirstGroupOnce(t *te
 	engine := gin.New()
 	engine.Use(func(c *gin.Context) {
 		c.Set("id", 991001)
+		common.SetContextKey(c, constant.ContextKeyUserLevel, "rate-limited")
 		common.SetContextKey(c, constant.ContextKeyTokenGroup, "default")
 		common.SetContextKey(c, constant.ContextKeyTokenGroupChain, []string{"default", "backup"})
 		common.SetContextKey(c, constant.ContextKeyUsingGroup, "backup")
@@ -62,4 +71,24 @@ func TestModelRequestRateLimitCountsMultiGroupRequestAgainstFirstGroupOnce(t *te
 	secondRecorder := httptest.NewRecorder()
 	engine.ServeHTTP(secondRecorder, httptest.NewRequest(http.MethodGet, "/v1/chat/completions", nil))
 	assert.Equal(t, http.StatusTooManyRequests, secondRecorder.Code)
+}
+
+func TestMemoryModelRequestRateLimitTreatsZeroSuccessLimitAsUnlimited(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	engine := gin.New()
+	engine.Use(func(c *gin.Context) {
+		c.Set("id", 991002)
+		c.Next()
+	})
+	engine.Use(memoryRateLimitHandler(60, 100, 0))
+	engine.GET("/v1/chat/completions", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	for range 2 {
+		recorder := httptest.NewRecorder()
+		engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/v1/chat/completions", nil))
+		assert.Equal(t, http.StatusOK, recorder.Code)
+	}
 }

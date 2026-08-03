@@ -15,17 +15,20 @@ import (
 
 // UserBase struct remains the same as it represents the cached data structure
 type UserBase struct {
-	Id       int    `json:"id"`
-	Group    string `json:"group"`
-	Email    string `json:"email"`
-	Quota    int    `json:"quota"`
-	Status   int    `json:"status"`
-	Username string `json:"username"`
-	Setting  string `json:"setting"`
+	Id            int    `json:"id"`
+	UserLevel     string `json:"user_level"`
+	UserLevelName string `json:"user_level_name"`
+	Email         string `json:"email"`
+	Quota         int    `json:"quota"`
+	Status        int    `json:"status"`
+	Username      string `json:"username"`
+	Setting       string `json:"setting"`
 }
 
 func (user *UserBase) WriteContext(c *gin.Context) {
-	common.SetContextKey(c, constant.ContextKeyUserGroup, user.Group)
+	common.SetContextKey(c, constant.ContextKeyUserLevel, user.UserLevel)
+	// Compatibility alias for internal code that has not yet renamed the key.
+	common.SetContextKey(c, constant.ContextKeyUserGroup, user.UserLevel)
 	common.SetContextKey(c, constant.ContextKeyUserQuota, user.Quota)
 	common.SetContextKey(c, constant.ContextKeyUserStatus, user.Status)
 	common.SetContextKey(c, constant.ContextKeyUserEmail, user.Email)
@@ -82,7 +85,7 @@ func updateUserCache(user User) error {
 	if !common.RedisEnabled {
 		return nil
 	}
-	if err := updateUserGroupCache(user.Id, user.Group); err != nil {
+	if err := updateUserLevelCache(user.Id, user.UserLevel); err != nil {
 		return err
 	}
 	if err := updateUserEmailCache(user.Id, user.Email); err != nil {
@@ -126,15 +129,7 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 	}
 
 	// Create cache object from user data
-	userCache = &UserBase{
-		Id:       user.Id,
-		Group:    user.Group,
-		Quota:    user.Quota,
-		Status:   user.Status,
-		Username: user.Username,
-		Setting:  user.Setting,
-		Email:    user.Email,
-	}
+	userCache = user.ToBaseUser()
 
 	return userCache, nil
 }
@@ -148,6 +143,9 @@ func cacheGetUserBase(userId int) (*UserBase, error) {
 	err := common.RedisHGetObj(getUserCacheKey(userId), &userCache)
 	if err != nil {
 		return nil, err
+	}
+	if userCache.UserLevel == "" {
+		return nil, fmt.Errorf("cached user has no user_level")
 	}
 	return &userCache, nil
 }
@@ -170,7 +168,7 @@ func getUserGroupCache(userId int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return cache.Group, nil
+	return LegacyGroupForUserLevel(cache.UserLevel), nil
 }
 
 func getUserQuotaCache(userId int) (int, error) {
@@ -225,14 +223,22 @@ func updateUserQuotaCache(userId int, quota int) error {
 }
 
 func updateUserGroupCache(userId int, group string) error {
+	return updateUserLevelCache(userId, UserLevelForLegacyGroup(group))
+}
+
+func updateUserLevelCache(userId int, userLevel string) error {
 	if !common.RedisEnabled {
 		return nil
 	}
-	return common.RedisHSetField(getUserCacheKey(userId), "Group", group)
+	return common.RedisHSetField(getUserCacheKey(userId), "UserLevel", userLevel)
 }
 
 func UpdateUserGroupCache(userId int, group string) error {
 	return updateUserGroupCache(userId, group)
+}
+
+func UpdateUserLevelCache(userId int, userLevel string) error {
+	return updateUserLevelCache(userId, userLevel)
 }
 
 func updateUserEmailCache(userId int, email string) error {

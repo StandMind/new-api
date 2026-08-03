@@ -8,6 +8,7 @@ on:
       - '**/*.go'
       - 'go.mod'
       - 'go.sum'
+      - 'deploy/migrations/**'
       - '.github/workflows/migration-compatibility.yml'
   push:
     branches:
@@ -16,6 +17,7 @@ on:
       - '**/*.go'
       - 'go.mod'
       - 'go.sum'
+      - 'deploy/migrations/**'
       - '.github/workflows/migration-compatibility.yml'
 
 permissions:
@@ -44,6 +46,19 @@ jobs:
       - name: Build migration binary
         run: go build -o "${RUNNER_TEMP}/new-api" .
 
+      - name: Create legacy access-policy options
+        run: |
+          sqlite3 "${RUNNER_TEMP}/migration.sqlite" <<'SQL'
+          CREATE TABLE options (key text PRIMARY KEY, value text);
+          INSERT INTO options(key, value) VALUES
+            ('GroupRatio', '{"default":1,"route_a":1.3,"route_disabled":1.1}'),
+            ('UserUsableGroups', '{"route_a":"Route A"}'),
+            ('TopupGroupRatio', '{"default":1.2}'),
+            ('ModelRequestRateLimitGroup', '{"default":[20,10]}'),
+            ('GroupGroupRatio', '{"default":{"route_a":0.8}}'),
+            ('group_ratio_setting.group_special_usable_group', '{}');
+          SQL
+
       - name: Run migration twice
         env:
           SQLITE_PATH: ${{ runner.temp }}/migration.sqlite?_busy_timeout=30000
@@ -52,7 +67,24 @@ jobs:
           REDIS_CONN_STRING: redis://127.0.0.1:1
         run: |
           "${RUNNER_TEMP}/new-api" --migrate-only --log-dir "${RUNNER_TEMP}/logs-sqlite"
+          sqlite3 "${RUNNER_TEMP}/migration.sqlite" <<'SQL'
+          UPDATE route_groups SET enabled = 0 WHERE code = 'route_disabled';
+          INSERT INTO route_groups(code, name, description, base_ratio, enabled, created_at, updated_at)
+          VALUES ('route_later', 'Later route', '', 1, 1, 1, 1);
+          SQL
           "${RUNNER_TEMP}/new-api" --migrate-only --log-dir "${RUNNER_TEMP}/logs-sqlite"
+
+      - name: Verify access-policy migration
+        run: |
+          db="${RUNNER_TEMP}/migration.sqlite"
+          test "$(sqlite3 "${db}" "SELECT group_concat(route_group_code, '|') FROM (SELECT route_group_code FROM user_level_route_groups WHERE user_level_code='standard' ORDER BY route_group_code)")" = 'route_a|route_disabled'
+          test "$(sqlite3 "${db}" "SELECT initial_route_group_codes FROM access_policy_states WHERE id=1")" = '["route_a","route_disabled"]'
+          test "$(sqlite3 "${db}" "SELECT printf('%.1f', price_ratio) FROM user_level_route_groups WHERE user_level_code='standard' AND route_group_code='route_a'")" = '0.8'
+          test "$(sqlite3 "${db}" "SELECT COUNT(*) FROM user_level_route_groups WHERE user_level_code='standard' AND route_group_code='route_later'")" = 0
+          test "$(sqlite3 "${db}" "SELECT lower(type) FROM pragma_table_info('user_levels') WHERE name='topup_ratio'")" = real
+          test "$(sqlite3 "${db}" "SELECT lower(type) FROM pragma_table_info('route_groups') WHERE name='base_ratio'")" = real
+          test "$(sqlite3 "${db}" "SELECT lower(type) FROM pragma_table_info('user_level_route_groups') WHERE name='price_ratio'")" = real
+          test "$(sqlite3 "${db}" "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('user_levels','route_groups','user_level_route_groups','access_policy_states','access_policy_migration_guards')")" = 5
 
   postgres:
     name: PostgreSQL ${{ matrix.version }} migration
@@ -108,6 +140,17 @@ jobs:
             id bigint PRIMARY KEY,
             model_limits varchar(1024)
           );
+          CREATE TABLE options (
+            key varchar(255) PRIMARY KEY,
+            value text
+          );
+          INSERT INTO options(key, value) VALUES
+            ('GroupRatio', '{"default":1,"route_a":1.3,"route_disabled":1.1}'),
+            ('UserUsableGroups', '{"route_a":"Route A"}'),
+            ('TopupGroupRatio', '{"default":1.2}'),
+            ('ModelRequestRateLimitGroup', '{"default":[20,10]}'),
+            ('GroupGroupRatio', '{"default":{"route_a":0.8}}'),
+            ('group_ratio_setting.group_special_usable_group', '{}');
           SQL
 
       - name: Build migration binary
@@ -121,6 +164,11 @@ jobs:
           REDIS_CONN_STRING: redis://127.0.0.1:1
         run: |
           "${RUNNER_TEMP}/new-api" --migrate-only --log-dir "${RUNNER_TEMP}/logs-postgres"
+          docker exec -i "${{ job.services.postgres.id }}" psql -v ON_ERROR_STOP=1 -U test -d newapi <<'SQL'
+          UPDATE route_groups SET enabled = FALSE WHERE code = 'route_disabled';
+          INSERT INTO route_groups(code, name, description, base_ratio, enabled, created_at, updated_at)
+          VALUES ('route_later', 'Later route', '', 1, TRUE, 1, 1);
+          SQL
           "${RUNNER_TEMP}/new-api" --migrate-only --log-dir "${RUNNER_TEMP}/logs-postgres"
 
       - name: Verify migrated schema
@@ -128,6 +176,12 @@ jobs:
           test "$(docker exec "${{ job.services.postgres.id }}" psql -At -U test -d newapi -c "SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='subscription_plans' AND column_name='price_amount'")" = numeric
           test "$(docker exec "${{ job.services.postgres.id }}" psql -At -U test -d newapi -c "SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='tokens' AND column_name='model_limits'")" = text
           docker exec "${{ job.services.postgres.id }}" psql -At -U test -d newapi -c "SELECT to_regclass('public.system_tasks'), to_regclass('public.system_instances'), to_regclass('public.casbin_rule')" | grep -q 'system_tasks|system_instances|casbin_rule'
+          test "$(docker exec "${{ job.services.postgres.id }}" psql -At -U test -d newapi -c "SELECT string_agg(route_group_code, '|' ORDER BY route_group_code) FROM user_level_route_groups WHERE user_level_code='standard'")" = 'route_a|route_disabled'
+          test "$(docker exec "${{ job.services.postgres.id }}" psql -At -U test -d newapi -c "SELECT initial_route_group_codes FROM access_policy_states WHERE id=1")" = '["route_a","route_disabled"]'
+          test "$(docker exec "${{ job.services.postgres.id }}" psql -At -U test -d newapi -c "SELECT price_ratio FROM user_level_route_groups WHERE user_level_code='standard' AND route_group_code='route_a'")" = '0.800000000000000'
+          test "$(docker exec "${{ job.services.postgres.id }}" psql -At -U test -d newapi -c "SELECT COUNT(*) FROM user_level_route_groups WHERE user_level_code='standard' AND route_group_code='route_later'")" = 0
+          test "$(docker exec "${{ job.services.postgres.id }}" psql -At -U test -d newapi -c "SELECT string_agg(table_name || '.' || column_name || ':' || data_type || '(' || numeric_precision || ',' || numeric_scale || ')', '|' ORDER BY table_name, column_name) FROM information_schema.columns WHERE table_schema='public' AND (table_name, column_name) IN (('user_levels','topup_ratio'),('route_groups','base_ratio'),('user_level_route_groups','price_ratio'))")" = 'route_groups.base_ratio:numeric(20,15)|user_level_route_groups.price_ratio:numeric(20,15)|user_levels.topup_ratio:numeric(20,15)'
+          test "$(docker exec "${{ job.services.postgres.id }}" psql -At -U test -d newapi -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('user_levels','route_groups','user_level_route_groups','access_policy_states','access_policy_migration_guards')")" = 5
 
   mysql:
     name: MySQL 5.7 migration
@@ -175,6 +229,17 @@ jobs:
             id bigint PRIMARY KEY,
             model_limits varchar(1024)
           ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          CREATE TABLE options (
+            `key` varchar(255) PRIMARY KEY,
+            value text
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          INSERT INTO options(`key`, value) VALUES
+            ('GroupRatio', '{"default":1,"route_a":1.3,"route_disabled":1.1}'),
+            ('UserUsableGroups', '{"route_a":"Route A"}'),
+            ('TopupGroupRatio', '{"default":1.2}'),
+            ('ModelRequestRateLimitGroup', '{"default":[20,10]}'),
+            ('GroupGroupRatio', '{"default":{"route_a":0.8}}'),
+            ('group_ratio_setting.group_special_usable_group', '{}');
           SQL
 
       - name: Build migration binary
@@ -188,6 +253,11 @@ jobs:
           REDIS_CONN_STRING: redis://127.0.0.1:1
         run: |
           "${RUNNER_TEMP}/new-api" --migrate-only --log-dir "${RUNNER_TEMP}/logs-mysql"
+          docker exec -i "${{ job.services.mysql.id }}" mysql -uroot -ptest newapi <<'SQL'
+          UPDATE route_groups SET enabled = 0 WHERE code = 'route_disabled';
+          INSERT INTO route_groups(code, name, description, base_ratio, enabled, created_at, updated_at)
+          VALUES ('route_later', 'Later route', '', 1, 1, 1, 1);
+          SQL
           "${RUNNER_TEMP}/new-api" --migrate-only --log-dir "${RUNNER_TEMP}/logs-mysql"
 
       - name: Verify migrated schema
@@ -195,3 +265,9 @@ jobs:
           test "$(docker exec "${{ job.services.mysql.id }}" mysql -N -uroot -ptest -e "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='newapi' AND TABLE_NAME='subscription_plans' AND COLUMN_NAME='price_amount'")" = 'decimal(10,6)'
           test "$(docker exec "${{ job.services.mysql.id }}" mysql -N -uroot -ptest -e "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='newapi' AND TABLE_NAME='tokens' AND COLUMN_NAME='model_limits'")" = text
           docker exec "${{ job.services.mysql.id }}" mysql -N -uroot -ptest -e "SELECT GROUP_CONCAT(TABLE_NAME ORDER BY TABLE_NAME SEPARATOR '|') FROM information_schema.TABLES WHERE TABLE_SCHEMA='newapi' AND TABLE_NAME IN ('system_tasks','system_instances','casbin_rule')" | grep -q 'casbin_rule|system_instances|system_tasks'
+          test "$(docker exec "${{ job.services.mysql.id }}" mysql -N -uroot -ptest newapi -e "SELECT GROUP_CONCAT(route_group_code ORDER BY route_group_code SEPARATOR '|') FROM user_level_route_groups WHERE user_level_code='standard'")" = 'route_a|route_disabled'
+          test "$(docker exec "${{ job.services.mysql.id }}" mysql -N -uroot -ptest newapi -e "SELECT initial_route_group_codes FROM access_policy_states WHERE id=1")" = '["route_a","route_disabled"]'
+          test "$(docker exec "${{ job.services.mysql.id }}" mysql -N -uroot -ptest newapi -e "SELECT price_ratio FROM user_level_route_groups WHERE user_level_code='standard' AND route_group_code='route_a'")" = '0.800000000000000'
+          test "$(docker exec "${{ job.services.mysql.id }}" mysql -N -uroot -ptest newapi -e "SELECT COUNT(*) FROM user_level_route_groups WHERE user_level_code='standard' AND route_group_code='route_later'")" = 0
+          test "$(docker exec "${{ job.services.mysql.id }}" mysql -N -uroot -ptest -e "SELECT GROUP_CONCAT(CONCAT(TABLE_NAME, '.', COLUMN_NAME, ':', COLUMN_TYPE) ORDER BY TABLE_NAME, COLUMN_NAME SEPARATOR '|') FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='newapi' AND (TABLE_NAME, COLUMN_NAME) IN (('user_levels','topup_ratio'),('route_groups','base_ratio'),('user_level_route_groups','price_ratio'))")" = 'route_groups.base_ratio:decimal(20,15)|user_level_route_groups.price_ratio:decimal(20,15)|user_levels.topup_ratio:decimal(20,15)'
+          test "$(docker exec "${{ job.services.mysql.id }}" mysql -N -uroot -ptest -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='newapi' AND TABLE_NAME IN ('user_levels','route_groups','user_level_route_groups','access_policy_states','access_policy_migration_guards')")" = 5

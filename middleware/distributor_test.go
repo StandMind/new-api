@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -16,29 +18,17 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestDistributeAllowsRequestsThatDoNotSelectAChannel(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.GET("/v1/videos/:task_id", Distribute(), func(c *gin.Context) {
-		c.Status(http.StatusNoContent)
-	})
+func setupDistributorRouteTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
 
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/v1/videos/task-1", nil)
-	router.ServeHTTP(recorder, request)
-
-	assert.Equal(t, http.StatusNoContent, recorder.Code)
-}
-
-func TestDistributeSkipsCandidateWithoutAnEnabledKey(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	originalDB := model.DB
 	originalLogDB := model.LOG_DB
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
 	originalMainDatabaseType := common.MainDatabaseType()
 	originalLogDatabaseType := common.LogDatabaseType()
 
-	db, err := gorm.Open(sqlite.Open("file:distributor_route?mode=memory&cache=shared"), &gorm.Config{})
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
@@ -60,6 +50,26 @@ func TestDistributeSkipsCandidateWithoutAnEnabledKey(t *testing.T) {
 		&model.Ability{},
 		&model.GroupModelRoute{},
 	))
+	return db
+}
+
+func TestDistributeAllowsRequestsThatDoNotSelectAChannel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/v1/videos/:task_id", Distribute(), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/videos/task-1", nil)
+	router.ServeHTTP(recorder, request)
+
+	assert.Equal(t, http.StatusNoContent, recorder.Code)
+}
+
+func TestDistributeSkipsCandidateWithoutAnEnabledKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupDistributorRouteTestDB(t)
 
 	highPriority := int64(100)
 	lowPriority := int64(50)
@@ -123,6 +133,63 @@ func TestDistributeSkipsCandidateWithoutAnEnabledKey(t *testing.T) {
 		http.MethodPost,
 		"/v1/chat/completions",
 		strings.NewReader(`{"model":"route-model"}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, request)
+
+	assert.Equal(t, http.StatusNoContent, recorder.Code)
+}
+
+func TestDistributePlaygroundUsesCanonicalChatPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupDistributorRouteTestDB(t)
+
+	priority := int64(0)
+	channel := model.Channel{
+		Id:       8301,
+		Type:     constant.ChannelTypeAdvancedCustom,
+		Key:      "advanced-custom-key",
+		Status:   common.ChannelStatusEnabled,
+		Name:     "playground-advanced-custom",
+		Group:    "playground-group",
+		Models:   "playground-chat-model",
+		Priority: &priority,
+	}
+	channel.SetOtherSettings(dto.ChannelOtherSettings{
+		AdvancedCustom: &dto.AdvancedCustomConfig{Routes: []dto.AdvancedCustomRoute{
+			{IncomingPath: "/v1/chat/completions", UpstreamPath: "/v1/chat/completions"},
+		}},
+	})
+	require.NoError(t, db.Create(&channel).Error)
+	require.NoError(t, db.Create(&model.Ability{
+		Group:     "playground-group",
+		Model:     "playground-chat-model",
+		ChannelId: channel.Id,
+		Enabled:   true,
+		Priority:  &priority,
+	}).Error)
+	require.NoError(t, model.InitGroupModelRouteIndex())
+
+	router := gin.New()
+	router.POST(
+		"/pg/chat/completions",
+		func(c *gin.Context) {
+			common.SetContextKey(c, constant.ContextKeyUsingGroup, "playground-group")
+			common.SetContextKey(c, constant.ContextKeyUserGroup, "playground-group")
+			c.Next()
+		},
+		Distribute(),
+		func(c *gin.Context) {
+			assert.Equal(t, channel.Id, common.GetContextKeyInt(c, constant.ContextKeyChannelId))
+			c.Status(http.StatusNoContent)
+		},
+	)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/pg/chat/completions",
+		strings.NewReader(`{"model":"playground-chat-model","route_group":"playground-group"}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(recorder, request)

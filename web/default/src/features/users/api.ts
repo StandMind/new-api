@@ -53,14 +53,14 @@ export async function getUsers(
 }
 
 /**
- * Search users by keyword or group
+ * Search users by keyword or user level
  */
 export async function searchUsers(
   params: SearchUsersParams
 ): Promise<GetUsersResponse> {
   const {
     keyword = '',
-    group = '',
+    user_level = '',
     role = '',
     status = '',
     p = 1,
@@ -70,7 +70,7 @@ export async function searchUsers(
   } = params
   const queryParams = new URLSearchParams()
   queryParams.set('keyword', keyword)
-  queryParams.set('group', group)
+  queryParams.set('user_level', user_level)
   if (role) queryParams.set('role', role)
   if (status) queryParams.set('status', status)
   queryParams.set('p', String(p))

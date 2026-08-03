@@ -54,7 +54,7 @@ import {
   type ViewMode,
 } from '../constants'
 import type { PricingModel, PricingVendor, TokenUnit } from '../types'
-import { PricingSidebar } from './pricing-sidebar'
+import { PricingSidebar, type RouteGroupFilterOption } from './pricing-sidebar'
 
 type SegmentOption = {
   value: string
@@ -85,7 +85,7 @@ export interface PricingToolbarProps {
   onGroupChange: (value: string) => void
   onTagChange: (value: string) => void
   vendors: PricingVendor[]
-  groups: string[]
+  groups: RouteGroupFilterOption[]
   tags: string[]
   models: PricingModel[]
   hasActiveFilters: boolean

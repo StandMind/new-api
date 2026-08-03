@@ -72,8 +72,9 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { getUserModels, getUserGroups } from '@/lib/api'
+import { getUserModels } from '@/lib/api'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
+import { getMyRouteGroups } from '@/lib/route-groups'
 import { cn } from '@/lib/utils'
 
 import {
@@ -102,10 +103,33 @@ type ApiKeyMutateDrawerProps = {
 }
 
 const routingPriorityOptions = [
-  { value: 'auto', label: 'Auto', icon: Route },
-  { value: 'price', label: 'Price', icon: BadgeDollarSign },
-  { value: 'speed', label: 'Speed', icon: Gauge },
-  { value: 'success_rate', label: 'Success rate', icon: ShieldCheck },
+  {
+    value: 'auto',
+    label: 'Auto',
+    description:
+      'Automatically selects a group based on price, speed, and success rate.',
+    icon: Route,
+  },
+  {
+    value: 'price',
+    label: 'Price',
+    description: 'Prioritizes lower-cost groups.',
+    icon: BadgeDollarSign,
+  },
+  {
+    value: 'speed',
+    label: 'Speed',
+    description:
+      'Routes to groups with the lowest 24-hour average successful latency first.',
+    icon: Gauge,
+  },
+  {
+    value: 'success_rate',
+    label: 'Success rate',
+    description:
+      'Routes to groups with the highest 24-hour attempt success rate first.',
+    icon: ShieldCheck,
+  },
 ] as const
 
 export function ApiKeysMutateDrawer({
@@ -129,8 +153,8 @@ export function ApiKeysMutateDrawer({
 
   // Fetch groups
   const { data: groupsData } = useQuery({
-    queryKey: ['user-groups'],
-    queryFn: getUserGroups,
+    queryKey: ['my-route-groups'],
+    queryFn: getMyRouteGroups,
     enabled: open,
     staleTime: 0,
   })
@@ -145,11 +169,11 @@ export function ApiKeysMutateDrawer({
   const models = modelsData?.data || []
   const groups = useMemo<ApiKeyGroupOption[]>(
     () =>
-      Object.entries(groupsData?.data || {}).map(([key, info]) => ({
-        value: key,
-        label: key,
-        desc: info.desc || key,
-        ratio: info.ratio,
+      (groupsData?.data?.route_groups ?? []).map((group) => ({
+        value: group.code,
+        label: group.name,
+        desc: group.description || group.code,
+        ratio: group.price_ratio ?? group.base_ratio,
       })),
     [groupsData?.data]
   )
@@ -176,10 +200,7 @@ export function ApiKeysMutateDrawer({
       const defaults = getApiKeyFormDefaultValues(
         routingConfigData?.data?.default_priority
       )
-      const fallback =
-        groups.find((group) => group.value === 'default')?.value ??
-        groups[0]?.value ??
-        ''
+      const fallback = groups[0]?.value ?? ''
       defaults.group_chain = fallback ? [fallback] : []
       defaults.group = fallback
       form.reset(defaults)
@@ -381,7 +402,7 @@ export function ApiKeysMutateDrawer({
                           aria-label={t('Routing priority')}
                           variant='outline'
                           spacing={2}
-                          className='grid w-full grid-cols-2 gap-2 sm:grid-cols-4'
+                          className='grid w-full grid-cols-1 gap-2 sm:grid-cols-2'
                         >
                           {routingPriorityOptions.map((option) => {
                             const Icon = option.icon
@@ -389,17 +410,29 @@ export function ApiKeysMutateDrawer({
                               <ToggleGroupItem
                                 key={option.value}
                                 value={option.value}
-                                className='h-16 w-full flex-col gap-1 px-2'
+                                className='aria-pressed:border-primary aria-pressed:bg-primary/5 h-auto min-h-24 w-full items-start justify-start gap-3 p-3 text-left whitespace-normal'
                               >
-                                <Icon className='size-4' />
-                                <span className='max-w-full truncate text-xs'>
-                                  {t(option.label)}
+                                <span className='bg-muted flex size-8 shrink-0 items-center justify-center rounded-md'>
+                                  <Icon className='size-4' />
+                                </span>
+                                <span className='min-w-0'>
+                                  <span className='block text-sm font-medium'>
+                                    {t(option.label)}
+                                  </span>
+                                  <span className='text-muted-foreground mt-1 block text-xs leading-relaxed'>
+                                    {t(option.description)}
+                                  </span>
                                 </span>
                               </ToggleGroupItem>
                             )
                           })}
                         </ToggleGroup>
                       </FormControl>
+                      <FormDescription>
+                        {t(
+                          'When recent samples are insufficient, Auto, Speed, and Success rate use Price order.'
+                        )}
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

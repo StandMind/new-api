@@ -45,7 +45,8 @@ export const userSchema = z.object({
   quota: z.number(),
   used_quota: z.number(),
   request_count: z.number(),
-  group: z.string(),
+  user_level: z.string(),
+  user_level_name: z.string().optional(),
   aff_code: z.string().optional(),
   aff_count: z.number().optional(),
   aff_quota: z.number().optional(),
@@ -76,13 +77,19 @@ export interface ApiResponse<T = unknown> {
   success: boolean
   message?: string
   data?: T
+  route_group_names?: Record<string, string>
+  user_levels?: Array<{
+    code: string
+    name: string
+    is_default: boolean
+  }>
 }
 
 export type UserSortBy =
   | 'id'
   | 'username'
   | 'quota'
-  | 'group'
+  | 'user_level'
   | 'created_at'
   | 'last_login_at'
 
@@ -108,7 +115,7 @@ export interface GetUsersResponse {
 
 export interface SearchUsersParams {
   keyword?: string
-  group?: string
+  user_level?: string
   role?: string
   status?: string
   p?: number
@@ -123,7 +130,7 @@ export interface UserFormData {
   password?: string
   role?: number // Only used when creating user
   quota?: number // Only used when updating user
-  group?: string // Only used when updating user
+  user_level?: string
   remark?: string // Only used when updating user
   admin_permissions?: AdminPermissionMatrix
 }

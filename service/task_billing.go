@@ -295,15 +295,18 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 		usingGroup := task.Group
 		userGroup := ""
 		if user, err := model.GetUserById(task.UserId, false); err == nil {
-			userGroup = user.Group
+			userGroup = user.UserLevel
+			if userGroup == "" {
+				userGroup = model.UserLevelForLegacyGroup(user.Group)
+			}
 			if usingGroup == "" {
-				usingGroup = userGroup
+				usingGroup = model.LegacyGroupForUserLevel(userGroup)
 			}
 		}
 		if usingGroup == "" {
 			return
 		}
-		finalGroupRatio, _ = ratio_setting.ResolveGroupRatio(
+		finalGroupRatio, _ = model.ResolveAccessPolicyRatio(
 			userGroup,
 			usingGroup,
 			modelName,

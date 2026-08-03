@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '@tanstack/react-table'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -182,19 +182,21 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         size: 150,
       },
       {
-        id: 'upgrade_group',
-        header: t('Upgrade Group'),
+        id: 'upgrade_user_level',
+        header: t('Upgrade user level'),
         meta: { mobileHidden: true },
         cell: ({ row }) => {
-          const group = row.original.plan.upgrade_group
-          if (!group) {
+          const userLevel = row.original.plan.upgrade_user_level
+          if (!userLevel) {
             return (
               <span className='text-muted-foreground'>{t('No Upgrade')}</span>
             )
           }
           return (
             <BadgeCell>
-              <GroupBadge group={group} />
+              <GroupBadge
+                group={row.original.plan.upgrade_user_level_name || userLevel}
+              />
             </BadgeCell>
           )
         },

@@ -47,6 +47,9 @@ var (
 
 func InitSmartRouting() error {
 	model.RegisterRoutingDataChangeHook(TriggerSmartRoutingRebuild)
+	if err := model.InitAccessPolicySnapshot(); err != nil {
+		return err
+	}
 	if err := model.InitGroupModelRouteIndex(); err != nil {
 		return err
 	}
@@ -109,8 +112,7 @@ func RebuildSmartRoutingSnapshot() error {
 		return err
 	}
 
-	userGroups := knownSmartRoutingUserGroups()
-	allGroups := ratio_setting.GetGroupRatioCopy()
+	userGroups := model.GetKnownUserLevelCodes()
 	snapshot := &smartRoutingSnapshot{
 		createdAt:       time.Now(),
 		rankings:        make(map[smartRoutingKey]smartRoutingRanking),
@@ -120,13 +122,11 @@ func RebuildSmartRoutingSnapshot() error {
 		usable := GetUserUsableGroups(userGroup)
 		accessible := make([]string, 0, len(usable))
 		for group := range usable {
-			if _, ok := allGroups[group]; ok {
-				accessible = append(accessible, group)
-			}
+			accessible = append(accessible, group)
 		}
 		sort.SliceStable(accessible, func(i, j int) bool {
-			left, _ := ratio_setting.ResolveGroupRatio(userGroup, accessible[i], "")
-			right, _ := ratio_setting.ResolveGroupRatio(userGroup, accessible[j], "")
+			left, _ := model.ResolveAccessPolicyRatio(userGroup, accessible[i], "")
+			right, _ := model.ResolveAccessPolicyRatio(userGroup, accessible[j], "")
 			if left != right {
 				return left < right
 			}
@@ -166,30 +166,11 @@ func RebuildSmartRoutingSnapshot() error {
 	return nil
 }
 
-func knownSmartRoutingUserGroups() []string {
-	groups := map[string]struct{}{"": {}}
-	for group := range ratio_setting.GetGroupRatioCopy() {
-		groups[group] = struct{}{}
-	}
-	for group := range ratio_setting.GetGroupGroupRatioCopy() {
-		groups[group] = struct{}{}
-	}
-	for group := range ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.ReadAll() {
-		groups[group] = struct{}{}
-	}
-	result := make([]string, 0, len(groups))
-	for group := range groups {
-		result = append(result, group)
-	}
-	sort.Strings(result)
-	return result
-}
-
 func priceOrderedGroups(userGroup, modelName string, groups []string) []string {
 	ordered := append([]string(nil), groups...)
 	sort.SliceStable(ordered, func(i, j int) bool {
-		left, _ := ratio_setting.ResolveGroupRatio(userGroup, ordered[i], modelName)
-		right, _ := ratio_setting.ResolveGroupRatio(userGroup, ordered[j], modelName)
+		left, _ := model.ResolveAccessPolicyRatio(userGroup, ordered[i], modelName)
+		right, _ := model.ResolveAccessPolicyRatio(userGroup, ordered[j], modelName)
 		if left != right {
 			return left < right
 		}
@@ -257,7 +238,7 @@ func autoRoutingScores(userGroup, modelName string, groups []string, stats map[s
 	minPrice, maxPrice := math.Inf(1), math.Inf(-1)
 	minSpeed, maxSpeed := math.Inf(1), math.Inf(-1)
 	for _, group := range groups {
-		price, _ := ratio_setting.ResolveGroupRatio(userGroup, group, modelName)
+		price, _ := model.ResolveAccessPolicyRatio(userGroup, group, modelName)
 		speed := float64(stats[group].SuccessLatencyMs) / float64(stats[group].SuccessCount)
 		prices[group] = price
 		speeds[group] = speed
@@ -293,9 +274,6 @@ func GetSmartRoutingGroups(userGroup, modelName, requestPath string, priority co
 		ranking, ok = snapshot.rankings[smartRoutingKey{userGroup: userGroup, model: normalizedModel, priority: priority}]
 	}
 	if !ok {
-		ranking, ok = snapshot.rankings[smartRoutingKey{userGroup: "", model: modelName, priority: priority}]
-	}
-	if !ok {
 		return nil, "unavailable"
 	}
 	return model.FilterRouteGroupsForRequest(ranking.groups, modelName, requestPath), ranking.basis
@@ -306,9 +284,6 @@ func GetSmartRoutingAccessibleGroups(userGroup string) []string {
 	if snapshot == nil {
 		return nil
 	}
-	groups, ok := snapshot.accessibleGroup[userGroup]
-	if !ok {
-		groups = snapshot.accessibleGroup[""]
-	}
+	groups := snapshot.accessibleGroup[userGroup]
 	return append([]string(nil), groups...)
 }

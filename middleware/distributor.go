@@ -25,8 +25,9 @@ import (
 )
 
 type ModelRequest struct {
-	Model string `json:"model"`
-	Group string `json:"group,omitempty"`
+	Model      string `json:"model"`
+	Group      string `json:"group,omitempty"`
+	RouteGroup string `json:"route_group,omitempty"`
 }
 
 func Distribute() func(c *gin.Context) {
@@ -96,11 +97,19 @@ func Distribute() func(c *gin.Context) {
 						return
 					}
 					if playgroundRequest.Group != "" {
-						if !service.GroupInUserUsableGroups(usingGroup, playgroundRequest.Group) && playgroundRequest.Group != usingGroup {
+						abortWithOpenAiMessage(c, http.StatusBadRequest, "Playground group 字段已废弃，请使用 route_group")
+						return
+					}
+					if playgroundRequest.RouteGroup != "" {
+						userLevel := common.GetContextKeyString(c, constant.ContextKeyUserLevel)
+						if userLevel == "" {
+							userLevel = common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+						}
+						if !service.GroupInUserUsableGroups(userLevel, playgroundRequest.RouteGroup) {
 							abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorGroupAccessDenied))
 							return
 						}
-						usingGroup = playgroundRequest.Group
+						usingGroup = playgroundRequest.RouteGroup
 						common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
 						playgroundGroupOverride = true
 					}
@@ -108,6 +117,10 @@ func Distribute() func(c *gin.Context) {
 
 				groups := common.GetContextKeyStringSlice(c, constant.ContextKeyTokenGroupChain)
 				routingPriority := constant.NormalizeRoutingPriority(common.GetContextKeyString(c, constant.ContextKeyTokenRoutingPriority))
+				routingRequestPath := c.Request.URL.Path
+				if strings.HasPrefix(routingRequestPath, "/pg/chat/completions") {
+					routingRequestPath = "/v1/chat/completions" + strings.TrimPrefix(routingRequestPath, "/pg/chat/completions")
+				}
 				rankingBasis := ""
 				if playgroundGroupOverride {
 					groups = []string{usingGroup}
@@ -116,7 +129,7 @@ func Distribute() func(c *gin.Context) {
 					groups, rankingBasis = service.GetSmartRoutingGroups(
 						common.GetContextKeyString(c, constant.ContextKeyUserGroup),
 						modelRequest.Model,
-						c.Request.URL.Path,
+						routingRequestPath,
 						routingPriority,
 					)
 				} else if len(groups) == 0 {
@@ -129,7 +142,7 @@ func Distribute() func(c *gin.Context) {
 				routePlan, routeErr := service.BuildRouteAttemptPlan(
 					groups,
 					modelRequest.Model,
-					c.Request.URL.Path,
+					routingRequestPath,
 					routingPriority != constant.RoutingPriorityManual || len(groups) > 1,
 				)
 				if routeErr != nil {
@@ -253,12 +266,16 @@ func getModelFromJSONBody(c *gin.Context) (*ModelRequest, error) {
 		return nil, errors.New("invalid JSON request body")
 	}
 
-	values := gjson.GetManyBytes(requestBody, "model", "group")
+	values := gjson.GetManyBytes(requestBody, "model", "group", "route_group")
 	model, err := getJSONStringValue(values[0], "model")
 	if err != nil {
 		return nil, err
 	}
 	group, err := getJSONStringValue(values[1], "group")
+	if err != nil {
+		return nil, err
+	}
+	routeGroup, err := getJSONStringValue(values[2], "route_group")
 	if err != nil {
 		return nil, err
 	}
@@ -269,8 +286,9 @@ func getModelFromJSONBody(c *gin.Context) (*ModelRequest, error) {
 	c.Request.Body = io.NopCloser(storage)
 
 	return &ModelRequest{
-		Model: model,
-		Group: group,
+		Model:      model,
+		Group:      group,
+		RouteGroup: routeGroup,
 	}, nil
 }
 
@@ -441,7 +459,8 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		}
 		modelRequest.Model = req.Model
 		modelRequest.Group = req.Group
-		common.SetContextKey(c, constant.ContextKeyTokenGroup, modelRequest.Group)
+		modelRequest.RouteGroup = req.RouteGroup
+		common.SetContextKey(c, constant.ContextKeyTokenGroup, modelRequest.RouteGroup)
 	}
 
 	if strings.HasPrefix(c.Request.URL.Path, "/v1/responses/compact") && modelRequest.Model != "" {

@@ -71,6 +71,9 @@ func TestTokenAuthRequiresValidExplicitGroupChain(t *testing.T) {
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	require.NoError(t, db.AutoMigrate(
 		&model.User{},
+		&model.UserLevel{},
+		&model.RouteGroup{},
+		&model.UserLevelRouteGroup{},
 		&model.Token{},
 		&model.Channel{},
 		&model.Ability{},
@@ -80,12 +83,22 @@ func TestTokenAuthRequiresValidExplicitGroupChain(t *testing.T) {
 	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"group-a":0.8,"group-b":1.2}`))
 	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"Default","group-a":"A","group-b":"B"}`))
 	require.NoError(t, db.Create(&model.User{
-		Id:       8811,
-		Username: "auto-token-user",
-		Password: "password",
-		Group:    "default",
-		Status:   common.UserStatusEnabled,
-		Quota:    1000,
+		Id:        8811,
+		Username:  "auto-token-user",
+		Password:  "password",
+		Group:     "default",
+		UserLevel: "standard",
+		Status:    common.UserStatusEnabled,
+		Quota:     1000,
+	}).Error)
+	require.NoError(t, db.Create(&model.UserLevel{Code: "standard", Name: "Standard", IsDefault: true, Enabled: true, TopupRatio: 1}).Error)
+	require.NoError(t, db.Create(&[]model.RouteGroup{
+		{Code: "group-a", Name: "A", BaseRatio: 0.8, Enabled: true},
+		{Code: "group-b", Name: "B", BaseRatio: 1.2, Enabled: true},
+	}).Error)
+	require.NoError(t, db.Create(&[]model.UserLevelRouteGroup{
+		{UserLevelCode: "standard", RouteGroupCode: "group-a"},
+		{UserLevelCode: "standard", RouteGroupCode: "group-b"},
 	}).Error)
 	tokens := []model.Token{
 		{
@@ -104,7 +117,7 @@ func TestTokenAuthRequiresValidExplicitGroupChain(t *testing.T) {
 			Status:         common.TokenStatusEnabled,
 			ExpiredTime:    -1,
 			UnlimitedQuota: true,
-			Group:          "default",
+			Group:          "group-a",
 		},
 		{
 			UserId:         8811,
@@ -113,8 +126,8 @@ func TestTokenAuthRequiresValidExplicitGroupChain(t *testing.T) {
 			Status:         common.TokenStatusEnabled,
 			ExpiredTime:    -1,
 			UnlimitedQuota: true,
-			Group:          "default",
-			GroupChain:     model.StringArray{"vip", "default"},
+			Group:          "group-a",
+			GroupChain:     model.StringArray{"group-b", "group-a"},
 		},
 		{
 			UserId:         8811,
@@ -123,8 +136,8 @@ func TestTokenAuthRequiresValidExplicitGroupChain(t *testing.T) {
 			Status:         common.TokenStatusEnabled,
 			ExpiredTime:    -1,
 			UnlimitedQuota: true,
-			Group:          "default",
-			GroupChain:     model.StringArray{"default"},
+			Group:          "group-a",
+			GroupChain:     model.StringArray{"group-a"},
 		},
 		{
 			UserId:          8811,
@@ -133,8 +146,8 @@ func TestTokenAuthRequiresValidExplicitGroupChain(t *testing.T) {
 			Status:          common.TokenStatusEnabled,
 			ExpiredTime:     -1,
 			UnlimitedQuota:  true,
-			Group:           "default",
-			GroupChain:      model.StringArray{"default"},
+			Group:           "group-a",
+			GroupChain:      model.StringArray{"group-a"},
 			RoutingPriority: "price",
 		},
 		{
@@ -144,8 +157,8 @@ func TestTokenAuthRequiresValidExplicitGroupChain(t *testing.T) {
 			Status:          common.TokenStatusEnabled,
 			ExpiredTime:     -1,
 			UnlimitedQuota:  true,
-			Group:           "default",
-			GroupChain:      model.StringArray{"default"},
+			Group:           "group-a",
+			GroupChain:      model.StringArray{"group-a"},
 			RoutingPriority: "random",
 		},
 	}
@@ -160,6 +173,7 @@ func TestTokenAuthRequiresValidExplicitGroupChain(t *testing.T) {
 		{Group: "group-a", Model: "auth-smart-model", ChannelId: 8821, Enabled: true, Priority: &priority, Weight: weight},
 		{Group: "group-b", Model: "auth-smart-model", ChannelId: 8822, Enabled: true, Priority: &priority, Weight: weight},
 	}).Error)
+	require.NoError(t, model.RebuildAccessPolicySnapshot())
 	require.NoError(t, model.InitGroupModelRouteIndex())
 	require.NoError(t, service.RebuildSmartRoutingSnapshot())
 
@@ -180,8 +194,8 @@ func TestTokenAuthRequiresValidExplicitGroupChain(t *testing.T) {
 		{name: "auto group", key: "deprecatedautotoken", statusCode: http.StatusForbidden, message: "auto"},
 		{name: "empty chain", key: "emptygroupchaintoken", statusCode: http.StatusForbidden, message: "未配置分组链"},
 		{name: "mismatched first group", key: "mismatchedgroupchain", statusCode: http.StatusForbidden, message: "首组与分组链不一致"},
-		{name: "valid explicit chain", key: "explicitgroupchain", statusCode: http.StatusNoContent, groups: "default"},
-		{name: "smart routing ignores compatibility chain", key: "smartroutingtoken", statusCode: http.StatusNoContent, routing: "price", groups: "group-a,default,group-b"},
+		{name: "valid explicit chain", key: "explicitgroupchain", statusCode: http.StatusNoContent, groups: "group-a"},
+		{name: "smart routing ignores compatibility chain", key: "smartroutingtoken", statusCode: http.StatusNoContent, routing: "price", groups: "group-a,group-b"},
 		{name: "invalid routing priority", key: "invalidroutingtoken", statusCode: http.StatusForbidden, message: "智能路由模式无效"},
 	}
 	for _, test := range tests {

@@ -902,7 +902,7 @@ export function ChannelMutateDrawer({
     const allGroups = new Set([...groupsData.data, ...(currentGroups || [])])
     return [...allGroups].map((group) => ({
       value: group,
-      label: group,
+      label: groupsData.route_group_names?.[group] || group,
     }))
   }, [groupsData, currentGroups])
 
@@ -1100,7 +1100,7 @@ export function ChannelMutateDrawer({
     },
     {
       id: CHANNEL_EDITOR_SECTION_IDS.models,
-      title: t('Models & Groups'),
+      title: t('Models & Route Groups'),
       description: getSectionStatusLabel(modelsStatus, t),
       statusLabel: getSectionStatusLabel(modelsStatus, t),
       status: modelsStatus,
@@ -3567,7 +3567,7 @@ export function ChannelMutateDrawer({
                               render={({ field }) => (
                                 <FormItem className='space-y-3'>
                                   <div className='space-y-1'>
-                                    <FormLabel>{t('Groups *')}</FormLabel>
+                                    <FormLabel>{t('Route Groups *')}</FormLabel>
                                     <FormDescription>
                                       {t(FIELD_DESCRIPTIONS.GROUP)}
                                     </FormDescription>

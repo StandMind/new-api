@@ -233,7 +233,16 @@ export async function updateBillingPreference(
   return res.data
 }
 
-export async function getGroups(): Promise<ApiResponse<string[]>> {
-  const res = await api.get('/api/group')
+export async function getUserLevels(): Promise<
+  ApiResponse<
+    Array<{
+      code: string
+      name: string
+      is_default: boolean
+      enabled: boolean
+    }>
+  >
+> {
+  const res = await api.get('/api/user-levels')
   return res.data
 }

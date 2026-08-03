@@ -50,7 +50,7 @@ const USER_SORTABLE_COLUMNS = new Set<UserSortBy>([
   'id',
   'username',
   'quota',
-  'group',
+  'user_level',
   'created_at',
   'last_login_at',
 ])
@@ -82,7 +82,7 @@ export function UsersTable() {
     columnFilters: [
       { columnId: 'status', searchKey: 'status', type: 'array' },
       { columnId: 'role', searchKey: 'role', type: 'array' },
-      { columnId: 'group', searchKey: 'group', type: 'string' },
+      { columnId: 'user_level', searchKey: 'userLevel', type: 'string' },
     ],
   })
   const statusFilter =
@@ -93,9 +93,10 @@ export function UsersTable() {
     (columnFilters.find((filter) => filter.id === 'role')?.value as
       | string[]
       | undefined) ?? []
-  const groupFilter =
-    (columnFilters.find((filter) => filter.id === 'group')?.value as string) ??
-    ''
+  const userLevelFilter =
+    (columnFilters.find((filter) => filter.id === 'user_level')?.value as
+      | string
+      | undefined) ?? ''
 
   const sortParams = useMemo(() => {
     const activeSort = sorting[0]
@@ -128,14 +129,16 @@ export function UsersTable() {
       globalFilter,
       statusFilter,
       roleFilter,
-      groupFilter,
+      userLevelFilter,
       sortParams,
       refreshTrigger,
     ],
     queryFn: async () => {
       const hasFilter = globalFilter?.trim()
       const hasColumnFilter =
-        statusFilter.length > 0 || roleFilter.length > 0 || Boolean(groupFilter)
+        statusFilter.length > 0 ||
+        roleFilter.length > 0 ||
+        Boolean(userLevelFilter)
       const params = {
         p: pagination.pageIndex + 1,
         page_size: pagination.pageSize,
@@ -149,7 +152,7 @@ export function UsersTable() {
               keyword: globalFilter,
               status: statusFilter[0] ?? '',
               role: roleFilter[0] ?? '',
-              group: groupFilter,
+              user_level: userLevelFilter,
             })
           : await getUsers(params)
 
@@ -231,13 +234,10 @@ export function UsersTable() {
           },
         ],
       }}
-      getRowClassName={(row, { isMobile }) =>
-        isDisabledUserRow(row.original)
-          ? isMobile
-            ? DISABLED_ROW_MOBILE
-            : DISABLED_ROW_DESKTOP
-          : undefined
-      }
+      getRowClassName={(row, { isMobile }) => {
+        if (!isDisabledUserRow(row.original)) return undefined
+        return isMobile ? DISABLED_ROW_MOBILE : DISABLED_ROW_DESKTOP
+      }}
       bulkActions={<DataTableBulkActions table={table} />}
     />
   )

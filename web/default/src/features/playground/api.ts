@@ -45,7 +45,7 @@ export async function sendChatCompletion(
  */
 export async function getUserModels(group: string): Promise<ModelOption[]> {
   const res = await api.get(API_ENDPOINTS.USER_MODELS, {
-    params: { group },
+    params: { route_group: group, endpoint: 'chat' },
   })
   const { data } = res
 
@@ -60,7 +60,7 @@ export async function getUserModels(group: string): Promise<ModelOption[]> {
 }
 
 /**
- * Get user groups
+ * Get route groups available to the current user level
  */
 export async function getUserGroups(): Promise<GroupOption[]> {
   const res = await api.get(API_ENDPOINTS.USER_GROUPS)
@@ -70,13 +70,20 @@ export async function getUserGroups(): Promise<GroupOption[]> {
     return []
   }
 
-  const groupData = data.data as Record<string, { desc: string; ratio: number }>
+  const groupData = data.data as {
+    route_groups?: Array<{
+      code: string
+      name: string
+      description: string
+      base_ratio: number
+      price_ratio: number | null
+    }>
+  }
 
-  // label is for button display (name only); desc is for dropdown content
-  return Object.entries(groupData).map(([group, info]) => ({
-    label: group,
-    value: group,
-    ratio: info.ratio,
-    desc: info.desc,
+  return (groupData.route_groups ?? []).map((group) => ({
+    label: group.name,
+    value: group.code,
+    ratio: group.price_ratio ?? group.base_ratio,
+    desc: group.description || group.code,
   }))
 }

@@ -46,12 +46,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { toIntlLocale } from '@/i18n/languages'
 import {
   formatCurrencyFromUSD,
   formatQuotaWithCurrency,
   getCurrencyLabel,
 } from '@/lib/currency'
-import { toIntlLocale } from '@/i18n/languages'
 import { formatTimestampToDate } from '@/lib/format'
 import { truncateText } from '@/lib/utils'
 
@@ -984,7 +984,7 @@ export function useChannelsColumns(
       // Group column
       {
         accessorKey: 'group',
-        header: t('Groups'),
+        header: t('Route Groups'),
         meta: { mobileHidden: true },
         cell: ({ row }) => {
           const group = row.getValue('group') as string
@@ -995,7 +995,11 @@ export function useChannelsColumns(
                 <GroupBadge
                   key={g}
                   group={g}
-                  label={sensitiveVisible ? undefined : SENSITIVE_MASK}
+                  label={
+                    sensitiveVisible
+                      ? row.original.route_group_names?.[g] || g
+                      : SENSITIVE_MASK
+                  }
                   size='sm'
                 />
               ))}

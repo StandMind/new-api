@@ -327,6 +327,7 @@ func TestBuildRouteAttemptPlanUsesNoDatabaseQueriesAfterIndexRefresh(t *testing.
 	t.Cleanup(func() {
 		model.DB.Config.Logger = originalLogger
 	})
+	assert.Equal(t, []string{"query-budget-model"}, model.GetEnabledModelsForGroupsForRequest(groups, "/v1/chat/completions"))
 	plan, err := BuildRouteAttemptPlan(groups, "query-budget-model", "/v1/chat/completions", true)
 	require.NoError(t, err)
 	require.Len(t, plan.Attempts(), len(groups))

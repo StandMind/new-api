@@ -598,6 +598,20 @@ func TestUpdateTokenMasksKeyInResponse(t *testing.T) {
 
 func TestAddTokenRoutingPriorityContract(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.UserLevel{}, &model.RouteGroup{}, &model.UserLevelRouteGroup{},
+		&model.Channel{}, &model.Ability{}, &model.GroupModelRoute{},
+	))
+	require.NoError(t, db.Create(&model.UserLevel{Code: "standard", Name: "Standard", IsDefault: true, Enabled: true, TopupRatio: 1}).Error)
+	require.NoError(t, db.Create(&model.RouteGroup{Code: "routing-a", Name: "Routing A", BaseRatio: 1, Enabled: true}).Error)
+	require.NoError(t, db.Create(&model.UserLevelRouteGroup{UserLevelCode: "standard", RouteGroupCode: "routing-a"}).Error)
+	require.NoError(t, db.Create(&model.Channel{
+		Id: 9101, Name: "routing-a-channel", Type: constant.ChannelTypeOpenAI,
+		Key: "test-key", Status: common.ChannelStatusEnabled, Group: "routing-a", Models: "routing-test-model",
+	}).Error)
+	require.NoError(t, db.Create(&model.Ability{Group: "routing-a", Model: "routing-test-model", ChannelId: 9101, Enabled: true}).Error)
+	require.NoError(t, model.RebuildAccessPolicySnapshot())
+	require.NoError(t, model.InitGroupModelRouteIndex())
 
 	tests := []struct {
 		name            string
@@ -627,7 +641,7 @@ func TestAddTokenRoutingPriorityContract(t *testing.T) {
 				body["routing_priority"] = test.routingPriority
 			}
 			ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 1)
-			common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+			common.SetContextKey(ctx, constant.ContextKeyUserGroup, "standard")
 			AddToken(ctx)
 
 			response := decodeAPIResponse(t, recorder)
@@ -642,8 +656,8 @@ func TestAddTokenRoutingPriorityContract(t *testing.T) {
 			var stored model.Token
 			require.NoError(t, db.First(&stored, "name = ?", body["name"]).Error)
 			assert.Equal(t, test.wantPriority, stored.RoutingPriority)
-			assert.Equal(t, "default", stored.Group)
-			assert.Equal(t, []string{"default"}, stored.GetGroupChain())
+			assert.Equal(t, "routing-a", stored.Group)
+			assert.Equal(t, []string{"routing-a"}, stored.GetGroupChain())
 		})
 	}
 
@@ -655,15 +669,15 @@ func TestAddTokenRoutingPriorityContract(t *testing.T) {
 		"routing_priority":     "",
 	}
 	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", manualBody, 1)
-	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "standard")
 	AddToken(ctx)
 	assert.False(t, decodeAPIResponse(t, recorder).Success)
 
 	manualBody["name"] = "routing-manual"
-	manualBody["group"] = "default"
-	manualBody["group_chain"] = []string{"default"}
+	manualBody["group"] = "routing-a"
+	manualBody["group_chain"] = []string{"routing-a"}
 	ctx, recorder = newAuthenticatedContext(t, http.MethodPost, "/api/token/", manualBody, 1)
-	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "standard")
 	AddToken(ctx)
 	assert.True(t, decodeAPIResponse(t, recorder).Success, recorder.Body.String())
 	var manual model.Token

@@ -1,5 +1,38 @@
 # Aivrae Production Migrations
 
+## User Levels And Route Groups
+
+`aivrae_access_policy_expand.py` arms the expand-stage migration that separates
+user levels from route groups. It fingerprints the complete legacy routing
+state and prints the exact non-`default` route-group code set that `standard`
+will receive. It does not expose channel credentials or include raw database
+state in its report.
+
+Run and review the preview before deploying the expand image:
+
+```bash
+python3 aivrae_access_policy_expand.py \
+  --dry-run \
+  --report /opt/new-api-stack/migration-reports/access-policy-expand-dry-run.json
+```
+
+Arm only the two reviewed fingerprints:
+
+```bash
+python3 aivrae_access_policy_expand.py \
+  --apply \
+  --expected-state-fingerprint <state-sha256> \
+  --expected-route-group-fingerprint <route-group-sha256> \
+  --report /opt/new-api-stack/migration-reports/access-policy-expand-apply.json
+```
+
+Apply creates and validates a fresh backup, locks all legacy migration inputs,
+rechecks the complete state, and writes a singleton migration guard in one
+transaction. The expand image verifies the same guard under transaction locks
+and marks it applied only after the complete backfill succeeds.
+
+## Smart Routing Cleanup
+
 `aivrae_smart_routing_cleanup.py` is a one-off PostgreSQL migration for the
 smart-routing rollout. It resolves production targets by channel name and
 does not contain historical channel IDs. Existing disabled historical

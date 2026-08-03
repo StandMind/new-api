@@ -40,29 +40,40 @@ func GetPricing(c *gin.Context) {
 	userId, exists := c.Get("id")
 	usableGroup := map[string]string{}
 	groupRatio := map[string]float64{}
-	for s, f := range ratio_setting.GetGroupRatioCopy() {
-		groupRatio[s] = f
-	}
-	var group string
+	group := model.GetDefaultUserLevelFromSnapshot()
 	if exists {
 		user, err := model.GetUserCache(userId.(int))
 		if err == nil {
-			group = user.Group
-			for g := range groupRatio {
-				ratio, ok := ratio_setting.GetGroupGroupRatio(group, g)
-				if ok {
-					groupRatio[g] = ratio
-				}
-			}
+			group = user.UserLevel
 		}
 	}
 
 	usableGroup = service.GetUserUsableGroups(group)
+	type usableRouteGroupView struct {
+		Code        string  `json:"code"`
+		Name        string  `json:"name"`
+		Description string  `json:"desc"`
+		Ratio       float64 `json:"ratio"`
+	}
+	usableGroupView := make(map[string]usableRouteGroupView, len(usableGroup))
+	for routeGroup := range usableGroup {
+		ratio, _ := model.ResolveAccessPolicyRatio(group, routeGroup, "")
+		groupRatio[routeGroup] = ratio
+		name := model.GetRouteGroupDisplayName(routeGroup)
+		description := usableGroup[routeGroup]
+		if route, ok := model.GetRouteGroupFromSnapshot(routeGroup); ok {
+			if route.Description != "" {
+				description = route.Description
+			}
+			name = route.Name
+		}
+		usableGroupView[routeGroup] = usableRouteGroupView{Code: routeGroup, Name: name, Description: description, Ratio: ratio}
+	}
 	pricing = filterPricingByUsableGroups(pricing, usableGroup)
 	locale := model.ResolveLocalizedTextLocale(c.Query("lang"), c.GetHeader("Accept-Language"))
 	pricing, vendors = model.LocalizePricingData(pricing, vendors, locale)
 	// check groupRatio contains usableGroup
-	for group := range ratio_setting.GetGroupRatioCopy() {
+	for group := range groupRatio {
 		if _, ok := usableGroup[group]; !ok {
 			delete(groupRatio, group)
 		}
@@ -76,13 +87,15 @@ func GetPricing(c *gin.Context) {
 	effectiveGroupModelRatio := make(map[string]map[string]float64, len(pricing))
 	for index := range pricing {
 		effective := make(map[string]float64)
+		pricing[index].RouteGroupNames = make(map[string]string)
 		for usableGroupName := range usableGroup {
 			if !common.StringsContains(pricing[index].EnableGroup, "all") &&
 				!common.StringsContains(pricing[index].EnableGroup, usableGroupName) {
 				continue
 			}
-			ratio, _ := ratio_setting.ResolveGroupRatio(group, usableGroupName, pricing[index].ModelName)
+			ratio, _ := model.ResolveAccessPolicyRatio(group, usableGroupName, pricing[index].ModelName)
 			effective[usableGroupName] = ratio
+			pricing[index].RouteGroupNames[usableGroupName] = model.GetRouteGroupDisplayName(usableGroupName)
 		}
 		pricing[index].EffectiveGroupRatio = effective
 		if officialPrice, ok := official_price_setting.GetModelPrice(pricing[index].ModelName); ok {
@@ -98,7 +111,7 @@ func GetPricing(c *gin.Context) {
 		"group_ratio":                 groupRatio,
 		"group_model_ratio":           rawGroupModelRatio,
 		"effective_group_model_ratio": effectiveGroupModelRatio,
-		"usable_group":                usableGroup,
+		"usable_group":                usableGroupView,
 		"supported_endpoint":          model.GetSupportedEndpointMap(),
 		"pricing_version":             "a42d372ccf0b5dd13ecf71203521f9d2",
 	})

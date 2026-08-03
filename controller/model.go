@@ -18,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/moonshot"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -181,7 +182,7 @@ func getModelListGroups(c *gin.Context) (modelListGroups, error) {
 	groupChain := common.GetContextKeyStringSlice(c, constant.ContextKeyTokenGroupChain)
 	if userGroup == "" && tokenGroup == "" {
 		var err error
-		userGroup, err = model.GetUserGroup(c.GetInt("id"), false)
+		userGroup, err = model.GetUserLevel(c.GetInt("id"), false)
 		if err != nil {
 			return modelListGroups{}, err
 		}
@@ -195,14 +196,19 @@ func getModelListGroups(c *gin.Context) (modelListGroups, error) {
 		}, nil
 	}
 
-	group := userGroup
+	ownerGroups := make([]string, 0)
 	if tokenGroup != "" {
-		group = tokenGroup
+		ownerGroups = append(ownerGroups, tokenGroup)
+	} else {
+		for group := range service.GetUserUsableGroups(userGroup) {
+			ownerGroups = append(ownerGroups, group)
+		}
+		sort.Strings(ownerGroups)
 	}
 	return modelListGroups{
 		userGroup:   userGroup,
 		tokenGroup:  tokenGroup,
-		ownerGroups: []string{group},
+		ownerGroups: ownerGroups,
 	}, nil
 }
 

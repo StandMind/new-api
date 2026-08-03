@@ -48,5 +48,17 @@
   "Price also applies to {{count}} other channels": "Price also applies to {{count}} other channels",
   "The preview is stale. Check OpenLux prices again.": "The preview is stale. Check OpenLux prices again.",
   "association_and_price": "Remove association and group price",
-  "openlux_only_price_retained": "Detach OpenLux and retain group price"
+  "openlux_only_price_retained": "Detach OpenLux and retain group price",
+  "Account levels control top-up pricing, request limits, and route access.": "Account levels control top-up pricing, request limits, and route access.",
+  "Configure explicit channel priority and weight within each route group.": "Configure explicit channel priority and weight within each route group.",
+  "Deletion is blocked while channels, abilities, tokens, routes, level grants, or OpenLux bindings reference this route group.": "Deletion is blocked while channels, abilities, tokens, routes, level grants, or OpenLux bindings reference this route group.",
+  "Deletion is blocked while users, subscriptions, or other business records reference this level.": "Deletion is blocked while users, subscriptions, or other business records reference this level.",
+  "New users are assigned to this level.": "New users are assigned to this level.",
+  "Route groups control channels, model availability, pricing, and request routing.": "Route groups control channels, model availability, pricing, and request routing.",
+  "Route groups served by channels with this tag": "Route groups served by channels with this tag",
+  "Select route groups (leave empty to keep current)": "Select route groups (leave empty to keep current)",
+  "Select the route groups served by this channel.": "Select the route groups served by this channel.",
+  "The code is permanent after the level is created.": "The code is permanent after the level is created.",
+  "The code is permanent after the route group is created.": "The code is permanent after the route group is created.",
+  "The route group that handled the requests": "The route group that handled the requests"
 }

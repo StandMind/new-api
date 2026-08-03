@@ -339,6 +339,11 @@ func migrateDB() error {
 		&Channel{},
 		&Token{},
 		&User{},
+		&UserLevel{},
+		&RouteGroup{},
+		&UserLevelRouteGroup{},
+		&AccessPolicyState{},
+		&AccessPolicyMigrationGuard{},
 		&PasskeyCredential{},
 		&Option{},
 		&Redemption{},
@@ -386,6 +391,9 @@ func migrateDB() error {
 			return err
 		}
 	}
+	if err := MigrateLegacyAccessPolicy(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -400,6 +408,11 @@ func migrateDBFast() error {
 		{&Channel{}, "Channel"},
 		{&Token{}, "Token"},
 		{&User{}, "User"},
+		{&UserLevel{}, "UserLevel"},
+		{&RouteGroup{}, "RouteGroup"},
+		{&UserLevelRouteGroup{}, "UserLevelRouteGroup"},
+		{&AccessPolicyState{}, "AccessPolicyState"},
+		{&AccessPolicyMigrationGuard{}, "AccessPolicyMigrationGuard"},
 		{&PasskeyCredential{}, "PasskeyCredential"},
 		{&Option{}, "Option"},
 		{&Redemption{}, "Redemption"},
@@ -464,6 +477,9 @@ func migrateDBFast() error {
 		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
 			return err
 		}
+	}
+	if err := MigrateLegacyAccessPolicy(); err != nil {
+		return err
 	}
 	common.SysLog("database migrated")
 	return nil
@@ -603,6 +619,8 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`max_purchase_per_user`" + ` integer DEFAULT 0,
 ` + "`upgrade_group`" + ` varchar(64) DEFAULT '',
 ` + "`downgrade_group`" + ` varchar(64) DEFAULT '',
+` + "`upgrade_user_level`" + ` varchar(64) DEFAULT '',
+` + "`downgrade_user_level`" + ` varchar(64) DEFAULT '',
 ` + "`total_amount`" + ` bigint NOT NULL DEFAULT 0,
 ` + "`quota_reset_period`" + ` varchar(16) DEFAULT 'never',
 ` + "`quota_reset_custom_seconds`" + ` bigint DEFAULT 0,
@@ -641,6 +659,8 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "max_purchase_per_user", DDL: "`max_purchase_per_user` integer DEFAULT 0"},
 		{Name: "upgrade_group", DDL: "`upgrade_group` varchar(64) DEFAULT ''"},
 		{Name: "downgrade_group", DDL: "`downgrade_group` varchar(64) DEFAULT ''"},
+		{Name: "upgrade_user_level", DDL: "`upgrade_user_level` varchar(64) DEFAULT ''"},
+		{Name: "downgrade_user_level", DDL: "`downgrade_user_level` varchar(64) DEFAULT ''"},
 		{Name: "total_amount", DDL: "`total_amount` bigint NOT NULL DEFAULT 0"},
 		{Name: "quota_reset_period", DDL: "`quota_reset_period` varchar(16) DEFAULT 'never'"},
 		{Name: "quota_reset_custom_seconds", DDL: "`quota_reset_custom_seconds` bigint DEFAULT 0"},

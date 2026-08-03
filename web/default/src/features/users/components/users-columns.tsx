@@ -173,18 +173,20 @@ export function useUsersColumns(): ColumnDef<User>[] {
       meta: { mobileOrder: 40 },
     },
     {
-      accessorKey: 'group',
-      header: t('Group'),
+      accessorKey: 'user_level',
+      header: t('User level'),
       cell: ({ row }) => {
-        const group = row.getValue('group') as string
+        const userLevel = row.getValue('user_level') as string
         return (
           <BadgeCell>
-            <GroupBadge group={group} />
+            <GroupBadge group={row.original.user_level_name || userLevel} />
           </BadgeCell>
         )
       },
       filterFn: (row, id, value) => {
-        const group = String(row.getValue(id) || t('User Group')).toLowerCase()
+        const group = String(
+          row.original.user_level_name || row.getValue(id) || t('User level')
+        ).toLowerCase()
         const searchValue = String(value).toLowerCase()
         return group.includes(searchValue)
       },

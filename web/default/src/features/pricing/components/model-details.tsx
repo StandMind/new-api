@@ -483,7 +483,9 @@ function ModelBackendSignalsSection(props: { model: PricingModel }) {
 function ModelBackendProviderSection(props: { model: PricingModel }) {
   const { t } = useTranslation()
   const model = props.model
-  const groups = normalizeCatalogItems(model.enable_groups)
+  const groups = normalizeCatalogItems(model.enable_groups).map(
+    (group) => model.route_group_names?.[group] || group
+  )
   const endpoints = normalizeCatalogItems(model.supported_endpoint_types)
   const tags = parseTags(model.tags)
   const cells: React.ReactNode[] = []
@@ -718,7 +720,10 @@ function getDynamicFormattedPricesByTier(
 function GroupPricingSection(props: {
   model: PricingModel
   groupRatio: Record<string, number>
-  usableGroup: Record<string, { desc: string; ratio: number }>
+  usableGroup: Record<
+    string,
+    { code: string; name: string; desc: string; ratio: number }
+  >
   priceRate: number
   usdExchangeRate: number
   tokenUnit: TokenUnit
@@ -894,7 +899,13 @@ function GroupPricingSection(props: {
               }),
               cell: (row) => (
                 <div className='flex min-w-44 flex-wrap items-center gap-1.5'>
-                  <GroupBadge group={row.group} size='sm' />
+                  <GroupBadge
+                    group={row.group}
+                    label={
+                      props.model.route_group_names?.[row.group] || row.group
+                    }
+                    size='sm'
+                  />
                   <OfficialPriceBadge
                     model={props.model}
                     actualPrice={row.actualInputPrice}
@@ -1023,7 +1034,11 @@ function GroupPricingSection(props: {
                 : (props.model.model_price || 0) * ratio
               return (
                 <div className='flex min-w-44 flex-wrap items-center gap-1.5'>
-                  <GroupBadge group={group} size='sm' />
+                  <GroupBadge
+                    group={group}
+                    label={props.model.route_group_names?.[group] || group}
+                    size='sm'
+                  />
                   <OfficialPriceBadge
                     model={props.model}
                     actualPrice={actualPrice}
@@ -1101,7 +1116,10 @@ const TAB_META: Record<
 export interface ModelDetailsContentProps {
   model: PricingModel
   groupRatio: Record<string, number>
-  usableGroup: Record<string, { desc: string; ratio: number }>
+  usableGroup: Record<
+    string,
+    { code: string; name: string; desc: string; ratio: number }
+  >
   endpointMap: Record<string, { path?: string; method?: string }>
   priceRate: number
   usdExchangeRate: number

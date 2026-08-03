@@ -211,7 +211,7 @@ export function ChannelsTable() {
   const groupOptions = useMemo(
     () =>
       (groupsData?.data || []).map((g) => ({
-        label: g,
+        label: groupsData?.route_group_names?.[g] || g,
         value: g,
       })),
     [groupsData]
@@ -398,7 +398,7 @@ export function ChannelsTable() {
   }, [t, typeCounts, typeFilter])
 
   const groupFilterOptions = [
-    { label: t('All Groups'), value: 'all' },
+    { label: t('All Route Groups'), value: 'all' },
     ...groupOptions.map((option) => ({
       ...option,
       label: sensitiveVisible ? option.label : '••••',
@@ -454,7 +454,7 @@ export function ChannelsTable() {
           },
           {
             columnId: 'group',
-            title: t('Group'),
+            title: t('Route Group'),
             options: groupFilterOptions,
             singleSelect: true,
           },

@@ -242,8 +242,8 @@ export interface UserWalletData {
   aff_history_quota: number
   /** Number of successful affiliate invites */
   aff_count: number
-  /** User group */
-  group: string
+  /** Account policy level */
+  user_level: string
 }
 
 /**

@@ -170,8 +170,11 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Set("channel", channel.Type)
 	c.Set("base_url", channel.GetBaseURL())
-	group, _ := model.GetUserGroup(testUserID, false)
-	c.Set("group", group)
+	routeGroups := channel.GetGroups()
+	if len(routeGroups) == 0 {
+		return testResult{localErr: fmt.Errorf("channel has no route group")}
+	}
+	common.SetContextKey(c, constant.ContextKeyUsingGroup, routeGroups[0])
 
 	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, testModel)
 	if newAPIError != nil {
