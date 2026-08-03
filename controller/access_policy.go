@@ -483,7 +483,7 @@ func writeControllerOption(tx *gorm.DB, key string, value interface{}) error {
 	if err != nil {
 		return err
 	}
-	return tx.Where("key = ?", key).Assign(model.Option{Value: string(bytes)}).FirstOrCreate(&model.Option{Key: key}).Error
+	return tx.Assign(model.Option{Value: string(bytes)}).FirstOrCreate(&model.Option{Key: key}).Error
 }
 
 func GetMyRouteGroups(c *gin.Context) {

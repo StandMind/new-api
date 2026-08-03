@@ -543,7 +543,7 @@ func GetDefaultUserLevelCode(tx *gorm.DB) (string, error) {
 
 func optionValue(tx *gorm.DB, key string) (string, error) {
 	var option Option
-	err := tx.Where("key = ?", key).First(&option).Error
+	err := tx.Where(commonKeyCol+" = ?", key).First(&option).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return "", nil
 	}
