@@ -43,9 +43,12 @@ export async function sendChatCompletion(
 /**
  * Get user available models
  */
-export async function getUserModels(group: string): Promise<ModelOption[]> {
+export async function getUserModels(group?: string): Promise<ModelOption[]> {
   const res = await api.get(API_ENDPOINTS.USER_MODELS, {
-    params: { route_group: group, endpoint: 'chat' },
+    params: {
+      ...(group ? { route_group: group } : {}),
+      endpoint: 'chat',
+    },
   })
   const { data } = res
 

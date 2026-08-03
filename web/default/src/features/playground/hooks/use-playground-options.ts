@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -17,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -25,6 +25,7 @@ import { getUserGroups, getUserModels } from '../api'
 import {
   getGroupFallback,
   getModelFallback,
+  getPlaygroundModelQuery,
   getOptionLoadErrorMessage,
   shouldClearModelForGroup,
 } from '../lib'
@@ -33,6 +34,7 @@ import type { GroupOption, ModelOption, PlaygroundConfig } from '../types'
 type UsePlaygroundOptionsParams = {
   currentGroup: string
   currentModel: string
+  routingPriority: PlaygroundConfig['routing_priority']
   setGroups: (groups: GroupOption[]) => void
   setModels: (models: ModelOption[]) => void
   updateConfig: <K extends keyof PlaygroundConfig>(
@@ -44,11 +46,13 @@ type UsePlaygroundOptionsParams = {
 export function usePlaygroundOptions({
   currentGroup,
   currentModel,
+  routingPriority,
   setGroups,
   setModels,
   updateConfig,
 }: UsePlaygroundOptionsParams) {
   const { t } = useTranslation()
+  const modelQuery = getPlaygroundModelQuery(currentGroup, routingPriority)
 
   const {
     data: modelsData,
@@ -56,9 +60,9 @@ export function usePlaygroundOptions({
     isError: isModelsError,
     isLoading: isLoadingModels,
   } = useQuery({
-    queryKey: ['playground-models', currentGroup],
-    queryFn: () => getUserModels(currentGroup),
-    enabled: currentGroup !== '',
+    queryKey: modelQuery.queryKey,
+    queryFn: () => getUserModels(modelQuery.routeGroup),
+    enabled: modelQuery.enabled,
   })
 
   const {

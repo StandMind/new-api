@@ -1,4 +1,3 @@
-import { ChevronsUpDown, Check, CpuIcon, LayersIcon } from 'lucide-react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -17,6 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import {
+  BadgeDollarSign,
+  ChevronsUpDown,
+  Check,
+  CpuIcon,
+  Gauge,
+  LayersIcon,
+  Route,
+  ShieldCheck,
+} from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -63,6 +72,38 @@ interface GroupOption {
   desc?: string
   description?: string
 }
+
+type RoutingPriority = 'auto' | 'price' | 'speed' | 'success_rate'
+
+const smartRoutingOptions = [
+  {
+    value: 'auto',
+    label: 'Auto',
+    description:
+      'Automatically selects a group based on price, speed, and success rate.',
+    icon: Route,
+  },
+  {
+    value: 'price',
+    label: 'Price',
+    description: 'Prioritizes lower-cost groups.',
+    icon: BadgeDollarSign,
+  },
+  {
+    value: 'speed',
+    label: 'Speed',
+    description:
+      'Routes to groups with the lowest 24-hour average successful latency first.',
+    icon: Gauge,
+  },
+  {
+    value: 'success_rate',
+    label: 'Success rate',
+    description:
+      'Routes to groups with the highest 24-hour attempt success rate first.',
+    icon: ShieldCheck,
+  },
+] as const
 
 interface ModelSelectorProps {
   selectedModel: string
@@ -547,6 +588,8 @@ export interface ModelGroupSelectorProps {
   selectedGroup: string
   groups: GroupOption[]
   onGroupChange: (value: string) => void
+  selectedRoutingPriority: RoutingPriority | ''
+  onRoutingPriorityChange: (value: RoutingPriority | '') => void
   // Common props
   className?: string
   disabled?: boolean
@@ -563,6 +606,8 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
   selectedGroup,
   groups,
   onGroupChange,
+  selectedRoutingPriority,
+  onRoutingPriorityChange,
   className,
   disabled = false,
 }) => {
@@ -581,6 +626,13 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
   const currentGroup = useMemo(
     () => groups.find((group) => group.value === selectedGroup),
     [groups, selectedGroup]
+  )
+  const currentRoutingOption = useMemo(
+    () =>
+      smartRoutingOptions.find(
+        (option) => option.value === selectedRoutingPriority
+      ),
+    [selectedRoutingPriority]
   )
   const filteredModels = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -613,9 +665,17 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
 
   const handleGroupChange = useCallback(
     (value: string) => {
+      onRoutingPriorityChange('')
       onGroupChange(value)
     },
-    [onGroupChange]
+    [onGroupChange, onRoutingPriorityChange]
+  )
+
+  const handleRoutingPriorityChange = useCallback(
+    (value: RoutingPriority) => {
+      onRoutingPriorityChange(value)
+    },
+    [onRoutingPriorityChange]
   )
 
   useEffect(() => {
@@ -626,6 +686,9 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
     let secondFrameId = 0
     const firstFrameId = window.requestAnimationFrame(() => {
       secondFrameId = window.requestAnimationFrame(() => {
+        if (isMobile) {
+          return
+        }
         scrollSelectedOptionIntoView(
           selectedGroupOptionRef.current,
           groupScrollContainerRef.current
@@ -638,7 +701,7 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
       window.cancelAnimationFrame(firstFrameId)
       window.cancelAnimationFrame(secondFrameId)
     }
-  }, [open, selectedGroup, selectedModel])
+  }, [isMobile, open, selectedGroup, selectedModel, selectedRoutingPriority])
 
   const renderTrigger = () => (
     <Button
@@ -659,7 +722,9 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
         {currentModel?.label || t('Model')}
       </span>
       <span className='bg-muted text-muted-foreground hidden max-w-20 shrink-0 rounded px-1.5 py-0.5 text-[10px] sm:inline-flex'>
-        {currentGroup?.label || t('Group')}
+        {currentRoutingOption
+          ? t(currentRoutingOption.label)
+          : currentGroup?.label || t('Group')}
       </span>
       <ChevronsUpDown className='text-muted-foreground ml-auto size-3.5 shrink-0 opacity-60' />
     </Button>
@@ -672,9 +737,6 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
         !isMobile && modelGroupSelectorLayoutClasses.groupColumn
       )}
     >
-      <div className='text-muted-foreground px-1 text-[11px] leading-4 font-medium'>
-        {t('Model Group')}
-      </div>
       <div
         className={cn(
           'grid gap-1',
@@ -682,8 +744,58 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
         )}
         ref={groupScrollContainerRef}
       >
+        <div className='text-muted-foreground px-1 text-[11px] leading-4 font-medium'>
+          {t('Smart routing')}
+        </div>
+        {smartRoutingOptions.map((option) => {
+          const Icon = option.icon
+          const isSelected = selectedRoutingPriority === option.value
+
+          return (
+            <button
+              className={cn(
+                'flex min-w-0 items-start gap-2 rounded-md px-2.5 py-2 text-left transition-colors',
+                isSelected
+                  ? 'bg-primary/10 text-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+              )}
+              disabled={disabled}
+              key={option.value}
+              onClick={() => handleRoutingPriorityChange(option.value)}
+              ref={isSelected ? selectedGroupOptionRef : undefined}
+              type='button'
+            >
+              <span className='bg-muted mt-0.5 flex size-6 shrink-0 items-center justify-center rounded'>
+                <Icon className='size-3.5' />
+              </span>
+              <span className='min-w-0 flex-1'>
+                <span className='block text-[12px] leading-4 font-medium'>
+                  {t(option.label)}
+                </span>
+                <span className='text-muted-foreground mt-0.5 block text-[10px] leading-4'>
+                  {t(option.description)}
+                </span>
+              </span>
+              <Check
+                className={cn(
+                  'mt-0.5 size-3.5 shrink-0',
+                  isSelected ? 'opacity-100' : 'opacity-0'
+                )}
+              />
+            </button>
+          )
+        })}
+        <p className='text-muted-foreground px-2.5 py-1 text-[10px] leading-4'>
+          {t(
+            'When recent samples are insufficient, Auto, Speed, and Success rate use Price order.'
+          )}
+        </p>
+        <div className='border-border text-muted-foreground mt-1 border-t px-1 pt-2 text-[11px] leading-4 font-medium'>
+          {t('Model Group')}
+        </div>
         {groups.map((group) => {
-          const isSelected = selectedGroup === group.value
+          const isSelected =
+            selectedRoutingPriority === '' && selectedGroup === group.value
 
           return (
             <button
@@ -805,7 +917,10 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
   return isMobile ? (
     <Drawer open={open} onOpenChange={setOpen}>
       <DrawerTrigger asChild>{renderTrigger()}</DrawerTrigger>
-      <DrawerContent className='flex max-h-[80vh] min-h-[60vh] flex-col'>
+      <DrawerContent
+        className='flex max-h-[80vh] min-h-[60vh] flex-col'
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
         <DrawerHeader className='pb-3 text-left'>
           <DrawerTitle>{t('Select Model')}</DrawerTitle>
         </DrawerHeader>
@@ -820,7 +935,7 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
       <PopoverContent
         align='end'
         className={cn(
-          'bg-popover z-50 w-[34rem] max-w-[calc(100vw-2rem)] rounded-xl border p-0 shadow-lg',
+          'bg-popover z-50 w-[42rem] max-w-[calc(100vw-2rem)] rounded-xl border p-0 shadow-lg',
           modelGroupSelectorLayoutClasses.desktopPanel
         )}
         collisionPadding={8}

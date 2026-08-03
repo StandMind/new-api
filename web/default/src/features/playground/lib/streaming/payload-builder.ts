@@ -39,9 +39,14 @@ export function buildChatCompletionPayload(
 
   const payload: ChatCompletionRequest = {
     model: config.model,
-    route_group: config.group,
     messages: processedMessages,
     stream: config.stream,
+  }
+
+  if (config.routing_priority) {
+    payload.routing_priority = config.routing_priority
+  } else {
+    payload.route_group = config.group
   }
 
   if (parameterEnabled.temperature) {

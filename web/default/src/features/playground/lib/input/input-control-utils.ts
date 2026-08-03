@@ -18,6 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { GroupOption, ModelOption } from '../../types'
 
+export const PLAYGROUND_INPUT_GROUP_CLASS_NAME =
+  'bg-background/95 dark:bg-background/80 has-disabled:bg-background/95 dark:has-disabled:bg-background/80 has-disabled:opacity-100 border-border/70 shadow-[0_18px_60px_-32px_rgba(0,0,0,0.65)] ring-1 ring-foreground/5 rounded-xl overflow-hidden transition-all duration-200 focus-within:border-primary/45 focus-within:ring-primary/15 focus-within:shadow-[0_22px_70px_-34px_rgba(0,0,0,0.75)]'
+
 type InputControlStateOptions = {
   disabled?: boolean
   groups: GroupOption[]

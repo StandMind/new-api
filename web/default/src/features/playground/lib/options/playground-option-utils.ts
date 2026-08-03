@@ -16,7 +16,29 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { GroupOption, ModelOption } from '../../types'
+import type { GroupOption, ModelOption, RoutingPriority } from '../../types'
+
+export function getPlaygroundModelQuery(
+  group: string,
+  routingPriority: RoutingPriority | ''
+): {
+  queryKey: readonly string[]
+  routeGroup?: string
+  enabled: boolean
+} {
+  if (routingPriority) {
+    return {
+      queryKey: ['playground-models', 'smart'],
+      enabled: true,
+    }
+  }
+
+  return {
+    queryKey: ['playground-models', 'manual', group],
+    routeGroup: group || undefined,
+    enabled: group !== '',
+  }
+}
 
 export function getModelFallback(
   models: ModelOption[],

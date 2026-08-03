@@ -28,8 +28,20 @@ export type MessageStateUpdater =
   | Message[]
   | ((previousMessages: Message[]) => Message[])
 
+export function migratePlaygroundConfig(
+  savedConfig: Partial<PlaygroundConfig>
+): Partial<PlaygroundConfig> {
+  const hasRoutingPriority = Object.hasOwn(savedConfig, 'routing_priority')
+
+  if (!hasRoutingPriority && savedConfig.group) {
+    return { ...savedConfig, routing_priority: '' }
+  }
+
+  return savedConfig
+}
+
 export function getInitialPlaygroundConfig(): PlaygroundConfig {
-  return { ...DEFAULT_CONFIG, ...loadConfig() }
+  return { ...DEFAULT_CONFIG, ...migratePlaygroundConfig(loadConfig()) }
 }
 
 export function getInitialParameterEnabled(): ParameterEnabled {

@@ -10,7 +10,9 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -210,4 +212,192 @@ func TestDistributePlaygroundUsesCanonicalChatPath(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 
 	assert.Equal(t, http.StatusNoContent, recorder.Code)
+}
+
+func setupPlaygroundSmartRoutingTest(t *testing.T) *gin.Engine {
+	t.Helper()
+	require.NoError(t, i18n.Init())
+
+	db := setupDistributorRouteTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.UserLevel{},
+		&model.RouteGroup{},
+		&model.UserLevelRouteGroup{},
+		&model.PerfMetric{},
+		&model.Token{},
+	))
+	require.NoError(t, model.MigrateLegacyTokenGroupChains())
+	require.NoError(t, db.Create(&model.UserLevel{
+		Code: model.StandardUserLevelCode, Name: "Standard", IsDefault: true,
+		Enabled: true, TopupRatio: 1,
+	}).Error)
+	require.NoError(t, db.Create(&[]model.RouteGroup{
+		{Code: "playground-cheap", Name: "Cheap", BaseRatio: 0.5, Enabled: true},
+		{Code: "playground-expensive", Name: "Expensive", BaseRatio: 1.5, Enabled: true},
+	}).Error)
+	require.NoError(t, db.Create(&[]model.UserLevelRouteGroup{
+		{UserLevelCode: model.StandardUserLevelCode, RouteGroupCode: "playground-cheap"},
+		{UserLevelCode: model.StandardUserLevelCode, RouteGroupCode: "playground-expensive"},
+	}).Error)
+
+	priority := int64(0)
+	weight := uint(100)
+	require.NoError(t, db.Create(&[]model.Channel{
+		{
+			Id: 8401, Type: constant.ChannelTypeOpenAI, Key: "cheap-key",
+			Status: common.ChannelStatusEnabled, Name: "playground-cheap",
+			Group: "playground-cheap", Models: "playground-smart-model",
+			Priority: &priority, Weight: &weight,
+		},
+		{
+			Id: 8402, Type: constant.ChannelTypeOpenAI, Key: "expensive-key",
+			Status: common.ChannelStatusEnabled, Name: "playground-expensive",
+			Group: "playground-expensive", Models: "playground-smart-model",
+			Priority: &priority, Weight: &weight,
+		},
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{
+			Group: "playground-cheap", Model: "playground-smart-model",
+			ChannelId: 8401, Enabled: true, Priority: &priority, Weight: weight,
+		},
+		{
+			Group: "playground-expensive", Model: "playground-smart-model",
+			ChannelId: 8402, Enabled: true, Priority: &priority, Weight: weight,
+		},
+	}).Error)
+	require.NoError(t, model.RebuildAccessPolicySnapshot())
+	require.NoError(t, model.InitGroupModelRouteIndex())
+	require.NoError(t, service.RebuildSmartRoutingSnapshot())
+
+	router := gin.New()
+	for _, path := range []string{
+		"/pg/chat/completions",
+		"/v1/chat/completions",
+	} {
+		router.POST(
+			path,
+			func(c *gin.Context) {
+				common.SetContextKey(c, constant.ContextKeyUsingGroup, "playground-expensive")
+				common.SetContextKey(c, constant.ContextKeyUserLevel, model.StandardUserLevelCode)
+				common.SetContextKey(c, constant.ContextKeyUserGroup, model.StandardUserLevelCode)
+				common.SetContextKey(c, constant.ContextKeyTokenGroupChain, []string{"playground-expensive"})
+				c.Next()
+			},
+			Distribute(),
+			func(c *gin.Context) {
+				plan := service.GetRouteAttemptPlan(c)
+				if plan == nil {
+					c.Status(http.StatusInternalServerError)
+					return
+				}
+				c.Header("X-Test-Routing", string(plan.RoutingPriority()))
+				c.Header("X-Test-Basis", plan.RankingBasis())
+				c.Header("X-Test-Groups", strings.Join(plan.ConfiguredGroups(), ","))
+				c.Status(http.StatusNoContent)
+			},
+		)
+	}
+	return router
+}
+
+func postDistributorRequest(router *gin.Engine, path, body string) *httptest.ResponseRecorder {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, request)
+	return recorder
+}
+
+func TestDistributePlaygroundSmartRoutingModesUseSnapshot(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := setupPlaygroundSmartRoutingTest(t)
+
+	tests := []struct {
+		mode  string
+		basis string
+	}{
+		{mode: "auto", basis: "price_fallback"},
+		{mode: "price", basis: "price"},
+		{mode: "speed", basis: "price_fallback"},
+		{mode: "success_rate", basis: "price_fallback"},
+	}
+	for _, test := range tests {
+		t.Run(test.mode, func(t *testing.T) {
+			recorder := postDistributorRequest(
+				router,
+				"/pg/chat/completions",
+				fmt.Sprintf(`{"model":"playground-smart-model","routing_priority":%q}`, test.mode),
+			)
+
+			assert.Equal(t, http.StatusNoContent, recorder.Code)
+			assert.Equal(t, test.mode, recorder.Header().Get("X-Test-Routing"))
+			assert.Equal(t, test.basis, recorder.Header().Get("X-Test-Basis"))
+			assert.Equal(
+				t,
+				"playground-cheap,playground-expensive",
+				recorder.Header().Get("X-Test-Groups"),
+			)
+		})
+	}
+}
+
+func TestDistributePlaygroundRoutingValidation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := setupPlaygroundSmartRoutingTest(t)
+
+	tests := []struct {
+		name       string
+		body       string
+		statusCode int
+		message    string
+	}{
+		{
+			name:       "invalid mode",
+			body:       `{"model":"playground-smart-model","routing_priority":"random"}`,
+			statusCode: http.StatusBadRequest,
+			message:    "routing_priority 无效",
+		},
+		{
+			name:       "conflicting fields",
+			body:       `{"model":"playground-smart-model","route_group":"playground-cheap","routing_priority":"price"}`,
+			statusCode: http.StatusBadRequest,
+			message:    "不能同时使用",
+		},
+		{
+			name:       "unauthorized manual group",
+			body:       `{"model":"playground-smart-model","route_group":"not-granted"}`,
+			statusCode: http.StatusForbidden,
+		},
+		{
+			name:       "no smart candidate",
+			body:       `{"model":"missing-model","routing_priority":"price"}`,
+			statusCode: http.StatusServiceUnavailable,
+			message:    "智能路由暂无支持模型 missing-model 的可用分组",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := postDistributorRequest(router, "/pg/chat/completions", test.body)
+			assert.Equal(t, test.statusCode, recorder.Code)
+			if test.message != "" {
+				assert.Contains(t, recorder.Body.String(), test.message)
+			}
+		})
+	}
+}
+
+func TestDistributeV1IgnoresPlaygroundRoutingOverride(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := setupPlaygroundSmartRoutingTest(t)
+
+	recorder := postDistributorRequest(
+		router,
+		"/v1/chat/completions",
+		`{"model":"playground-smart-model","routing_priority":"price"}`,
+	)
+
+	assert.Equal(t, http.StatusNoContent, recorder.Code)
+	assert.Empty(t, recorder.Header().Get("X-Test-Routing"))
+	assert.Equal(t, "playground-expensive", recorder.Header().Get("X-Test-Groups"))
 }

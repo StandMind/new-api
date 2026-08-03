@@ -68,6 +68,7 @@ export interface ContentPart {
 export interface ChatCompletionRequest {
   model: string
   route_group?: string
+  routing_priority?: RoutingPriority
   messages: ChatCompletionMessage[]
   stream: boolean
   temperature?: number
@@ -116,9 +117,12 @@ export interface ChatCompletionResponse {
 }
 
 // Configuration types
+export type RoutingPriority = 'auto' | 'price' | 'speed' | 'success_rate'
+
 export interface PlaygroundConfig {
   model: string
   group: string
+  routing_priority: RoutingPriority | ''
   temperature: number
   top_p: number
   max_tokens: number

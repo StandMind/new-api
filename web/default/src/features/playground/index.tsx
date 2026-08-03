@@ -69,6 +69,7 @@ export function Playground() {
   const { isLoadingModels } = usePlaygroundOptions({
     currentGroup: config.group,
     currentModel: config.model,
+    routingPriority: config.routing_priority,
     setGroups,
     setModels,
     updateConfig,

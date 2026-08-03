@@ -88,6 +88,7 @@ func Distribute() func(c *gin.Context) {
 				}
 				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 				playgroundGroupOverride := false
+				playgroundRoutingOverride := false
 				// check path is /pg/chat/completions
 				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
 					playgroundRequest := &dto.PlayGroundRequest{}
@@ -98,6 +99,10 @@ func Distribute() func(c *gin.Context) {
 					}
 					if playgroundRequest.Group != "" {
 						abortWithOpenAiMessage(c, http.StatusBadRequest, "Playground group 字段已废弃，请使用 route_group")
+						return
+					}
+					if playgroundRequest.RouteGroup != "" && playgroundRequest.RoutingPriority != "" {
+						abortWithOpenAiMessage(c, http.StatusBadRequest, "Playground route_group 与 routing_priority 不能同时使用")
 						return
 					}
 					if playgroundRequest.RouteGroup != "" {
@@ -113,6 +118,15 @@ func Distribute() func(c *gin.Context) {
 						common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
 						playgroundGroupOverride = true
 					}
+					if playgroundRequest.RoutingPriority != "" {
+						priority := constant.NormalizeRoutingPriority(playgroundRequest.RoutingPriority)
+						if !constant.IsValidRoutingPriority(priority, false) {
+							abortWithOpenAiMessage(c, http.StatusBadRequest, "Playground routing_priority 无效，仅支持 auto、price、speed、success_rate")
+							return
+						}
+						common.SetContextKey(c, constant.ContextKeyTokenRoutingPriority, string(priority))
+						playgroundRoutingOverride = true
+					}
 				}
 
 				groups := common.GetContextKeyStringSlice(c, constant.ContextKeyTokenGroupChain)
@@ -125,9 +139,13 @@ func Distribute() func(c *gin.Context) {
 				if playgroundGroupOverride {
 					groups = []string{usingGroup}
 					routingPriority = constant.RoutingPriorityManual
-				} else if routingPriority != constant.RoutingPriorityManual {
+				} else if playgroundRoutingOverride || routingPriority != constant.RoutingPriorityManual {
+					userLevel := common.GetContextKeyString(c, constant.ContextKeyUserLevel)
+					if userLevel == "" {
+						userLevel = common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+					}
 					groups, rankingBasis = service.GetSmartRoutingGroups(
-						common.GetContextKeyString(c, constant.ContextKeyUserGroup),
+						userLevel,
 						modelRequest.Model,
 						routingRequestPath,
 						routingPriority,
@@ -136,6 +154,10 @@ func Distribute() func(c *gin.Context) {
 					groups = []string{usingGroup}
 				}
 				if len(groups) == 0 {
+					if routingPriority != constant.RoutingPriorityManual {
+						abortWithOpenAiMessage(c, http.StatusServiceUnavailable, fmt.Sprintf("智能路由暂无支持模型 %s 的可用分组", modelRequest.Model), types.ErrorCodeModelNotFound)
+						return
+					}
 					abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}), types.ErrorCodeModelNotFound)
 					return
 				}
