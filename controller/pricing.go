@@ -21,15 +21,21 @@ func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string
 	filtered := make([]model.Pricing, 0, len(pricing))
 	for _, item := range pricing {
 		if common.StringsContains(item.EnableGroup, "all") {
+			item.EnableGroup = []string{"all"}
 			filtered = append(filtered, item)
 			continue
 		}
+		availableGroups := make([]string, 0, len(item.EnableGroup))
 		for _, group := range item.EnableGroup {
 			if _, ok := usableGroup[group]; ok {
-				filtered = append(filtered, item)
-				break
+				availableGroups = append(availableGroups, group)
 			}
 		}
+		if len(availableGroups) == 0 {
+			continue
+		}
+		item.EnableGroup = availableGroups
+		filtered = append(filtered, item)
 	}
 	return filtered
 }
