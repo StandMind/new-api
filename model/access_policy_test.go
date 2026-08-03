@@ -93,7 +93,7 @@ func TestMigrateLegacyAccessPolicyFreezesStandardRouteGrants(t *testing.T) {
 		"paid":    2,
 	})
 	writeAccessPolicyTestOption(t, db, "UserUsableGroups", map[string]string{"free": "Free route"})
-	writeAccessPolicyTestOption(t, db, "TopupGroupRatio", map[string]float64{"default": 1.2, "vip": 0.9})
+	writeAccessPolicyTestOption(t, db, "TopupGroupRatio", map[string]float64{"default": 1.2, "vip": 0.9, "paid": 1})
 	writeAccessPolicyTestOption(t, db, "ModelRequestRateLimitGroup", map[string][2]int{"default": {20, 10}})
 	writeAccessPolicyTestOption(t, db, "GroupGroupRatio", map[string]map[string]float64{
 		"default": {"free": 0.75, "price-only": 0.8},
@@ -152,6 +152,9 @@ func TestMigrateLegacyAccessPolicyFreezesStandardRouteGrants(t *testing.T) {
 	require.Equal(t, "vip", users[1].UserLevel)
 	var planLevel UserLevel
 	require.NoError(t, db.First(&planLevel, "code = ?", "plan-only").Error)
+	var routeOnlyLevelCount int64
+	require.NoError(t, db.Model(&UserLevel{}).Where("code = ?", "paid").Count(&routeOnlyLevelCount).Error)
+	require.Zero(t, routeOnlyLevelCount)
 
 	require.NoError(t, db.Create(&RouteGroup{Code: "later", Name: "Later", BaseRatio: 3, Enabled: true}).Error)
 	require.NoError(t, SyncLegacyAccessPolicyOptions(db))
@@ -163,6 +166,61 @@ func TestMigrateLegacyAccessPolicyFreezesStandardRouteGrants(t *testing.T) {
 	require.Zero(t, laterGrantCount)
 	require.NoError(t, db.First(&state, "id = ?", 1).Error)
 	require.Equal(t, string(expectedCodesJSON), state.InitialRouteGroupCodes)
+}
+
+func TestMigrateLegacyAccessPolicyBlocksOrphanNonNeutralLevelConfig(t *testing.T) {
+	db := setupAccessPolicyTestDB(t)
+	writeAccessPolicyTestOption(t, db, "GroupRatio", map[string]float64{"default": 1, "route-a": 1})
+	writeAccessPolicyTestOption(t, db, "TopupGroupRatio", map[string]float64{"default": 1, "route-a": 1.1})
+
+	err := MigrateLegacyAccessPolicy()
+	require.ErrorContains(t, err, "ambiguous legacy user policy TopupGroupRatio.route-a")
+	var stateCount int64
+	require.NoError(t, db.Model(&AccessPolicyState{}).Count(&stateCount).Error)
+	require.Zero(t, stateCount)
+}
+
+func TestMigrateLegacyAccessPolicyCleansUntouchedUnreferencedInitialLevels(t *testing.T) {
+	db := setupAccessPolicyTestDB(t)
+	writeAccessPolicyTestOption(t, db, "GroupRatio", map[string]float64{"default": 1, "route-a": 1.3})
+	writeAccessPolicyTestOption(t, db, "TopupGroupRatio", map[string]float64{"default": 1, "route-a": 1})
+	require.NoError(t, db.Create(&User{
+		Id: 1, Username: "standard-user", Group: "default", AffCode: "std1", Status: common.UserStatusEnabled,
+	}).Error)
+	require.NoError(t, MigrateLegacyAccessPolicy())
+
+	var state AccessPolicyState
+	require.NoError(t, db.First(&state, "id = ?", 1).Error)
+	require.NoError(t, db.Model(&AccessPolicyState{}).Where("id = ?", state.ID).
+		Update("initial_user_level_cleanup_at", 0).Error)
+	state.InitialUserLevelCleanupAt = 0
+	require.NoError(t, db.Create(&UserLevel{
+		Code: "route-a", Name: "route-a", Enabled: true, TopupRatio: 1,
+		CreatedAt: state.ExpandedAt, UpdatedAt: state.ExpandedAt,
+	}).Error)
+	require.NoError(t, db.Create(&UserLevelRouteGroup{
+		UserLevelCode: "route-a", RouteGroupCode: "route-a",
+		CreatedAt: state.ExpandedAt, UpdatedAt: state.ExpandedAt,
+	}).Error)
+	require.NoError(t, SyncLegacyAccessPolicyOptions(db))
+
+	require.NoError(t, MigrateLegacyAccessPolicy())
+	var levelCount int64
+	require.NoError(t, db.Model(&UserLevel{}).Where("code = ?", "route-a").Count(&levelCount).Error)
+	require.Zero(t, levelCount)
+	var routeCount int64
+	require.NoError(t, db.Model(&RouteGroup{}).Where("code = ?", "route-a").Count(&routeCount).Error)
+	require.EqualValues(t, 1, routeCount)
+	var standardGrantCount int64
+	require.NoError(t, db.Model(&UserLevelRouteGroup{}).
+		Where("user_level_code = ? AND route_group_code = ?", StandardUserLevelCode, "route-a").
+		Count(&standardGrantCount).Error)
+	require.EqualValues(t, 1, standardGrantCount)
+	topupRatios, err := decodeOptionMap[map[string]float64](db, "TopupGroupRatio")
+	require.NoError(t, err)
+	require.NotContains(t, topupRatios, "route-a")
+	require.NoError(t, db.First(&state, "id = ?", 1).Error)
+	require.NotZero(t, state.InitialUserLevelCleanupAt)
 }
 
 func mustAccessPolicyJSON(t *testing.T, value interface{}) []byte {

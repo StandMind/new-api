@@ -20,7 +20,7 @@ def valid_state():
             },
             {
                 "key": "TopupGroupRatio",
-                "value": '{"default":1}',
+                "value": '{"default":1,"route-a":1}',
             },
             {
                 "key": "ModelRequestRateLimitGroup",
@@ -83,6 +83,9 @@ class AccessPolicyExpandTests(unittest.TestCase):
 
         self.assertEqual([], analysis["blockers"])
         self.assertEqual(
+            ["standard", "vip"], analysis["initial_user_level_codes"]
+        )
+        self.assertEqual(
             [
                 "channel-only",
                 "explicit-only",
@@ -135,6 +138,18 @@ class AccessPolicyExpandTests(unittest.TestCase):
         before = expand.fingerprint(state)
         state["abilities"][0]["weight"] = 99
         self.assertNotEqual(before, expand.fingerprint(state))
+
+    def test_non_neutral_orphan_user_policy_is_blocking(self):
+        state = valid_state()
+        state["options"][2]["value"] = '{"default":1,"route-a":1.2}'
+
+        blockers = expand.analyze_state(state)["blockers"]
+        self.assertTrue(
+            any(
+                "ambiguous legacy user policy TopupGroupRatio.route-a" in item
+                for item in blockers
+            )
+        )
 
     def test_guard_sql_uses_collation_independent_text_ordering(self):
         self.assertIn(

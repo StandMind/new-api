@@ -78,6 +78,7 @@ type AccessPolicyState struct {
 	InitialRouteGroupCodes       string `json:"initial_route_group_codes" gorm:"type:text;not null"`
 	InitialRouteGroupFingerprint string `json:"initial_route_group_fingerprint" gorm:"type:varchar(64);not null"`
 	ExpandedAt                   int64  `json:"expanded_at" gorm:"not null"`
+	InitialUserLevelCleanupAt    int64  `json:"initial_user_level_cleanup_at" gorm:"not null;default:0"`
 	ContractedAt                 int64  `json:"contracted_at" gorm:"not null;default:0"`
 }
 
@@ -728,6 +729,106 @@ func collectLegacyRouteGroupCodes(
 	return result, nil
 }
 
+func collectReferencedLegacyUserLevelCodes(tx *gorm.DB) (map[string]struct{}, error) {
+	levelCodes := map[string]struct{}{StandardUserLevelCode: {}}
+	var legacyUserGroups []string
+	if err := tx.Model(&User{}).Where("deleted_at IS NULL").Distinct("group").Pluck("group", &legacyUserGroups).Error; err != nil {
+		return nil, err
+	}
+	for _, code := range legacyUserGroups {
+		levelCodes[UserLevelForLegacyGroup(code)] = struct{}{}
+	}
+
+	legacySubscriptionColumns := []struct {
+		model  interface{}
+		column string
+	}{
+		{&SubscriptionPlan{}, "upgrade_group"},
+		{&SubscriptionPlan{}, "downgrade_group"},
+		{&UserSubscription{}, "upgrade_group"},
+		{&UserSubscription{}, "downgrade_group"},
+		{&UserSubscription{}, "prev_user_group"},
+	}
+	for _, source := range legacySubscriptionColumns {
+		if !tx.Migrator().HasTable(source.model) || !tx.Migrator().HasColumn(source.model, source.column) {
+			continue
+		}
+		var codes []string
+		if err := tx.Model(source.model).Where(source.column+" <> ''").Distinct(source.column).Pluck(source.column, &codes).Error; err != nil {
+			return nil, err
+		}
+		for _, code := range codes {
+			levelCodes[UserLevelForLegacyGroup(code)] = struct{}{}
+		}
+	}
+	return levelCodes, nil
+}
+
+func validateReferencedLegacyUserLevelConfigs(
+	levelCodes map[string]struct{},
+	topupRatios map[string]float64,
+	limitGroups map[string][2]int,
+	priceOverrides map[string]map[string]float64,
+	specialUsable map[string]map[string]string,
+) error {
+	isReferenced := func(legacyCode string) bool {
+		_, ok := levelCodes[UserLevelForLegacyGroup(legacyCode)]
+		return ok
+	}
+	for code, ratio := range topupRatios {
+		if !isReferenced(code) && ratio != 1 {
+			return fmt.Errorf("ambiguous legacy user policy TopupGroupRatio.%s has no user or subscription reference", code)
+		}
+	}
+	for code, limits := range limitGroups {
+		if !isReferenced(code) && (limits[0] != 0 || limits[1] != 0) {
+			return fmt.Errorf("ambiguous legacy user policy ModelRequestRateLimitGroup.%s has no user or subscription reference", code)
+		}
+	}
+	for code, overrides := range priceOverrides {
+		if !isReferenced(code) && len(overrides) != 0 {
+			return fmt.Errorf("ambiguous legacy user policy GroupGroupRatio.%s has no user or subscription reference", code)
+		}
+	}
+	for code, rules := range specialUsable {
+		if !isReferenced(code) && len(rules) != 0 {
+			return fmt.Errorf("ambiguous legacy user policy group_special_usable_group.%s has no user or subscription reference", code)
+		}
+	}
+	return nil
+}
+
+func cleanupInitialUnreferencedUserLevels(tx *gorm.DB, state AccessPolicyState) error {
+	if state.ExpandedAt <= 0 || state.InitialUserLevelCleanupAt > 0 {
+		return nil
+	}
+	var levels []UserLevel
+	if err := tx.Where(
+		"code <> ? AND created_at BETWEEN ? AND ? AND updated_at = created_at",
+		StandardUserLevelCode, state.ExpandedAt-5, state.ExpandedAt,
+	).Find(&levels).Error; err != nil {
+		return err
+	}
+	for _, level := range levels {
+		references, err := InspectUserLevelReferences(tx, level.Code)
+		if err != nil {
+			return err
+		}
+		if len(references) != 0 {
+			continue
+		}
+		if err := tx.Where("user_level_code = ?", level.Code).Delete(&UserLevelRouteGroup{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("code = ? AND updated_at = created_at", level.Code).Delete(&UserLevel{}).Error; err != nil {
+			return err
+		}
+	}
+	return tx.Model(&AccessPolicyState{}).
+		Where("id = ? AND initial_user_level_cleanup_at = 0", state.ID).
+		Update("initial_user_level_cleanup_at", time.Now().Unix()).Error
+}
+
 // MigrateLegacyAccessPolicy performs the expand-stage backfill. It is safe to
 // run repeatedly: existing new-schema records remain authoritative, while only
 // empty compatibility fields and missing records are populated.
@@ -803,46 +904,22 @@ func MigrateLegacyAccessPolicy() error {
 			}
 		}
 
-		levelCodes := map[string]struct{}{StandardUserLevelCode: {}}
-		var legacyUserGroups []string
-		if err := tx.Model(&User{}).Distinct("group").Pluck("group", &legacyUserGroups).Error; err != nil {
+		var migrationState AccessPolicyState
+		stateErr := tx.Where("id = ?", 1).First(&migrationState).Error
+		if stateErr != nil && !errors.Is(stateErr, gorm.ErrRecordNotFound) {
+			return stateErr
+		}
+		isFirstMigration := errors.Is(stateErr, gorm.ErrRecordNotFound)
+
+		levelCodes, err := collectReferencedLegacyUserLevelCodes(tx)
+		if err != nil {
 			return err
 		}
-		for _, code := range legacyUserGroups {
-			levelCodes[UserLevelForLegacyGroup(code)] = struct{}{}
-		}
-		for code := range priceOverrides {
-			levelCodes[UserLevelForLegacyGroup(code)] = struct{}{}
-		}
-		for code := range specialUsable {
-			levelCodes[UserLevelForLegacyGroup(code)] = struct{}{}
-		}
-		for code := range topupRatios {
-			levelCodes[UserLevelForLegacyGroup(code)] = struct{}{}
-		}
-		for code := range limitGroups {
-			levelCodes[UserLevelForLegacyGroup(code)] = struct{}{}
-		}
-		legacySubscriptionColumns := []struct {
-			model  interface{}
-			column string
-		}{
-			{&SubscriptionPlan{}, "upgrade_group"},
-			{&SubscriptionPlan{}, "downgrade_group"},
-			{&UserSubscription{}, "upgrade_group"},
-			{&UserSubscription{}, "downgrade_group"},
-			{&UserSubscription{}, "prev_user_group"},
-		}
-		for _, source := range legacySubscriptionColumns {
-			if !tx.Migrator().HasTable(source.model) || !tx.Migrator().HasColumn(source.model, source.column) {
-				continue
-			}
-			var codes []string
-			if err := tx.Model(source.model).Where(source.column+" <> ''").Distinct(source.column).Pluck(source.column, &codes).Error; err != nil {
+		if isFirstMigration {
+			if err := validateReferencedLegacyUserLevelConfigs(
+				levelCodes, topupRatios, limitGroups, priceOverrides, specialUsable,
+			); err != nil {
 				return err
-			}
-			for _, code := range codes {
-				levelCodes[UserLevelForLegacyGroup(code)] = struct{}{}
 			}
 		}
 
@@ -887,12 +964,6 @@ func MigrateLegacyAccessPolicy() error {
 
 		// Standard receives the exact migration-time set of every existing
 		// non-default route group. New groups are never added by later reruns.
-		var migrationState AccessPolicyState
-		stateErr := tx.Where("id = ?", 1).First(&migrationState).Error
-		if stateErr != nil && !errors.Is(stateErr, gorm.ErrRecordNotFound) {
-			return stateErr
-		}
-		isFirstMigration := errors.Is(stateErr, gorm.ErrRecordNotFound)
 		if isFirstMigration {
 			if err := tx.Where("user_level_code = ?", StandardUserLevelCode).Delete(&UserLevelRouteGroup{}).Error; err != nil {
 				return err
@@ -918,10 +989,12 @@ func MigrateLegacyAccessPolicy() error {
 			if err != nil {
 				return err
 			}
+			expandedAt := time.Now().Unix()
 			migrationState = AccessPolicyState{
 				ID: 1, InitialRouteGroupCodes: string(encodedCodes),
 				InitialRouteGroupFingerprint: fmt.Sprintf("%x", sha256.Sum256(encodedCodes)),
-				ExpandedAt:                   time.Now().Unix(),
+				ExpandedAt:                   expandedAt,
+				InitialUserLevelCleanupAt:    expandedAt,
 			}
 			if err := tx.Create(&migrationState).Error; err != nil {
 				return err
@@ -983,6 +1056,11 @@ func MigrateLegacyAccessPolicy() error {
 
 		if err := backfillSubscriptionUserLevels(tx); err != nil {
 			return err
+		}
+		if !isFirstMigration {
+			if err := cleanupInitialUnreferencedUserLevels(tx, migrationState); err != nil {
+				return err
+			}
 		}
 		if err := SyncLegacyAccessPolicyOptions(tx); err != nil {
 			return err

@@ -170,6 +170,69 @@ def split_route_groups(raw: Any) -> list[str]:
     ]
 
 
+def user_level_for_legacy_group(raw: Any) -> str:
+    code = raw.strip() if isinstance(raw, str) else ""
+    if not code or code == DEFAULT_ROUTE_GROUP:
+        return "standard"
+    return code
+
+
+def referenced_user_level_codes(state: dict[str, Any]) -> list[str]:
+    codes = {"standard"}
+    for row in state["users"]:
+        codes.add(user_level_for_legacy_group(row.get("group_name")))
+    subscription_fields = (
+        ("subscription_plans", ("upgrade_group", "downgrade_group")),
+        (
+            "user_subscriptions",
+            ("upgrade_group", "downgrade_group", "prev_user_group"),
+        ),
+    )
+    for collection, fields in subscription_fields:
+        for row in state[collection]:
+            for field in fields:
+                raw = row.get(field)
+                if isinstance(raw, str) and raw.strip():
+                    codes.add(user_level_for_legacy_group(raw))
+    return sorted(codes)
+
+
+def validate_referenced_user_level_configs(
+    level_codes: list[str], options: dict[str, dict[str, Any]]
+) -> list[str]:
+    referenced = set(level_codes)
+    blockers: list[str] = []
+
+    def is_referenced(legacy_code: str) -> bool:
+        return user_level_for_legacy_group(legacy_code) in referenced
+
+    for code, ratio in options.get("topup_ratios", {}).items():
+        if not is_referenced(code) and float(ratio) != 1:
+            blockers.append(
+                f"ambiguous legacy user policy TopupGroupRatio.{code} "
+                "has no user or subscription reference"
+            )
+    for code, limits in options.get("rate_limits", {}).items():
+        if not is_referenced(code) and any(limits):
+            blockers.append(
+                f"ambiguous legacy user policy ModelRequestRateLimitGroup.{code} "
+                "has no user or subscription reference"
+            )
+    for code, overrides in options.get("price_overrides", {}).items():
+        if not is_referenced(code) and overrides:
+            blockers.append(
+                f"ambiguous legacy user policy GroupGroupRatio.{code} "
+                "has no user or subscription reference"
+            )
+    for code, rules in options.get("special_groups", {}).items():
+        if not is_referenced(code) and rules:
+            blockers.append(
+                "ambiguous legacy user policy "
+                f"group_special_usable_group.{code} has no user or subscription reference"
+            )
+    return blockers
+
+
 def validate_legacy_options(option_map: dict[str, Any]) -> dict[str, dict[str, Any]]:
     group_ratios = decode_option_map(option_map, "GroupRatio")
     if group_ratios is None:
@@ -271,7 +334,19 @@ def analyze_state(state: dict[str, Any]) -> dict[str, Any]:
         options = validate_legacy_options(option_map)
     except ExpandMigrationError as error:
         blockers.append(str(error))
-        options = {"group_ratios": {}, "usable_groups": {}}
+        options = {
+            "group_ratios": {},
+            "usable_groups": {},
+            "topup_ratios": {},
+            "rate_limits": {},
+            "price_overrides": {},
+            "special_groups": {},
+        }
+
+    initial_user_level_codes = referenced_user_level_codes(state)
+    blockers.extend(
+        validate_referenced_user_level_configs(initial_user_level_codes, options)
+    )
 
     codes: set[str] = set()
     for code in options["group_ratios"]:
@@ -333,6 +408,7 @@ def analyze_state(state: dict[str, Any]) -> dict[str, Any]:
         "standard_route_group_codes": standard_codes,
         "route_group_fingerprint": fingerprint(standard_codes),
         "enabled_default_abilities": enabled_default_abilities,
+        "initial_user_level_codes": initial_user_level_codes,
         "counts": {field: len(state[field]) for field in fields},
     }
 
@@ -540,6 +616,7 @@ def public_report(
         "preflight": {
             "all_route_group_codes": analysis["all_route_group_codes"],
             "enabled_default_abilities": analysis["enabled_default_abilities"],
+            "initial_user_level_codes": analysis["initial_user_level_codes"],
             "row_counts": analysis["counts"],
         },
     }
