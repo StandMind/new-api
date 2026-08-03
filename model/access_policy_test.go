@@ -234,6 +234,13 @@ func TestMigrateLegacyAccessPolicyRejectsStaleGuard(t *testing.T) {
 	require.Zero(t, guard.AppliedAt)
 }
 
+func TestPostgresGuardOrdersDuplicateAbilitiesDeterministically(t *testing.T) {
+	require.Contains(t, postgresLegacyAccessPolicyStateSQL,
+		"ORDER BY item.channel_id, item.group_name, item.model, item.enabled, item.priority, item.weight")
+	require.Contains(t, postgresLegacyAccessPolicyStateSQL,
+		`ORDER BY channel_id, "group", model, enabled, priority, weight`)
+}
+
 func TestValidateLegacyAccessPolicyOptionsRejectsAmbiguousValues(t *testing.T) {
 	tests := []struct {
 		name   string

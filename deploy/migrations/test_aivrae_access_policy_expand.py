@@ -136,6 +136,17 @@ class AccessPolicyExpandTests(unittest.TestCase):
         state["abilities"][0]["weight"] = 99
         self.assertNotEqual(before, expand.fingerprint(state))
 
+    def test_guard_sql_orders_duplicate_abilities_deterministically(self):
+        self.assertIn(
+            "ORDER BY item.channel_id, item.group_name, item.model, "
+            "item.enabled, item.priority, item.weight",
+            expand.STATE_EXPRESSION,
+        )
+        self.assertIn(
+            'ORDER BY channel_id, "group", model, enabled, priority, weight',
+            expand.STATE_EXPRESSION,
+        )
+
     def test_backup_validation(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "backup.sql.gz"

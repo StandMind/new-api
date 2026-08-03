@@ -48,10 +48,10 @@ jsonb_build_object(
         FROM (SELECT id, "group" AS group_name FROM channels ORDER BY id) AS item
     ), '[]'::jsonb),
     'abilities', COALESCE((
-        SELECT jsonb_agg(to_jsonb(item) ORDER BY item.channel_id, item.group_name, item.model)
+        SELECT jsonb_agg(to_jsonb(item) ORDER BY item.channel_id, item.group_name, item.model, item.enabled, item.priority, item.weight)
         FROM (
             SELECT channel_id, "group" AS group_name, model, enabled, priority, weight
-            FROM abilities ORDER BY channel_id, "group", model
+            FROM abilities ORDER BY channel_id, "group", model, enabled, priority, weight
         ) AS item
     ), '[]'::jsonb),
     'tokens', COALESCE((
