@@ -5578,7 +5578,6 @@
     "Routing": "ルーティング",
     "Routing priority": "ルーティング優先度",
     "Smart routing": "スマートルーティング",
-    "Speed": "速度",
-    "When recent samples are insufficient, Auto, Speed, and Success rate use Price order.": "直近のサンプルが不足している場合、自動、速度、成功率は価格順に切り替わります。"
+    "Speed": "速度"
   }
 }

@@ -5578,7 +5578,6 @@
     "Routing": "Enrutamiento",
     "Routing priority": "Prioridad de enrutamiento",
     "Smart routing": "Enrutamiento inteligente",
-    "Speed": "Velocidad",
-    "When recent samples are insufficient, Auto, Speed, and Success rate use Price order.": "Si no hay suficientes muestras recientes, Automático, Velocidad y Tasa de éxito usan el orden por Precio."
+    "Speed": "Velocidad"
   }
 }

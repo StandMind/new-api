@@ -790,11 +790,6 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
             </button>
           )
         })}
-        <p className='text-muted-foreground px-2.5 py-1 text-[10px] leading-4'>
-          {t(
-            'When recent samples are insufficient, Auto, Speed, and Success rate use Price order.'
-          )}
-        </p>
         <div className='border-border text-muted-foreground mt-1 border-t px-1 pt-2 text-[11px] leading-4 font-medium'>
           {t('Model Group')}
         </div>

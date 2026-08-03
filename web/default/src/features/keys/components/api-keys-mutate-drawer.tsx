@@ -428,11 +428,6 @@ export function ApiKeysMutateDrawer({
                           })}
                         </ToggleGroup>
                       </FormControl>
-                      <FormDescription>
-                        {t(
-                          'When recent samples are insufficient, Auto, Speed, and Success rate use Price order.'
-                        )}
-                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

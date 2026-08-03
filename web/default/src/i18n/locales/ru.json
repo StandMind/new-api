@@ -5578,7 +5578,6 @@
     "Routing": "Маршрутизация",
     "Routing priority": "Приоритет маршрутизации",
     "Smart routing": "Интеллектуальная маршрутизация",
-    "Speed": "Скорость",
-    "When recent samples are insufficient, Auto, Speed, and Success rate use Price order.": "Если свежих данных недостаточно, режимы Авто, Скорость и Доля успеха используют порядок по Цене."
+    "Speed": "Скорость"
   }
 }

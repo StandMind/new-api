@@ -5578,7 +5578,6 @@
     "Routing": "路由模式",
     "Routing priority": "路由優先模式",
     "Smart routing": "智慧路由",
-    "Speed": "速度",
-    "When recent samples are insufficient, Auto, Speed, and Success rate use Price order.": "近期樣本不足時，自動、速度與成功率模式會改用價格順序。"
+    "Speed": "速度"
   }
 }
