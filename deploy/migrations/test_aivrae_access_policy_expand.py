@@ -136,14 +136,23 @@ class AccessPolicyExpandTests(unittest.TestCase):
         state["abilities"][0]["weight"] = 99
         self.assertNotEqual(before, expand.fingerprint(state))
 
-    def test_guard_sql_orders_duplicate_abilities_deterministically(self):
+    def test_guard_sql_uses_collation_independent_text_ordering(self):
         self.assertIn(
-            "ORDER BY item.channel_id, item.group_name, item.model, "
-            "item.enabled, item.priority, item.weight",
+            'ORDER BY item.key COLLATE "C"',
             expand.STATE_EXPRESSION,
         )
         self.assertIn(
-            'ORDER BY channel_id, "group", model, enabled, priority, weight',
+            'ORDER BY item.channel_id, item.group_name COLLATE "C", '
+            'item.model COLLATE "C", item.enabled, item.priority, item.weight',
+            expand.STATE_EXPRESSION,
+        )
+        self.assertIn(
+            'ORDER BY channel_id, "group" COLLATE "C", model COLLATE "C", '
+            'enabled, priority, weight',
+            expand.STATE_EXPRESSION,
+        )
+        self.assertIn(
+            'ORDER BY item.group_name COLLATE "C", item.model COLLATE "C"',
             expand.STATE_EXPRESSION,
         )
 

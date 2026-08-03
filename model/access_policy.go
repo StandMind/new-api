@@ -101,14 +101,14 @@ func (AccessPolicyMigrationGuard) TableName() string { return "access_policy_mig
 const postgresLegacyAccessPolicyStateSQL = `
 SELECT jsonb_build_object(
     'options', COALESCE((
-        SELECT jsonb_agg(to_jsonb(item) ORDER BY item.key)
+        SELECT jsonb_agg(to_jsonb(item) ORDER BY item.key COLLATE "C")
         FROM (
             SELECT key, value FROM options
             WHERE key IN (
                 'GroupRatio', 'UserUsableGroups', 'TopupGroupRatio',
                 'ModelRequestRateLimitGroup', 'GroupGroupRatio',
                 'group_ratio_setting.group_special_usable_group'
-            ) ORDER BY key
+            ) ORDER BY key COLLATE "C"
         ) AS item
     ), '[]'::jsonb),
     'channels', COALESCE((
@@ -116,10 +116,10 @@ SELECT jsonb_build_object(
         FROM (SELECT id, "group" AS group_name FROM channels ORDER BY id) AS item
     ), '[]'::jsonb),
     'abilities', COALESCE((
-        SELECT jsonb_agg(to_jsonb(item) ORDER BY item.channel_id, item.group_name, item.model, item.enabled, item.priority, item.weight)
+        SELECT jsonb_agg(to_jsonb(item) ORDER BY item.channel_id, item.group_name COLLATE "C", item.model COLLATE "C", item.enabled, item.priority, item.weight)
         FROM (
             SELECT channel_id, "group" AS group_name, model, enabled, priority, weight
-            FROM abilities ORDER BY channel_id, "group", model, enabled, priority, weight
+            FROM abilities ORDER BY channel_id, "group" COLLATE "C", model COLLATE "C", enabled, priority, weight
         ) AS item
     ), '[]'::jsonb),
     'tokens', COALESCE((
@@ -130,10 +130,10 @@ SELECT jsonb_build_object(
         ) AS item
     ), '[]'::jsonb),
     'routes', COALESCE((
-        SELECT jsonb_agg(to_jsonb(item) ORDER BY item.group_name, item.model)
+        SELECT jsonb_agg(to_jsonb(item) ORDER BY item.group_name COLLATE "C", item.model COLLATE "C")
         FROM (
             SELECT "group" AS group_name, model, tiers, updated_at
-            FROM group_model_routes ORDER BY "group", model
+            FROM group_model_routes ORDER BY "group" COLLATE "C", model COLLATE "C"
         ) AS item
     ), '[]'::jsonb),
     'users', COALESCE((

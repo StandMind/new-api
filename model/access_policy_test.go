@@ -234,11 +234,15 @@ func TestMigrateLegacyAccessPolicyRejectsStaleGuard(t *testing.T) {
 	require.Zero(t, guard.AppliedAt)
 }
 
-func TestPostgresGuardOrdersDuplicateAbilitiesDeterministically(t *testing.T) {
+func TestPostgresGuardUsesCollationIndependentTextOrdering(t *testing.T) {
 	require.Contains(t, postgresLegacyAccessPolicyStateSQL,
-		"ORDER BY item.channel_id, item.group_name, item.model, item.enabled, item.priority, item.weight")
+		`ORDER BY item.key COLLATE "C"`)
 	require.Contains(t, postgresLegacyAccessPolicyStateSQL,
-		`ORDER BY channel_id, "group", model, enabled, priority, weight`)
+		`ORDER BY item.channel_id, item.group_name COLLATE "C", item.model COLLATE "C", item.enabled, item.priority, item.weight`)
+	require.Contains(t, postgresLegacyAccessPolicyStateSQL,
+		`ORDER BY channel_id, "group" COLLATE "C", model COLLATE "C", enabled, priority, weight`)
+	require.Contains(t, postgresLegacyAccessPolicyStateSQL,
+		`ORDER BY item.group_name COLLATE "C", item.model COLLATE "C"`)
 }
 
 func TestValidateLegacyAccessPolicyOptionsRejectsAmbiguousValues(t *testing.T) {
