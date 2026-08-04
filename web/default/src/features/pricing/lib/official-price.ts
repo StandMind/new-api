@@ -18,8 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { OfficialPriceUnit, PricingModel } from '../types'
 
-export type OfficialPriceComparison = {
-  direction: 'cheaper' | 'same' | 'higher'
+export type OfficialPriceSavings = {
   percent: string
   officialPrice: number
   unit: OfficialPriceUnit
@@ -96,13 +95,13 @@ function formatPercent(value: number): string {
   return Number(value.toFixed(1)).toString()
 }
 
-export function getOfficialPriceComparison(
+export function getOfficialPriceSavings(
   model: PricingModel,
   actualPrice: number,
   unit: OfficialPriceUnit,
   tierIndex: number,
   tierThresholds: readonly OfficialTierThreshold[] | null
-): OfficialPriceComparison | null {
+): OfficialPriceSavings | null {
   const reference = model.official_price
   if (
     !reference ||
@@ -123,15 +122,11 @@ export function getOfficialPriceComparison(
   if (!Number.isFinite(officialPrice) || officialPrice <= 0) return null
 
   const deltaPercent = ((officialPrice - actualPrice) / officialPrice) * 100
-  const roundedMagnitude = Math.round(Math.abs(deltaPercent) * 10) / 10
-  let direction: OfficialPriceComparison['direction'] = 'same'
-  if (roundedMagnitude > 0) {
-    direction = deltaPercent > 0 ? 'cheaper' : 'higher'
-  }
+  const roundedSavings = Math.round(deltaPercent * 10) / 10
+  if (roundedSavings <= 0) return null
 
   return {
-    direction,
-    percent: formatPercent(roundedMagnitude),
+    percent: formatPercent(roundedSavings),
     officialPrice,
     unit,
     sourceModel: reference.source_model,

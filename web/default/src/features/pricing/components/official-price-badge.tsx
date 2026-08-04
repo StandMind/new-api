@@ -24,11 +24,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { cn } from '@/lib/utils'
 
 import {
   formatOfficialPrice,
-  getOfficialPriceComparison,
+  getOfficialPriceSavings,
   type OfficialTierThreshold,
 } from '../lib/official-price'
 import type { OfficialPriceUnit, PricingModel } from '../types'
@@ -43,7 +42,7 @@ type OfficialPriceBadgeProps = {
 
 export function OfficialPriceBadge(props: OfficialPriceBadgeProps) {
   const { t } = useTranslation()
-  const comparison = getOfficialPriceComparison(
+  const comparison = getOfficialPriceSavings(
     props.model,
     props.actualPrice,
     props.unit,
@@ -52,16 +51,9 @@ export function OfficialPriceBadge(props: OfficialPriceBadgeProps) {
   )
   if (!comparison) return null
 
-  let label = t('Same as official')
-  if (comparison.direction === 'cheaper') {
-    label = t('Cheaper than official by {{percent}}%', {
-      percent: comparison.percent,
-    })
-  } else if (comparison.direction === 'higher') {
-    label = t('Higher than official by {{percent}}%', {
-      percent: comparison.percent,
-    })
-  }
+  const label = t('Cheaper than official by {{percent}}%', {
+    percent: comparison.percent,
+  })
 
   return (
     <Tooltip>
@@ -69,13 +61,7 @@ export function OfficialPriceBadge(props: OfficialPriceBadgeProps) {
         render={
           <Badge
             variant='outline'
-            className={cn(
-              'max-w-full shrink-0 whitespace-nowrap text-[10px] font-normal',
-              comparison.direction === 'cheaper' &&
-                'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300',
-              comparison.direction === 'higher' &&
-                'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300'
-            )}
+            className='max-w-full shrink-0 border-emerald-200 bg-emerald-50 text-[10px] font-normal whitespace-nowrap text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300'
           />
         }
       >
