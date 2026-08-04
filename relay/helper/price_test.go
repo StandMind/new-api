@@ -277,6 +277,40 @@ func TestModelPriceHelperRequestBillingRatiosOnlyApplyToFixedPrice(t *testing.T)
 	require.Nil(t, info.Billing)
 }
 
+func TestModelPriceHelperResolutionRatioSurvivesCrossGroupRepricing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	savedModelPrices := ratio_setting.ModelPrice2JSONString()
+	savedGroupModelRatios := ratio_setting.GroupModelRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedModelPrices))
+		require.NoError(t, ratio_setting.UpdateGroupModelRatioByJSONString(savedGroupModelRatios))
+	})
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"resolution-retry-model":0.33}`))
+	require.NoError(t, ratio_setting.UpdateGroupModelRatioByJSONString(
+		`{"first":{"resolution-retry-model":1},"second":{"resolution-retry-model":0.5}}`,
+	))
+
+	meta := &types.TokenCountMeta{
+		BillingRatios: map[string]float64{"image_resolution:4K": 1.79},
+	}
+	priceForGroup := func(group string) types.PriceData {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Set("group", group)
+		info := &relaycommon.RelayInfo{
+			OriginModelName: "resolution-retry-model",
+			UserGroup:       group,
+			UsingGroup:      group,
+		}
+		priceData, err := ModelPriceHelper(ctx, info, 0, meta)
+		require.NoError(t, err)
+		require.Equal(t, map[string]float64{"image_resolution:4K": 1.79}, priceData.OtherRatios())
+		return priceData
+	}
+
+	require.Equal(t, 295350, priceForGroup("first").QuotaToPreConsume)
+	require.Equal(t, 147675, priceForGroup("second").QuotaToPreConsume)
+}
+
 func TestOfficialReferencePriceDoesNotAffectBilling(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	savedModelRatios := ratio_setting.ModelRatio2JSONString()

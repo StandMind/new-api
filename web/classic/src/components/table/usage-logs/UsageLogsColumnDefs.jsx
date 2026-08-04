@@ -144,10 +144,7 @@ function renderType(type, t) {
 
 function buildStreamStatusTooltip(ss, t) {
   if (!ss) return null;
-  const lines = [
-    t('流状态') + '：' + t('异常'),
-    (ss.end_reason || 'unknown'),
-  ];
+  const lines = [t('流状态') + '：' + t('异常'), ss.end_reason || 'unknown'];
   if (ss.error_count > 0) {
     lines.push(`${t('软错误')}: ${ss.error_count}`);
   }
@@ -185,11 +182,7 @@ function renderIsStream(bool, t, streamStatus) {
                 userSelect: 'none',
               }}
             >
-              <CircleAlert
-                size={14}
-                strokeWidth={2.5}
-                color='currentColor'
-              />
+              <CircleAlert size={14} strokeWidth={2.5} color='currentColor' />
             </span>
           </Tooltip>
         )}
@@ -461,16 +454,42 @@ function getUsageLogDetailSummary(record, text, billingDisplayMode, t) {
     };
   }
 
-  const summaryOpts = { ...other, displayMode: billingDisplayMode, outputMode: 'segments' };
-
-  if (other?.billing_mode === 'tiered_expr') {
-    return { segments: renderTieredModelPriceSimple(summaryOpts) };
+  const summaryOpts = {
+    ...other,
+    displayMode: billingDisplayMode,
+    outputMode: 'segments',
+  };
+  const resolutionSegments = [];
+  if (other?.image_resolution) {
+    resolutionSegments.push({
+      text: `${t('分辨率')} ${other.image_resolution}`,
+      tone: 'secondary',
+    });
+  }
+  if (
+    Number.isFinite(Number(other?.image_resolution_multiplier)) &&
+    Number(other.image_resolution_multiplier) > 0
+  ) {
+    resolutionSegments.push({
+      text: `${t('分辨率倍率')} ${formatRatio(other.image_resolution_multiplier)}x`,
+      tone: 'secondary',
+    });
   }
 
+  if (other?.billing_mode === 'tiered_expr') {
+    return {
+      segments: [
+        ...renderTieredModelPriceSimple(summaryOpts),
+        ...resolutionSegments,
+      ],
+    };
+  }
+
+  const priceSegments = other?.claude
+    ? renderModelPriceSimple({ ...summaryOpts, provider: 'claude' })
+    : renderModelPriceSimple({ ...summaryOpts, provider: 'openai' });
   return {
-    segments: other?.claude
-      ? renderModelPriceSimple({ ...summaryOpts, provider: 'claude' })
-      : renderModelPriceSimple({ ...summaryOpts, provider: 'openai' }),
+    segments: [...priceSegments, ...resolutionSegments],
   };
 }
 

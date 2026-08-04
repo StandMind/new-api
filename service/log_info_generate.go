@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -162,6 +163,15 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 	}
 	if relayInfo.UserSetting.BillingPreference != "" {
 		other["billing_preference"] = relayInfo.UserSetting.BillingPreference
+	}
+	if ratios := relayInfo.PriceData.OtherRatios(); len(ratios) > 0 {
+		other["billing_ratios"] = ratios
+		for name, multiplier := range ratios {
+			if strings.HasPrefix(name, billing_setting.ImageResolutionBillingRatioPrefix) {
+				other["image_resolution"] = strings.TrimPrefix(name, billing_setting.ImageResolutionBillingRatioPrefix)
+				other["image_resolution_multiplier"] = multiplier
+			}
+		}
 	}
 	if relayInfo.BillingSource == "subscription" {
 		if relayInfo.SubscriptionId != 0 {

@@ -119,7 +119,7 @@ func GetPricing(c *gin.Context) {
 		"effective_group_model_ratio": effectiveGroupModelRatio,
 		"usable_group":                usableGroupView,
 		"supported_endpoint":          model.GetSupportedEndpointMap(),
-		"pricing_version":             "a42d372ccf0b5dd13ecf71203521f9d2",
+		"pricing_version":             "c8fcbfc881ac3680c5019bb680fb4b3d",
 	})
 }
 

@@ -232,6 +232,9 @@ export interface LogOtherData {
   model_ratio?: number
   completion_ratio?: number
   model_price?: number
+  billing_ratios?: Record<string, number>
+  image_resolution?: string
+  image_resolution_multiplier?: number
   group_ratio?: number
   user_group_ratio?: number
   cache_ratio?: number

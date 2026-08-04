@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -182,6 +183,35 @@ func TestPricingIncludesModelReleaseDate(t *testing.T) {
 		}
 	}
 	t.Fatal("release-date-model was not returned by pricing")
+}
+
+func TestPricingIncludesRequestPricePolicyOnlyForConfiguredModels(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+
+	insertPricingEndpointChannel(t, 106, constant.ChannelTypeGemini, dto.ChannelOtherSettings{})
+	models := []string{
+		"gemini-3-pro-image",
+		"gemini-3-pro-image-preview",
+		"gemini-3.1-flash-image",
+		"gemini-3.1-flash-image-preview",
+		"gemini-2.5-flash-image",
+	}
+	for _, modelName := range models {
+		insertPricingEndpointAbility(t, 106, modelName)
+	}
+
+	pricingByModel := make(map[string]Pricing)
+	for _, pricing := range GetPricing() {
+		pricingByModel[pricing.ModelName] = pricing
+	}
+
+	for _, modelName := range models[:4] {
+		expected, ok := billing_setting.GetRequestPricePolicy(modelName)
+		require.True(t, ok)
+		require.NotNil(t, pricingByModel[modelName].RequestPricePolicy)
+		assert.Equal(t, expected, *pricingByModel[modelName].RequestPricePolicy)
+	}
+	assert.Nil(t, pricingByModel["gemini-2.5-flash-image"].RequestPricePolicy)
 }
 
 func TestPricingAdvancedCustomMissingConfigFallsBackToChannelType(t *testing.T) {

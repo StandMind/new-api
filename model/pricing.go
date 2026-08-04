@@ -16,32 +16,33 @@ import (
 )
 
 type Pricing struct {
-	ModelName              string                             `json:"model_name"`
-	Description            string                             `json:"description,omitempty"`
-	DescriptionI18n        LocalizedText                      `json:"-"`
-	Icon                   string                             `json:"icon,omitempty"`
-	Tags                   string                             `json:"tags,omitempty"`
-	TagsI18n               LocalizedText                      `json:"-"`
-	VendorID               int                                `json:"vendor_id,omitempty"`
-	ReleaseDate            string                             `json:"release_date,omitempty"`
-	QuotaType              int                                `json:"quota_type"`
-	ModelRatio             float64                            `json:"model_ratio"`
-	ModelPrice             float64                            `json:"model_price"`
-	OwnerBy                string                             `json:"owner_by"`
-	CompletionRatio        float64                            `json:"completion_ratio"`
-	CacheRatio             *float64                           `json:"cache_ratio,omitempty"`
-	CreateCacheRatio       *float64                           `json:"create_cache_ratio,omitempty"`
-	ImageRatio             *float64                           `json:"image_ratio,omitempty"`
-	AudioRatio             *float64                           `json:"audio_ratio,omitempty"`
-	AudioCompletionRatio   *float64                           `json:"audio_completion_ratio,omitempty"`
-	EnableGroup            []string                           `json:"enable_groups"`
-	RouteGroupNames        map[string]string                  `json:"route_group_names,omitempty"`
-	SupportedEndpointTypes []constant.EndpointType            `json:"supported_endpoint_types"`
-	BillingMode            string                             `json:"billing_mode,omitempty"`
-	BillingExpr            string                             `json:"billing_expr,omitempty"`
-	PricingVersion         string                             `json:"pricing_version,omitempty"`
-	EffectiveGroupRatio    map[string]float64                 `json:"effective_group_ratio,omitempty"`
-	OfficialPrice          *official_price_setting.ModelPrice `json:"official_price,omitempty"`
+	ModelName              string                              `json:"model_name"`
+	Description            string                              `json:"description,omitempty"`
+	DescriptionI18n        LocalizedText                       `json:"-"`
+	Icon                   string                              `json:"icon,omitempty"`
+	Tags                   string                              `json:"tags,omitempty"`
+	TagsI18n               LocalizedText                       `json:"-"`
+	VendorID               int                                 `json:"vendor_id,omitempty"`
+	ReleaseDate            string                              `json:"release_date,omitempty"`
+	QuotaType              int                                 `json:"quota_type"`
+	ModelRatio             float64                             `json:"model_ratio"`
+	ModelPrice             float64                             `json:"model_price"`
+	OwnerBy                string                              `json:"owner_by"`
+	CompletionRatio        float64                             `json:"completion_ratio"`
+	CacheRatio             *float64                            `json:"cache_ratio,omitempty"`
+	CreateCacheRatio       *float64                            `json:"create_cache_ratio,omitempty"`
+	ImageRatio             *float64                            `json:"image_ratio,omitempty"`
+	AudioRatio             *float64                            `json:"audio_ratio,omitempty"`
+	AudioCompletionRatio   *float64                            `json:"audio_completion_ratio,omitempty"`
+	EnableGroup            []string                            `json:"enable_groups"`
+	RouteGroupNames        map[string]string                   `json:"route_group_names,omitempty"`
+	SupportedEndpointTypes []constant.EndpointType             `json:"supported_endpoint_types"`
+	BillingMode            string                              `json:"billing_mode,omitempty"`
+	BillingExpr            string                              `json:"billing_expr,omitempty"`
+	PricingVersion         string                              `json:"pricing_version,omitempty"`
+	EffectiveGroupRatio    map[string]float64                  `json:"effective_group_ratio,omitempty"`
+	OfficialPrice          *official_price_setting.ModelPrice  `json:"official_price,omitempty"`
+	RequestPricePolicy     *billing_setting.RequestPricePolicy `json:"request_price_policy,omitempty"`
 }
 
 type PricingVendor struct {
@@ -434,12 +435,15 @@ func updatePricing() {
 				pricing.BillingExpr = expr
 			}
 		}
+		if policy, ok := billing_setting.GetRequestPricePolicy(model); ok {
+			pricing.RequestPricePolicy = &policy
+		}
 		pricingMap = append(pricingMap, pricing)
 	}
 
 	// 防止大更新后数据不通用
 	if len(pricingMap) > 0 {
-		pricingMap[0].PricingVersion = "5a90f2b86c08bd983a9a2e6d66c255f4eaef9c4bc934386d2b6ae84ef0ff1f1f"
+		pricingMap[0].PricingVersion = "1977a89874bd2e6ddd1513f0b3570f1952462d5a10cc7ad2e306e1761fd8a542"
 	}
 
 	// 刷新缓存映射，供高并发快速查询

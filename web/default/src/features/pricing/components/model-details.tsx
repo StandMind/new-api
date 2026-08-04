@@ -988,6 +988,121 @@ function GroupPricingSection(props: {
     )
   }
 
+  const requestPriceTiers = props.model.request_price_policy?.tiers ?? []
+  if (!isTokenBased && requestPriceTiers.length > 0) {
+    const rows = availableGroups.flatMap((group) => {
+      const ratio = getConfiguredGroupRatio(groupRatio, group)
+      return requestPriceTiers.map((tier, tierIndex) => ({
+        group,
+        ratio,
+        tier,
+        tierIndex,
+        price: formatFixedPrice(
+          props.model,
+          group,
+          showRechargePrice,
+          props.priceRate,
+          props.usdExchangeRate,
+          groupRatio,
+          tier.multiplier
+        ),
+      }))
+    })
+
+    return (
+      <section>
+        <SectionTitle>{t('Pricing by Group')}</SectionTitle>
+        <StaticDataTable
+          className='border-border/60 rounded-lg'
+          tableClassName='min-w-max text-sm'
+          headerRowClassName='hover:bg-transparent'
+          data={rows}
+          getRowKey={(row) => `${row.group}-${row.tier.value}`}
+          getRowClassName={(row) =>
+            cn(
+              row.tierIndex < requestPriceTiers.length - 1 && 'border-b-0',
+              hoveredPricingGroup === row.group &&
+                '[background-color:color-mix(in_oklch,var(--muted)_50%,var(--background))]'
+            )
+          }
+          getRowProps={(row) => ({
+            'data-pricing-group': row.group,
+            onMouseEnter: () => setHoveredPricingGroup(row.group),
+            onMouseLeave: () => setHoveredPricingGroup(null),
+          })}
+          columns={[
+            {
+              id: 'group',
+              header: t('Group'),
+              className: thClass,
+              cellClassName: 'py-2.5',
+              cellProps: (row) => ({
+                rowSpan: row.tierIndex === 0 ? requestPriceTiers.length : 0,
+              }),
+              cell: (row) => (
+                <div className='flex min-w-44 flex-wrap items-center gap-1.5'>
+                  <GroupBadge
+                    group={row.group}
+                    label={
+                      props.model.route_group_names?.[row.group] || row.group
+                    }
+                    size='sm'
+                  />
+                </div>
+              ),
+            },
+            {
+              id: 'ratio',
+              header: t('Group Ratio'),
+              className: thClass,
+              cellClassName: 'text-muted-foreground py-2.5 font-mono',
+              cellProps: (row) => ({
+                rowSpan: row.tierIndex === 0 ? requestPriceTiers.length : 0,
+              }),
+              cell: (row) => `${row.ratio}x`,
+            },
+            {
+              id: 'resolution',
+              header: t('Resolution'),
+              className: thClass,
+              cellClassName: (row) =>
+                cn(
+                  'py-2.5 font-mono font-medium',
+                  row.tierIndex > 0 && 'border-t'
+                ),
+              cell: (row) => row.tier.value,
+            },
+            {
+              id: 'multiplier',
+              header: t('Resolution multiplier'),
+              className: `${thClass} text-right`,
+              cellClassName: (row) =>
+                cn(
+                  'text-muted-foreground py-2.5 text-right font-mono',
+                  row.tierIndex > 0 && 'border-t'
+                ),
+              cell: (row) => `${row.tier.multiplier}x`,
+            },
+            {
+              id: 'price',
+              header: t('Price'),
+              className: `${thClass} text-right`,
+              cellClassName: (row) =>
+                cn(
+                  'py-2.5 text-right font-mono',
+                  row.tierIndex > 0 && 'border-t'
+                ),
+              cell: (row) => row.price,
+            },
+          ]}
+        />
+        <p className='text-muted-foreground/40 mt-1.5 text-[10px]'>
+          {t('Per request')}
+        </p>
+      </section>
+    )
+  }
+
   const renderGroupPrice = (group: string, type: PriceType) =>
     formatGroupPrice(
       props.model,

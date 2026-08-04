@@ -34,6 +34,10 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useStatus } from '@/hooks/use-status'
 
 import {
+  buildGeminiImageRequestBody,
+  buildOpenAIImageRequestBody,
+} from '../lib/image-api-samples'
+import {
   buildSupportedParameters,
   type SupportedParameter,
 } from '../lib/mock-stats'
@@ -71,9 +75,67 @@ type SampleContext = {
   modelName: string
   endpointType: string
   endpointPath: string
+  imageResolution?: string
+}
+
+function buildOpenAIImageChatSample(lang: Lang, ctx: SampleContext): string {
+  const url = `${ctx.baseUrl}${ctx.endpointPath}`
+  const bodyJson = buildOpenAIImageRequestBody(
+    ctx.modelName,
+    ctx.imageResolution || '1K'
+  )
+
+  if (lang === 'curl') {
+    return [
+      `curl ${url} \\`,
+      `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\`,
+      `  -H "Content-Type: application/json" \\`,
+      `  -d '${bodyJson.replaceAll('\n', '\n     ')}'`,
+    ].join('\n')
+  }
+  if (lang === 'python') {
+    return [
+      'import json',
+      'import requests',
+      '',
+      `payload = json.loads(r'''${bodyJson}''')`,
+      `response = requests.post(`,
+      `    "${url}",`,
+      `    headers={`,
+      `        "Authorization": "Bearer <YOUR_API_KEY>",`,
+      `        "Content-Type": "application/json",`,
+      `    },`,
+      `    json=payload,`,
+      `)`,
+      `response.raise_for_status()`,
+      `print(response.json())`,
+    ].join('\n')
+  }
+
+  const apiKey =
+    lang === 'typescript'
+      ? `process.env.${ctx.apiKeyEnv}!`
+      : `process.env.${ctx.apiKeyEnv}`
+  return [
+    `const payload = ${bodyJson}`,
+    '',
+    `const response = await fetch('${url}', {`,
+    `  method: 'POST',`,
+    `  headers: {`,
+    `    Authorization: \`Bearer \${${apiKey}}\`,`,
+    `    'Content-Type': 'application/json',`,
+    `  },`,
+    `  body: JSON.stringify(payload),`,
+    `})`,
+    `if (!response.ok) throw new Error(await response.text())`,
+    `console.log(await response.json())`,
+  ].join('\n')
 }
 
 function buildChatSample(lang: Lang, ctx: SampleContext): string {
+  if (ctx.imageResolution && ctx.endpointType !== 'openai-response') {
+    return buildOpenAIImageChatSample(lang, ctx)
+  }
   const url = `${ctx.baseUrl}${ctx.endpointPath}`
   const isResponses = ctx.endpointType === 'openai-response'
   const isReasoning = /^o[1-4]|reasoning|thinking|deepseek-r/i.test(
@@ -146,6 +208,57 @@ function buildChatSample(lang: Lang, ctx: SampleContext): string {
     '',
     `const data = await response.json()`,
     `console.log(data)`,
+  ].join('\n')
+}
+
+function buildGeminiImageSample(lang: Lang, ctx: SampleContext): string {
+  const url = `${ctx.baseUrl}${ctx.endpointPath}`
+  const bodyJson = buildGeminiImageRequestBody(ctx.imageResolution || '1K')
+
+  if (lang === 'curl') {
+    return [
+      `curl '${url}' \\`,
+      `  -H "x-goog-api-key: $${ctx.apiKeyEnv}" \\`,
+      `  -H 'Content-Type: application/json' \\`,
+      `  -d '${bodyJson.replaceAll('\n', '\n     ')}'`,
+    ].join('\n')
+  }
+  if (lang === 'python') {
+    return [
+      'import json',
+      'import requests',
+      '',
+      `payload = json.loads(r'''${bodyJson}''')`,
+      `response = requests.post(`,
+      `    "${url}",`,
+      `    headers={`,
+      `        "x-goog-api-key": "<YOUR_API_KEY>",`,
+      `        "Content-Type": "application/json",`,
+      `    },`,
+      `    json=payload,`,
+      `)`,
+      `response.raise_for_status()`,
+      `print(response.json())`,
+    ].join('\n')
+  }
+
+  const apiKey =
+    lang === 'typescript'
+      ? `process.env.${ctx.apiKeyEnv}!`
+      : `process.env.${ctx.apiKeyEnv}`
+  return [
+    `const payload = ${bodyJson}`,
+    '',
+    `const response = await fetch('${url}', {`,
+    `  method: 'POST',`,
+    `  headers: {`,
+    `    'x-goog-api-key': ${apiKey},`,
+    `    'Content-Type': 'application/json',`,
+    `  },`,
+    `  body: JSON.stringify(payload),`,
+    `})`,
+    `if (!response.ok) throw new Error(await response.text())`,
+    `console.log(await response.json())`,
   ].join('\n')
 }
 
@@ -228,6 +341,7 @@ function buildAnthropicSample(lang: Lang, ctx: SampleContext): string {
 }
 
 function buildGeminiSample(lang: Lang, ctx: SampleContext): string {
+  if (ctx.imageResolution) return buildGeminiImageSample(lang, ctx)
   const url = `${ctx.baseUrl}${ctx.endpointPath}?key=$${ctx.apiKeyEnv}`
   const userMessage = 'Explain quantum entanglement in one paragraph.'
 
@@ -510,6 +624,7 @@ function buildSample(
 function CodeSamplesSection(props: {
   model: PricingModel
   endpointMap: Record<string, { path?: string; method?: string }>
+  onEndpointTypeChange: (endpointType: string) => void
 }) {
   const { t } = useTranslation()
   const { status } = useStatus()
@@ -546,6 +661,19 @@ function CodeSamplesSection(props: {
   )
   const [lang, setLang] = useState<Lang>('curl')
 
+  const resolutionPolicy =
+    props.model.request_price_policy?.dimension === 'image_resolution'
+      ? props.model.request_price_policy
+      : undefined
+  const [resolution, setResolution] = useState(
+    resolutionPolicy?.default_value ?? ''
+  )
+  const activeResolution = resolutionPolicy?.tiers.some(
+    (tier) => tier.value === resolution
+  )
+    ? resolution
+    : (resolutionPolicy?.default_value ?? '')
+
   const activeEndpoint = useMemo(() => {
     return endpoints.find((e) => e.type === endpointType) ?? endpoints[0]
   }, [endpointType, endpoints])
@@ -560,6 +688,7 @@ function CodeSamplesSection(props: {
     modelName: props.model.model_name || '',
     endpointType: activeEndpoint.type,
     endpointPath: activeEndpoint.path,
+    imageResolution: activeResolution || undefined,
   })
 
   return (
@@ -568,7 +697,13 @@ function CodeSamplesSection(props: {
 
       <div className='flex flex-wrap items-center gap-2'>
         {endpoints.length > 1 && (
-          <Tabs value={endpointType} onValueChange={setEndpointType}>
+          <Tabs
+            value={endpointType}
+            onValueChange={(value) => {
+              setEndpointType(value)
+              props.onEndpointTypeChange(value)
+            }}
+          >
             <TabsList className='bg-muted/40 h-8 p-0.5'>
               {endpoints.map((ep) => (
                 <TabsTrigger
@@ -581,6 +716,27 @@ function CodeSamplesSection(props: {
               ))}
             </TabsList>
           </Tabs>
+        )}
+
+        {resolutionPolicy && (
+          <div className='flex items-center gap-1.5'>
+            <span className='text-muted-foreground text-xs'>
+              {t('Resolution')}
+            </span>
+            <Tabs value={activeResolution} onValueChange={setResolution}>
+              <TabsList className='bg-muted/40 h-8 p-0.5'>
+                {resolutionPolicy.tiers.map((tier) => (
+                  <TabsTrigger
+                    key={tier.value}
+                    value={tier.value}
+                    className='h-7 px-2.5 text-xs'
+                  >
+                    {tier.value}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          </div>
         )}
 
         <Tabs
@@ -619,11 +775,14 @@ function CodeSamplesSection(props: {
 // Supported parameters table
 // ---------------------------------------------------------------------------
 
-function SupportedParametersSection(props: { model: PricingModel }) {
+function SupportedParametersSection(props: {
+  model: PricingModel
+  endpointType: string
+}) {
   const { t } = useTranslation()
   const params = useMemo(
-    () => buildSupportedParameters(props.model),
-    [props.model]
+    () => buildSupportedParameters(props.model, props.endpointType),
+    [props.model, props.endpointType]
   )
 
   if (params.length === 0) return null
@@ -703,6 +862,14 @@ function ParamRangeCell(props: { param: SupportedParameter }) {
         {range && (
           <span className='text-muted-foreground text-sm'>{range}</span>
         )}
+        {enumValues?.map((value) => (
+          <code
+            key={value}
+            className='bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-mono text-sm'
+          >
+            {value}
+          </code>
+        ))}
       </div>
     )
   }
@@ -770,11 +937,26 @@ export function ModelDetailsApi(props: {
   model: PricingModel
   endpointMap: Record<string, { path?: string; method?: string }>
 }) {
+  const supportedEndpointTypes = props.model.supported_endpoint_types ?? []
+  const [endpointType, setEndpointType] = useState(
+    supportedEndpointTypes[0] ?? ''
+  )
+  const activeEndpointType = supportedEndpointTypes.includes(endpointType)
+    ? endpointType
+    : (supportedEndpointTypes[0] ?? '')
+
   return (
     <div className='space-y-6'>
-      <CodeSamplesSection model={props.model} endpointMap={props.endpointMap} />
+      <CodeSamplesSection
+        model={props.model}
+        endpointMap={props.endpointMap}
+        onEndpointTypeChange={setEndpointType}
+      />
       <AuthSection />
-      <SupportedParametersSection model={props.model} />
+      <SupportedParametersSection
+        model={props.model}
+        endpointType={activeEndpointType}
+      />
     </div>
   )
 }

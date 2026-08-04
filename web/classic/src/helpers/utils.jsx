@@ -621,6 +621,7 @@ export const calculateModelPrice = ({
   currency,
   quotaDisplayType = 'USD',
   precision = 4,
+  requestMultiplier,
 }) => {
   const recordGroupRatio =
     record?.group_ratio &&
@@ -770,11 +771,31 @@ export const calculateModelPrice = ({
 
   if (record.quota_type === 1) {
     // 按次计费
-    const priceUSD = parseFloat(record.model_price) * usedGroupRatio;
-    const displayVal = displayPrice(priceUSD);
+    const policyMultipliers = Array.isArray(record?.request_price_policy?.tiers)
+      ? record.request_price_policy.tiers
+          .map((tier) => Number(tier?.multiplier))
+          .filter((multiplier) => Number.isFinite(multiplier) && multiplier > 0)
+      : [];
+    const multipliers =
+      Number.isFinite(requestMultiplier) && requestMultiplier > 0
+        ? [requestMultiplier]
+        : policyMultipliers.length > 0
+          ? policyMultipliers
+          : [1];
+    const pricesUSD = multipliers.map(
+      (multiplier) =>
+        parseFloat(record.model_price) * usedGroupRatio * multiplier,
+    );
+    const minPriceUSD = Math.min(...pricesUSD);
+    const maxPriceUSD = Math.max(...pricesUSD);
+    const minDisplay = displayPrice(minPriceUSD);
+    const maxDisplay = displayPrice(maxPriceUSD);
 
     return {
-      price: displayVal,
+      price:
+        minPriceUSD === maxPriceUSD
+          ? minDisplay
+          : `${minDisplay} - ${maxDisplay}`,
       isPerToken: false,
       isTokensDisplay: false,
       usedGroup,

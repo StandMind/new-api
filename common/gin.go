@@ -95,6 +95,28 @@ func GetBodyStorage(c *gin.Context) (BodyStorage, error) {
 	return bs, nil
 }
 
+// ReplaceBodyStorage swaps the cached request body after a validated JSON
+// normalization while keeping subsequent retries and pass-through reads in
+// sync with the normalized DTO.
+func ReplaceBodyStorage(c *gin.Context, data []byte) error {
+	storage, err := CreateBodyStorage(data)
+	if err != nil {
+		return err
+	}
+
+	if previous, exists := c.Get(KeyBodyStorage); exists && previous != nil {
+		if bodyStorage, ok := previous.(BodyStorage); ok {
+			_ = bodyStorage.Close()
+		}
+	}
+
+	c.Set(KeyBodyStorage, storage)
+	c.Set(KeyRequestBody, data)
+	c.Request.Body = io.NopCloser(storage)
+	c.Request.ContentLength = storage.Size()
+	return nil
+}
+
 // CleanupBodyStorage 清理请求体存储（应在请求结束时调用）
 func CleanupBodyStorage(c *gin.Context) {
 	if storage, exists := c.Get(KeyBodyStorage); exists && storage != nil {

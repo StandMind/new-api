@@ -60,12 +60,12 @@ func OpenAIChatRequestToGeminiGenerateContent(c *gin.Context, textRequest dto.Ge
 
 		if googleBody, ok := extraBody["google"].(map[string]interface{}); ok {
 			if !strings.HasSuffix(upstreamModelName, "-nothinking") {
-				adaptorWithExtraBody = true
 				if _, hasErrorParam := googleBody["thinkingConfig"]; hasErrorParam {
 					return nil, errors.New("extra_body.google.thinkingConfig is not supported, use extra_body.google.thinking_config instead")
 				}
 
 				if thinkingConfig, ok := googleBody["thinking_config"].(map[string]interface{}); ok {
+					adaptorWithExtraBody = true
 					if _, hasErrorParam := thinkingConfig["thinkingBudget"]; hasErrorParam {
 						return nil, errors.New("extra_body.google.thinking_config.thinkingBudget is not supported, use extra_body.google.thinking_config.thinking_budget instead")
 					}

@@ -45,6 +45,17 @@ export type OfficialPrice = {
   tiers: OfficialPriceTier[]
 }
 
+export type RequestPriceTier = {
+  value: string
+  multiplier: number
+}
+
+export type RequestPricePolicy = {
+  dimension: 'image_resolution' | string
+  default_value: string
+  tiers: RequestPriceTier[]
+}
+
 export type PricingModel = {
   id: number
   model_name: string
@@ -71,6 +82,7 @@ export type PricingModel = {
   group_ratio?: Record<string, number>
   effective_group_ratio?: Record<string, number>
   official_price?: OfficialPrice
+  request_price_policy?: RequestPricePolicy
   /** Billing mode (e.g. "tiered_expr") used to flag dynamic pricing */
   billing_mode?: string
   /** Raw expression describing dynamic / tiered billing */

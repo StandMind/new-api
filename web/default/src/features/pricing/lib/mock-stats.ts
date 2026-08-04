@@ -315,8 +315,7 @@ export function buildGroupPerformance(model: PricingModel): GroupPerformance[] {
   const spec = PROFILE_SPECS[profile]
   const baseSeed = hashStringToSeed(model.model_name)
 
-  return targets
-    .slice()
+  return [...targets]
     .sort((a, b) => a.localeCompare(b))
     .map<GroupPerformance>((group) => {
       const rand = seededRandom(baseSeed ^ hashStringToSeed(group))
@@ -1089,18 +1088,47 @@ export function buildSupportedParameters(
   model: PricingModel,
   endpointType?: string
 ): SupportedParameter[] {
-  if (endpointType === 'gemini') return GEMINI_GENERATE_CONTENT_PARAMS
-  if (endpointType === 'openai-response') return OPENAI_RESPONSES_PARAMS
-  if (endpointType === 'anthropic') return ANTHROPIC_MESSAGES_PARAMS
-  if (endpointType === 'embeddings' || endpointType === 'jina-rerank') {
-    return EMBEDDING_PARAMS
+  let parameters: SupportedParameter[]
+  if (endpointType === 'gemini') {
+    parameters = GEMINI_GENERATE_CONTENT_PARAMS
+  } else if (endpointType === 'openai') {
+    parameters = OPENAI_CHAT_PARAMS
+  } else if (endpointType === 'openai-response') {
+    parameters = OPENAI_RESPONSES_PARAMS
+  } else if (endpointType === 'anthropic') {
+    parameters = ANTHROPIC_MESSAGES_PARAMS
+  } else if (endpointType === 'embeddings' || endpointType === 'jina-rerank') {
+    parameters = EMBEDDING_PARAMS
+  } else if (endpointType === 'image-generation') {
+    parameters = IMAGE_PARAMS
+  } else if (endpointType === 'openai-video') {
+    parameters = VIDEO_PARAMS
+  } else {
+    const cat = apiCategoryOf(model)
+    if (cat === 'embedding') parameters = EMBEDDING_PARAMS
+    else if (cat === 'image') parameters = IMAGE_PARAMS
+    else if (cat === 'video') parameters = VIDEO_PARAMS
+    else parameters = OPENAI_CHAT_PARAMS
   }
-  if (endpointType === 'image-generation') return IMAGE_PARAMS
-  if (endpointType === 'openai-video') return VIDEO_PARAMS
 
-  const cat = apiCategoryOf(model)
-  if (cat === 'embedding') return EMBEDDING_PARAMS
-  if (cat === 'image') return IMAGE_PARAMS
-  if (cat === 'video') return VIDEO_PARAMS
-  return OPENAI_CHAT_PARAMS
+  const policy = model.request_price_policy
+  if (
+    policy?.dimension !== 'image_resolution' ||
+    policy.tiers.length === 0 ||
+    (endpointType !== 'gemini' && endpointType !== 'openai')
+  ) {
+    return parameters
+  }
+
+  const resolutionParameter: SupportedParameter = {
+    name:
+      endpointType === 'gemini'
+        ? 'generationConfig.imageConfig.imageSize'
+        : 'extra_body.google.image_config.image_size',
+    type: 'enum',
+    defaultValue: policy.default_value,
+    enumValues: policy.tiers.map((tier) => tier.value),
+    descriptionKey: 'Image resolution used for generation and request billing',
+  }
+  return [...parameters, resolutionParameter]
 }

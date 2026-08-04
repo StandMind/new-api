@@ -133,6 +133,17 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
 		return
 	}
+	requestBillingRatios, err := helper.NormalizeRequestPricePolicy(relayInfo.OriginModelName, request)
+	if err != nil {
+		newAPIError = types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		return
+	}
+	if len(requestBillingRatios) > 0 {
+		if err = helper.SyncRequestPricePolicyBody(c, request); err != nil {
+			newAPIError = types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			return
+		}
+	}
 
 	needSensitiveCheck := setting.ShouldCheckPromptSensitive()
 	needCountToken := constant.CountToken
@@ -142,6 +153,14 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		meta = request.GetTokenCountMeta()
 	} else {
 		meta = fastTokenCountMetaForPricing(request)
+	}
+	if len(requestBillingRatios) > 0 {
+		if meta.BillingRatios == nil {
+			meta.BillingRatios = make(map[string]float64, len(requestBillingRatios))
+		}
+		for name, ratio := range requestBillingRatios {
+			meta.BillingRatios[name] = ratio
+		}
 	}
 
 	if needSensitiveCheck && meta != nil {

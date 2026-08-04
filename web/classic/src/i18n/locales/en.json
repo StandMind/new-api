@@ -788,6 +788,8 @@
     "分组JSON设置": "Group JSON Settings",
     "分组与模型定价设置": "Group & Model Pricing",
     "分组价格": "Group price",
+    "分辨率": "Resolution",
+    "分辨率倍率": "Resolution multiplier",
     "分组倍率": "Group ratio",
     "分组倍率设置": "Group ratio settings",
     "分组倍率设置，可以在此处新增分组或修改现有分组的倍率，格式为 JSON 字符串，例如：{\"vip\": 0.5, \"test\": 1}，表示 vip 分组的倍率为 0.5，test 分组的倍率为 1": "Group ratio settings, you can add new groups or modify existing group ratios here, format as JSON string, e.g.: {\"vip\": 0.5, \"test\": 1}, indicating vip group ratio is 0.5, test group ratio is 1",

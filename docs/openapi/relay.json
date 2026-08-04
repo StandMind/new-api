@@ -198,6 +198,28 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ChatCompletionRequest"
+              },
+              "examples": {
+                "geminiImage4K": {
+                  "summary": "Gemini 图片 OpenAI 兼容格式 (4K)",
+                  "value": {
+                    "model": "gemini-3-pro-image",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "Create a clean editorial illustration of a glass greenhouse."
+                      }
+                    ],
+                    "extra_body": {
+                      "google": {
+                        "image_config": {
+                          "aspect_ratio": "1:1",
+                          "image_size": "4K"
+                        }
+                      }
+                    }
+                  }
+                }
               }
             }
           },
@@ -1339,7 +1361,7 @@
       "post": {
         "summary": "Gemini 图片(Nano Banana)",
         "deprecated": false,
-        "description": "Gemini 图片生成",
+        "description": "Gemini 图片生成。`generationConfig.imageConfig.imageSize` 缺省为 `1K`，并按实际分辨率计费。\n\n| 模型 | 可用 imageSize |\n| --- | --- |\n| `gemini-3-pro-image` | `1K`, `2K`, `4K` |\n| `gemini-3-pro-image-preview` | `1K`, `2K`, `4K` |\n| `gemini-3.1-flash-image` | `512`, `1K`, `2K`, `4K` |\n| `gemini-3.1-flash-image-preview` | `512`, `1K`, `2K`, `4K` |",
         "operationId": "geminiRelayV1Beta",
         "tags": [
           "Gemini格式"
@@ -1400,7 +1422,15 @@
                             "type": "string"
                           },
                           "imageSize": {
-                            "type": "string"
+                            "type": "string",
+                            "description": "图片分辨率。Pro 系列支持 1K/2K/4K，Flash 系列额外支持 512。该字段同时决定请求计费档位。",
+                            "enum": [
+                              "512",
+                              "1K",
+                              "2K",
+                              "4K"
+                            ],
+                            "default": "1K"
                           }
                         }
                       }
@@ -1415,25 +1445,180 @@
                   "generationConfig"
                 ]
               },
-              "example": {
-                "contents": [
-                  {
-                    "role": "user",
-                    "parts": [
+              "examples": {
+                "pro1K": {
+                  "summary": "Pro 1K",
+                  "value": {
+                    "contents": [
                       {
-                        "text": "draw a cat"
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "Create a clean editorial illustration of a glass greenhouse."
+                          }
+                        ]
                       }
-                    ]
+                    ],
+                    "generationConfig": {
+                      "responseModalities": [
+                        "TEXT",
+                        "IMAGE"
+                      ],
+                      "imageConfig": {
+                        "aspectRatio": "1:1",
+                        "imageSize": "1K"
+                      }
+                    }
                   }
-                ],
-                "generationConfig": {
-                  "responseModalities": [
-                    "TEXT",
-                    "IMAGE"
-                  ],
-                  "imageConfig": {
-                    "aspectRatio": "16:9",
-                    "imageSize": "4K"
+                },
+                "pro2K": {
+                  "summary": "Pro 2K",
+                  "value": {
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "Create a clean editorial illustration of a glass greenhouse."
+                          }
+                        ]
+                      }
+                    ],
+                    "generationConfig": {
+                      "responseModalities": [
+                        "TEXT",
+                        "IMAGE"
+                      ],
+                      "imageConfig": {
+                        "aspectRatio": "1:1",
+                        "imageSize": "2K"
+                      }
+                    }
+                  }
+                },
+                "pro4K": {
+                  "summary": "Pro 4K",
+                  "value": {
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "Create a clean editorial illustration of a glass greenhouse."
+                          }
+                        ]
+                      }
+                    ],
+                    "generationConfig": {
+                      "responseModalities": [
+                        "TEXT",
+                        "IMAGE"
+                      ],
+                      "imageConfig": {
+                        "aspectRatio": "1:1",
+                        "imageSize": "4K"
+                      }
+                    }
+                  }
+                },
+                "flash512": {
+                  "summary": "Flash 512",
+                  "value": {
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "Create a clean editorial illustration of a glass greenhouse."
+                          }
+                        ]
+                      }
+                    ],
+                    "generationConfig": {
+                      "responseModalities": [
+                        "TEXT",
+                        "IMAGE"
+                      ],
+                      "imageConfig": {
+                        "aspectRatio": "1:1",
+                        "imageSize": "512"
+                      }
+                    }
+                  }
+                },
+                "flash1K": {
+                  "summary": "Flash 1K",
+                  "value": {
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "Create a clean editorial illustration of a glass greenhouse."
+                          }
+                        ]
+                      }
+                    ],
+                    "generationConfig": {
+                      "responseModalities": [
+                        "TEXT",
+                        "IMAGE"
+                      ],
+                      "imageConfig": {
+                        "aspectRatio": "1:1",
+                        "imageSize": "1K"
+                      }
+                    }
+                  }
+                },
+                "flash2K": {
+                  "summary": "Flash 2K",
+                  "value": {
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "Create a clean editorial illustration of a glass greenhouse."
+                          }
+                        ]
+                      }
+                    ],
+                    "generationConfig": {
+                      "responseModalities": [
+                        "TEXT",
+                        "IMAGE"
+                      ],
+                      "imageConfig": {
+                        "aspectRatio": "1:1",
+                        "imageSize": "2K"
+                      }
+                    }
+                  }
+                },
+                "flash4K": {
+                  "summary": "Flash 4K",
+                  "value": {
+                    "contents": [
+                      {
+                        "role": "user",
+                        "parts": [
+                          {
+                            "text": "Create a clean editorial illustration of a glass greenhouse."
+                          }
+                        ]
+                      }
+                    ],
+                    "generationConfig": {
+                      "responseModalities": [
+                        "TEXT",
+                        "IMAGE"
+                      ],
+                      "imageConfig": {
+                        "aspectRatio": "1:1",
+                        "imageSize": "4K"
+                      }
+                    }
                   }
                 }
               }
@@ -2818,6 +3003,37 @@
                 "type": "string"
               }
             }
+          },
+          "extra_body": {
+            "type": "object",
+            "description": "供应商兼容扩展。Gemini 图片模型可通过 google.image_config 指定宽高比和计费分辨率。",
+            "properties": {
+              "google": {
+                "type": "object",
+                "properties": {
+                  "image_config": {
+                    "type": "object",
+                    "properties": {
+                      "aspect_ratio": {
+                        "type": "string",
+                        "example": "1:1"
+                      },
+                      "image_size": {
+                        "type": "string",
+                        "description": "图片分辨率；缺省为 1K。Pro 系列支持 1K/2K/4K，Flash 系列额外支持 512。",
+                        "enum": [
+                          "512",
+                          "1K",
+                          "2K",
+                          "4K"
+                        ],
+                        "default": "1K"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -4074,6 +4290,36 @@
                 "type": "array",
                 "items": {
                   "type": "string"
+                }
+              },
+              "responseModalities": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "TEXT",
+                    "IMAGE"
+                  ]
+                }
+              },
+              "imageConfig": {
+                "type": "object",
+                "properties": {
+                  "aspectRatio": {
+                    "type": "string",
+                    "example": "1:1"
+                  },
+                  "imageSize": {
+                    "type": "string",
+                    "description": "图片分辨率；缺省为 1K。Pro 系列支持 1K/2K/4K，Flash 系列额外支持 512。",
+                    "enum": [
+                      "512",
+                      "1K",
+                      "2K",
+                      "4K"
+                    ],
+                    "default": "1K"
+                  }
                 }
               }
             }

@@ -216,14 +216,15 @@ export function formatFixedPrice(
   showWithRecharge = false,
   priceRate = 1,
   usdExchangeRate = 1,
-  groupRatio: Record<string, number>
+  groupRatio: Record<string, number>,
+  requestMultiplier = 1
 ): string {
   if (model.quota_type !== QUOTA_TYPE_VALUES.REQUEST) {
     return '-'
   }
 
   const ratio = getConfiguredGroupRatio(groupRatio, group)
-  let priceInUSD = (model.model_price || 0) * ratio
+  let priceInUSD = (model.model_price || 0) * ratio * requestMultiplier
 
   priceInUSD = applyRechargeRate(
     priceInUSD,
@@ -255,18 +256,31 @@ export function formatRequestPrice(
 
   const displayGroupRatio = getDisplayGroupRatio(model, selectedGroup)
 
-  let priceInUSD = (model.model_price || 0) * displayGroupRatio
+  const multipliers = model.request_price_policy?.tiers
+    .map((tier) => tier.multiplier)
+    .filter((multiplier) => Number.isFinite(multiplier) && multiplier > 0) ?? [
+    1,
+  ]
+  if (multipliers.length === 0) multipliers.push(1)
 
-  priceInUSD = applyRechargeRate(
-    priceInUSD,
-    showWithRecharge,
-    priceRate,
-    usdExchangeRate
-  )
-
-  return formatCurrencyFromUSD(priceInUSD, {
-    digitsLarge: 4,
-    digitsSmall: 4,
-    abbreviate: false,
+  const prices = multipliers.map((multiplier) => {
+    const basePrice = (model.model_price || 0) * displayGroupRatio * multiplier
+    return applyRechargeRate(
+      basePrice,
+      showWithRecharge,
+      priceRate,
+      usdExchangeRate
+    )
   })
+  const minPrice = Math.min(...prices)
+  const maxPrice = Math.max(...prices)
+  const format = (price: number) =>
+    formatCurrencyFromUSD(price, {
+      digitsLarge: 4,
+      digitsSmall: 4,
+      abbreviate: false,
+    })
+
+  if (minPrice === maxPrice) return format(minPrice)
+  return `${format(minPrice)} - ${format(maxPrice)}`
 }

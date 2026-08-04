@@ -206,6 +206,18 @@ const ModelPricingTable = ({
 
   const isTiered =
     modelData?.billing_mode === 'tiered_expr' && modelData?.billing_expr;
+  const requestPriceTiers =
+    !isTiered &&
+    modelData?.quota_type === 1 &&
+    modelData?.request_price_policy?.dimension === 'image_resolution' &&
+    Array.isArray(modelData.request_price_policy.tiers)
+      ? modelData.request_price_policy.tiers.filter(
+          (tier) =>
+            typeof tier?.value === 'string' &&
+            Number.isFinite(Number(tier?.multiplier)) &&
+            Number(tier.multiplier) > 0,
+        )
+      : [];
   let tiers = [];
   if (isTiered) {
     const { billingExpr } = splitBillingExprAndRequestRules(
@@ -262,6 +274,37 @@ const ModelPricingTable = ({
         });
       });
     });
+  } else if (requestPriceTiers.length > 0) {
+    availableGroups.forEach((group) => {
+      const ratio = getEffectiveGroupRatio(group);
+      requestPriceTiers.forEach((requestTier, tierIndex) => {
+        const priceData = calculateModelPrice({
+          record: modelData,
+          selectedGroup: group,
+          groupRatio: effectiveGroupRatio,
+          tokenUnit,
+          displayPrice,
+          currency,
+          quotaDisplayType: siteDisplayType,
+          requestMultiplier: Number(requestTier.multiplier),
+        });
+        rows.push({
+          key: `${group}-${requestTier.value}`,
+          group,
+          ratio,
+          requestTier,
+          tierIndex,
+          priceData,
+          fields: regularPriceFields(modelData, priceData, siteDisplayType, t),
+          officialUnit: 'usd_per_request',
+          officialActualPrice:
+            Number(modelData.model_price) *
+            ratio *
+            Number(requestTier.multiplier),
+        });
+      });
+    });
+    activeFields = rows[0]?.fields || [];
   } else {
     availableGroups.forEach((group) => {
       const ratio = getEffectiveGroupRatio(group);
@@ -294,8 +337,9 @@ const ModelPricingTable = ({
   }
 
   const getGroupCellRowSpan = (row) => {
-    if (!isTiered || tiers.length <= 1) return 1;
-    return row.tierIndex === 0 ? tiers.length : 0;
+    const tierCount = isTiered ? tiers.length : requestPriceTiers.length;
+    if (tierCount <= 1) return 1;
+    return row.tierIndex === 0 ? tierCount : 0;
   };
 
   const groupColumn = {
@@ -311,14 +355,16 @@ const ModelPricingTable = ({
               <Tag color='white' size='small'>
                 {group}
               </Tag>
-              <OfficialPriceTag
-                modelData={modelData}
-                actualPrice={row.officialActualPrice}
-                unit={row.officialUnit}
-                tierIndex={row.tierIndex ?? 0}
-                tierThresholds={officialTierThresholds}
-                t={t}
-              />
+              {requestPriceTiers.length === 0 && (
+                <OfficialPriceTag
+                  modelData={modelData}
+                  actualPrice={row.officialActualPrice}
+                  unit={row.officialUnit}
+                  tierIndex={row.tierIndex ?? 0}
+                  tierThresholds={officialTierThresholds}
+                  t={t}
+                />
+              )}
             </div>
           ),
         props: {
@@ -387,6 +433,25 @@ const ModelPricingTable = ({
         );
       },
     });
+  }
+
+  if (requestPriceTiers.length > 0) {
+    columns.push(
+      {
+        title: t('分辨率'),
+        dataIndex: 'requestTier',
+        width: 110,
+        render: (requestTier) => (
+          <Text strong>{requestTier?.value || '-'}</Text>
+        ),
+      },
+      {
+        title: t('分辨率倍率'),
+        dataIndex: 'requestTier',
+        width: 120,
+        render: (requestTier) => `${requestTier?.multiplier ?? '-'}x`,
+      },
+    );
   }
 
   if (isTiered) {

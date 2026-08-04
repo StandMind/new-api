@@ -760,6 +760,8 @@
     "分组JSON设置": "Group JSON Settings",
     "分组与模型定价设置": "Nhóm & định giá mô hình",
     "分组价格": "Giá nhóm",
+    "分辨率": "Độ phân giải",
+    "分辨率倍率": "Hệ số độ phân giải",
     "分组倍率": "Tỷ lệ nhóm",
     "分组倍率设置": "Cài đặt tỷ lệ nhóm",
     "分组倍率设置，可以在此处新增分组或修改现有分组的倍率，格式为 JSON 字符串，例如：{\"vip\": 0.5, \"test\": 1}，表示 vip 分组的倍率为 0.5，test 分组的倍率为 1": "Cài đặt tỷ lệ nhóm, bạn có thể thêm nhóm mới hoặc sửa đổi tỷ lệ nhóm hiện có tại đây, định dạng dưới dạng chuỗi JSON, ví dụ: {\"vip\": 0.5, \"test\": 1}, cho biết tỷ lệ nhóm vip là 0.5, tỷ lệ nhóm test là 1",

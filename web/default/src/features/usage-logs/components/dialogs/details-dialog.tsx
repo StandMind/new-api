@@ -265,6 +265,22 @@ function BillingBreakdown(props: {
     }
   }
 
+  if (other.image_resolution) {
+    rows.push({
+      label: t('Resolution'),
+      value: other.image_resolution,
+    })
+  }
+  if (
+    other.image_resolution_multiplier != null &&
+    Number.isFinite(other.image_resolution_multiplier)
+  ) {
+    rows.push({
+      label: t('Resolution multiplier'),
+      value: `${formatRatio(other.image_resolution_multiplier)}x`,
+    })
+  }
+
   const userGR = other.user_group_ratio
   const isUserGR = userGR != null && Number.isFinite(userGR) && userGR !== -1
   const effectiveGR = isUserGR ? userGR : other.group_ratio

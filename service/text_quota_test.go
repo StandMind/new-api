@@ -741,6 +741,30 @@ func TestCalculateTextQuotaSummaryFixedPriceAppliesImageCountOnceAndAllowsOverri
 	require.Equal(t, 120000, summary.Quota)
 }
 
+func TestCalculateTextQuotaSummaryFixedPriceKeepsResolutionMultiplier(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	priceData := types.PriceData{
+		ModelPrice: 0.33,
+		UsePrice:   true,
+		GroupRatioInfo: types.GroupRatioInfo{
+			GroupRatio: 1,
+		},
+		QuotaToPreConsume: 295350,
+	}
+	priceData.AddOtherRatio("image_resolution:4K", 1.79)
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "gemini-3-pro-image",
+		PriceData:       priceData,
+		StartTime:       time.Now(),
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, &dto.Usage{})
+
+	require.Equal(t, priceData.QuotaToPreConsume, summary.Quota)
+	require.Equal(t, map[string]float64{"image_resolution:4K": 1.79}, relayInfo.PriceData.OtherRatios())
+}
+
 func TestCalculateTextQuotaSummaryFixedPriceChargesWithoutTokenUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
