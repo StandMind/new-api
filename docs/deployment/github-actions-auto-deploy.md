@@ -153,7 +153,9 @@ docker-compose.slots.yml  blue、green、master
    15 + Redis 中恢复；旧 slave 持续读、数据库持续写时，候选镜像执行两次
    `--migrate-only`。随后依次验证候选 master/slave 和旧 master/slave，并拒绝包含
    未批准删除或既有对象变化的 catalog diff。原始 schema diff 和表、列、约束、
-   索引、触发器、视图、序列快照一并写入 `preflight-reports/`。
+   索引、触发器、视图、序列快照一并写入 `preflight-reports/`。隔离数据库使用带
+   `com.aivrae.lifecycle=upgrade-preflight` 标签的显式临时卷；正常结束、失败和信号
+   中断都会删除容器及临时卷，下次发布还会在持有部署锁后清理异常中断遗留资源。
 2. `start-upgrade <digest>`：重新备份并校验，先启动独立的持续公网状态探测并在生产
    执行一次 `--migrate-only`；再停止旧 master、启动候选 master，确保任何时刻只有
    一个 master。随后再次确认非活动槽零连接，重建并执行 readiness、状态、模型、
@@ -164,13 +166,16 @@ docker-compose.slots.yml  blue、green、master
    阻断升级。成功后状态进入 `observing-complete`，旧槽仍保留原镜像。
 4. `finalize-upgrade`：从切流时间起至少保留旧槽 24 小时，并确认旧槽连续 10 分钟
    零连接；随后才以候选 digest 重建旧槽作为 fallback，并把 Caddy 健康检查原子
-   切换为 `/readyz`。
+   切换为 `/readyz`。三个生产容器都使用候选镜像后，脚本只删除升级状态中记录且
+   已无任何容器引用的旧 master、原活动槽和原 fallback 镜像。
 5. `rollback-upgrade`：仅允许在 finalize 前执行。先恢复 Caddy 到旧活动槽，再恢复
-   旧 master；不会恢复数据库备份，也不会删除候选槽日志。
+   旧 master；不会恢复数据库备份，也不会删除候选槽日志。候选镜像仅在已经没有
+   容器引用时删除。
 6. `supersede-upgrade`：仅用于历史升级已完成观察、但候选槽随后被一次普通发布取代，
    导致 finalize 无法继续的恢复场景。操作要求当前活动镜像与历史候选不同、历史候选
    槽和 master 仍运行记录的候选镜像且 Caddy 顺序正确；满足条件后只归档并关闭旧状态，
-   不修改容器、数据库或流量。普通 deploy 和手工 switch 在升级状态关闭前会被阻断。
+   不修改容器、数据库或流量。状态关闭后会精确尝试回收其中记录的无引用镜像；仍被
+   容器引用的镜像会保留。普通 deploy 和手工 switch 在升级状态关闭前会被阻断。
 
 `upgrade-state` 的主要阶段为：
 
@@ -182,6 +187,23 @@ preflight-complete -> starting -> switched -> observing-complete -> finalized
 
 候选镜像必须是完整 `image@sha256:digest`。`start-upgrade` 还强制要求低额度
 `DEPLOY_SMOKE_TOKEN` 和 `DEPLOY_SMOKE_MODEL`，否则不会进入生产迁移。
+
+每个会拉取镜像的发布阶段都会先清理已关闭升级状态中的无引用镜像和带预检标签的
+遗留资源，再检查生产目录所在文件系统。默认达到 `70%` 时告警，达到 `80%` 或剩余
+空间低于 `5GiB` 时阻止继续拉取镜像。阈值可通过
+`DEPLOY_DISK_WARN_PERCENT`、`DEPLOY_DISK_BLOCK_PERCENT` 和
+`DEPLOY_DISK_MIN_AVAILABLE_KB` 调整。清理始终按升级状态中的精确镜像引用和预检资源
+标签执行，不使用全局 `docker system prune`，也不删除仍被运行或停止容器引用的资源。
+
+可在持有同一部署锁的前提下手工执行一次兜底清理和磁盘报告：
+
+```bash
+./deploy-blue-green.sh cleanup-artifacts
+```
+
+生产服务器安装 `deploy/blue-green/systemd/` 中的 service 和 timer 后，每天还会在随机
+延迟最多 30 分钟后执行同一条精确清理命令。定时任务与发布使用同一把锁；遇到正在
+进行的发布时会成功跳过，下一次发布或下一轮定时任务会再次检查。
 
 ## Caddy 配置
 

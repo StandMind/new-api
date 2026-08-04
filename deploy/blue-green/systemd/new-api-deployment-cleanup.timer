@@ -1,0 +1,11 @@
+[Unit]
+Description=Run new-api deployment artifact cleanup daily
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=30m
+Persistent=true
+Unit=new-api-deployment-cleanup.service
+
+[Install]
+WantedBy=timers.target

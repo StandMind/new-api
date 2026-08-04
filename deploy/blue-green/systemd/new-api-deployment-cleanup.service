@@ -1,0 +1,9 @@
+[Unit]
+Description=Clean unreferenced new-api deployment artifacts
+Requires=docker.service
+After=docker.service
+ConditionFileIsExecutable=/opt/new-api-stack/deploy-blue-green.sh
+
+[Service]
+Type=oneshot
+ExecStart=/opt/new-api-stack/deploy-blue-green.sh cleanup-artifacts

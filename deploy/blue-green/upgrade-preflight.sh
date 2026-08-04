@@ -11,6 +11,9 @@ NETWORK="${PREFIX}-net"
 POSTGRES_CONTAINER="${PREFIX}-postgres"
 REDIS_CONTAINER="${PREFIX}-redis"
 OLD_SLAVE_CONTAINER="${PREFIX}-old-slave"
+POSTGRES_VOLUME="${PREFIX}-postgres-data"
+REDIS_VOLUME="${PREFIX}-redis-data"
+PREFLIGHT_RESOURCE_LABEL="com.aivrae.lifecycle=upgrade-preflight"
 
 CANDIDATE_IMAGE="${1:-}"
 OLD_MASTER_IMAGE="${2:-}"
@@ -66,6 +69,7 @@ env_value() {
 
 cleanup() {
   local container
+  local volume
   for container in \
     "${PREFIX}-candidate-master" \
     "${PREFIX}-candidate-slave" \
@@ -73,9 +77,21 @@ cleanup() {
     "${OLD_SLAVE_CONTAINER}" \
     "${REDIS_CONTAINER}" \
     "${POSTGRES_CONTAINER}"; do
-    docker rm -f "${container}" >/dev/null 2>&1 || true
+    docker rm -fv "${container}" >/dev/null 2>&1 || true
+  done
+  for volume in "${REDIS_VOLUME}" "${POSTGRES_VOLUME}"; do
+    docker volume rm "${volume}" >/dev/null 2>&1 || true
   done
   docker network rm "${NETWORK}" >/dev/null 2>&1 || true
+}
+
+create_isolated_data_volumes() {
+  docker volume create \
+    --label "${PREFLIGHT_RESOURCE_LABEL}" \
+    "${POSTGRES_VOLUME}" >/dev/null
+  docker volume create \
+    --label "${PREFLIGHT_RESOURCE_LABEL}" \
+    "${REDIS_VOLUME}" >/dev/null
 }
 
 # The image entrypoint briefly exposes an init-time server before PID 1 becomes postgres.
@@ -133,6 +149,7 @@ start_app() {
 
   docker run -d \
     --name "${container}" \
+    --label "${PREFLIGHT_RESOURCE_LABEL}" \
     --network "${NETWORK}" \
     --env-file "${BASE_ENV_FILE}" \
     -e "SQL_DSN=${PREFLIGHT_SQL_DSN}" \
@@ -160,6 +177,7 @@ stop_app() {
 
 run_candidate_migration() {
   docker run --rm \
+    --label "${PREFLIGHT_RESOURCE_LABEL}" \
     --network "${NETWORK}" \
     --env-file "${BASE_ENV_FILE}" \
     -e "SQL_DSN=${PREFLIGHT_SQL_DSN}" \
@@ -358,17 +376,25 @@ main() {
   log "old_slave_image=${OLD_SLAVE_IMAGE}"
   log "backup_file=${BACKUP_FILE}"
 
-  docker network create --internal "${NETWORK}" >/dev/null
+  create_isolated_data_volumes
+  docker network create \
+    --internal \
+    --label "${PREFLIGHT_RESOURCE_LABEL}" \
+    "${NETWORK}" >/dev/null
   docker run -d \
     --name "${POSTGRES_CONTAINER}" \
+    --label "${PREFLIGHT_RESOURCE_LABEL}" \
     --network "${NETWORK}" \
+    --mount "type=volume,src=${POSTGRES_VOLUME},dst=/var/lib/postgresql/data" \
     -e POSTGRES_HOST_AUTH_METHOD=trust \
     -e "POSTGRES_USER=${POSTGRES_USER}" \
     -e "POSTGRES_DB=${POSTGRES_DB}" \
     "${POSTGRES_IMAGE}" >/dev/null
   docker run -d \
     --name "${REDIS_CONTAINER}" \
+    --label "${PREFLIGHT_RESOURCE_LABEL}" \
     --network "${NETWORK}" \
+    --mount "type=volume,src=${REDIS_VOLUME},dst=/data" \
     "${REDIS_IMAGE}" >/dev/null
   wait_postgres
 

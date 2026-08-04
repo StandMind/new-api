@@ -61,6 +61,64 @@ state_set phase starting
 state_set master_replaced true
 [ "$(state_get master_replaced)" = "true" ]
 
+MOCK_DISK_STATS='69 6000000'
+deployment_disk_stats() {
+  printf '%s\n' "${MOCK_DISK_STATS}"
+}
+check_disk_capacity
+MOCK_DISK_STATS='80 6000000'
+if (check_disk_capacity); then
+  printf 'full deployment filesystem unexpectedly passed capacity check\n' >&2
+  exit 1
+fi
+MOCK_DISK_STATS='79 5000000'
+if (check_disk_capacity); then
+  printf 'deployment filesystem below minimum free space unexpectedly passed capacity check\n' >&2
+  exit 1
+fi
+MOCK_DISK_STATS='69 6000000'
+
+IMAGE_REMOVE_EVENTS="${TEST_DIR}/image-remove-events"
+MOCK_IMAGE_REFERENCED=true
+docker() {
+  if [ "$1" = image ] && [ "$2" = inspect ]; then
+    printf 'sha256:test-image\n'
+    return 0
+  fi
+  if [ "$1" = ps ] && [ "$2" = -aq ]; then
+    if [ "${MOCK_IMAGE_REFERENCED}" = true ]; then
+      printf 'container-id\n'
+    fi
+    return 0
+  fi
+  if [ "$1" = image ] && [ "$2" = rm ]; then
+    printf '%s\n' "$3" >> "${IMAGE_REMOVE_EVENTS}"
+    return 0
+  fi
+  return 1
+}
+remove_image_if_unused test-image
+[ ! -s "${IMAGE_REMOVE_EVENTS}" ]
+MOCK_IMAGE_REFERENCED=false
+remove_image_if_unused test-image
+[ "$(cat "${IMAGE_REMOVE_EVENTS}")" = test-image ]
+docker() {
+  return 1
+}
+remove_image_if_unused missing-image
+unset -f docker
+
+PHASE_CLEANUP_EVENTS="${TEST_DIR}/phase-cleanup-events"
+remove_image_if_unused() {
+  printf '%s\n' "$1" >> "${PHASE_CLEANUP_EVENTS}"
+}
+cleanup_orphaned_preflight_resources() {
+  :
+}
+log_disk_usage() {
+  :
+}
+
 state_set phase observing-complete
 state_set candidate_slot blue
 ACTIVE_IMAGE='example.invalid/new-api@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
@@ -85,6 +143,10 @@ supersede_upgrade
 [ "$(state_get superseded_by_slot)" = "green" ]
 [ "$(state_get superseded_by_image)" = "${ACTIVE_IMAGE}" ]
 [ -f "$(state_get superseded_state_archive)" ]
+[ "$(wc -l < "${PHASE_CLEANUP_EVENTS}")" -eq 3 ]
+grep -Fxq 'example.invalid/new-api@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' "${PHASE_CLEANUP_EVENTS}"
+grep -Fxq 'example.invalid/new-api@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc' "${PHASE_CLEANUP_EVENTS}"
+grep -Fxq "${VALID_IMAGE}" "${PHASE_CLEANUP_EVENTS}"
 require_closed_upgrade
 state_set phase observing-complete
 if (require_closed_upgrade); then
@@ -138,6 +200,7 @@ EXPECTED_OLD_MASTER='example.invalid/new-api@sha256:cccccccccccccccccccccccccccc
 [ "$(sed -n '2p' "${EVENTS_FILE}")" = 'active:green' ]
 [ "$(sed -n '3p' "${EVENTS_FILE}")" = "master:${EXPECTED_OLD_MASTER}:/api/status" ]
 [ "$(state_get phase)" = 'rolled-back' ]
+[ "$(tail -n 1 "${PHASE_CLEANUP_EVENTS}")" = "${VALID_IMAGE}" ]
 
 CONNECTION_COUNTS_FILE="${TEST_DIR}/connection-counts"
 connection_count() {
@@ -202,6 +265,18 @@ fi
   MOCK_QUERY_READY=true
   postgres_is_ready test-postgres
   [ "${MOCK_QUERY_CALLS}" -eq 2 ]
+
+  PREFLIGHT_DOCKER_EVENTS="${TEST_DIR}/preflight-docker-events"
+  docker() {
+    printf '%s\n' "$*" >> "${PREFLIGHT_DOCKER_EVENTS}"
+  }
+  create_isolated_data_volumes
+  cleanup
+  grep -Fq "volume create --label ${PREFLIGHT_RESOURCE_LABEL} ${POSTGRES_VOLUME}" "${PREFLIGHT_DOCKER_EVENTS}"
+  grep -Fq "volume create --label ${PREFLIGHT_RESOURCE_LABEL} ${REDIS_VOLUME}" "${PREFLIGHT_DOCKER_EVENTS}"
+  grep -Fq "rm -fv ${POSTGRES_CONTAINER}" "${PREFLIGHT_DOCKER_EVENTS}"
+  grep -Fq "volume rm ${POSTGRES_VOLUME}" "${PREFLIGHT_DOCKER_EVENTS}"
+  grep -Fq "volume rm ${REDIS_VOLUME}" "${PREFLIGHT_DOCKER_EVENTS}"
 )
 
 printf 'blue-green deployment helper tests passed\n'

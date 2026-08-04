@@ -27,11 +27,16 @@ UPGRADE_RETAIN_SECONDS="${UPGRADE_RETAIN_SECONDS:-86400}"
 UPGRADE_ZERO_CONNECTION_SECONDS="${UPGRADE_ZERO_CONNECTION_SECONDS:-600}"
 UPGRADE_EXTERNAL_PROBE_SECONDS="${UPGRADE_EXTERNAL_PROBE_SECONDS:-$((UPGRADE_OBSERVE_SECONDS + 7200))}"
 CONNECTION_WAIT_SECONDS="${CONNECTION_WAIT_SECONDS:-180}"
+DEPLOY_DISK_WARN_PERCENT="${DEPLOY_DISK_WARN_PERCENT:-70}"
+DEPLOY_DISK_BLOCK_PERCENT="${DEPLOY_DISK_BLOCK_PERCENT:-80}"
+DEPLOY_DISK_MIN_AVAILABLE_KB="${DEPLOY_DISK_MIN_AVAILABLE_KB:-5242880}"
+PREFLIGHT_RESOURCE_LABEL="com.aivrae.lifecycle=upgrade-preflight"
 CAPTURE_CADDY_BACKUP_TO_STATE="false"
 DRAIN_SSE_PID=""
 DRAIN_SSE_FILE=""
 EXTERNAL_PROBE_PID=""
 EXTERNAL_PROBE_FILE=""
+PENDING_IMAGE_CLEANUP=()
 
 usage() {
   cat <<'EOF'
@@ -44,6 +49,7 @@ Usage:
   deploy-blue-green.sh finalize-upgrade
   deploy-blue-green.sh rollback-upgrade
   deploy-blue-green.sh supersede-upgrade
+  deploy-blue-green.sh cleanup-artifacts
 
 The deploy command recreates only the inactive slot. It refuses to proceed if
 that slot still has established HTTP connections. The previously active slot
@@ -62,6 +68,150 @@ fatal() {
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || fatal "$1 is required"
+}
+
+deployment_disk_stats() {
+  df -Pk "${DEPLOY_PATH}" \
+    | awk 'NR == 2 { gsub(/%/, "", $5); print $5, $4 }'
+}
+
+log_disk_usage() {
+  local stats
+  local usage_percent
+  local available_kb
+  stats="$(deployment_disk_stats)"
+  read -r usage_percent available_kb <<< "${stats}"
+  if ! [[ "${usage_percent}" =~ ^[0-9]+$ && "${available_kb}" =~ ^[0-9]+$ ]]; then
+    log "WARN: could not read deployment filesystem usage"
+    return
+  fi
+  log "deployment filesystem usage=${usage_percent}% available=$((available_kb / 1024))MiB"
+}
+
+check_disk_capacity() {
+  local stats
+  local usage_percent
+  local available_kb
+
+  [[ "${DEPLOY_DISK_WARN_PERCENT}" =~ ^[0-9]+$ ]] \
+    || fatal "DEPLOY_DISK_WARN_PERCENT must be an integer"
+  [[ "${DEPLOY_DISK_BLOCK_PERCENT}" =~ ^[0-9]+$ ]] \
+    || fatal "DEPLOY_DISK_BLOCK_PERCENT must be an integer"
+  [[ "${DEPLOY_DISK_MIN_AVAILABLE_KB}" =~ ^[0-9]+$ ]] \
+    || fatal "DEPLOY_DISK_MIN_AVAILABLE_KB must be an integer"
+  [ "${DEPLOY_DISK_WARN_PERCENT}" -lt "${DEPLOY_DISK_BLOCK_PERCENT}" ] \
+    || fatal "disk warning threshold must be below the blocking threshold"
+
+  stats="$(deployment_disk_stats)"
+  read -r usage_percent available_kb <<< "${stats}"
+  [[ "${usage_percent}" =~ ^[0-9]+$ && "${available_kb}" =~ ^[0-9]+$ ]] \
+    || fatal "could not read deployment filesystem usage"
+
+  if [ "${usage_percent}" -ge "${DEPLOY_DISK_BLOCK_PERCENT}" ]; then
+    fatal "deployment filesystem is ${usage_percent}% full; blocking threshold is ${DEPLOY_DISK_BLOCK_PERCENT}%"
+  fi
+  if [ "${available_kb}" -lt "${DEPLOY_DISK_MIN_AVAILABLE_KB}" ]; then
+    fatal "deployment filesystem has $((available_kb / 1024))MiB available; at least $((DEPLOY_DISK_MIN_AVAILABLE_KB / 1024))MiB is required"
+  fi
+  if [ "${usage_percent}" -ge "${DEPLOY_DISK_WARN_PERCENT}" ]; then
+    log "WARN: deployment filesystem usage ${usage_percent}% reached warning threshold ${DEPLOY_DISK_WARN_PERCENT}%"
+  fi
+  log_disk_usage
+}
+
+remove_image_if_unused() {
+  local image="$1"
+  local image_id
+  local container_ids
+
+  [ -n "${image}" ] || return 0
+  if ! image_id="$(docker image inspect -f '{{.Id}}' "${image}" 2>/dev/null)"; then
+    return 0
+  fi
+  [ -n "${image_id}" ] || return 0
+  if ! container_ids="$(docker ps -aq --filter "ancestor=${image_id}")"; then
+    log "WARN: could not verify container references for image ${image}; retaining it"
+    return
+  fi
+  if [ -n "${container_ids}" ]; then
+    log "retained image still referenced by a container: ${image}"
+    return
+  fi
+  if docker image rm "${image}" >/dev/null; then
+    log "removed unreferenced deployment image ${image}"
+  else
+    log "WARN: failed to remove unreferenced deployment image ${image}"
+  fi
+}
+
+remove_images_if_unused() {
+  local image
+  local existing
+  local seen=()
+
+  for image in "$@"; do
+    [ -n "${image}" ] || continue
+    for existing in "${seen[@]}"; do
+      [ "${existing}" != "${image}" ] || continue 2
+    done
+    seen+=("${image}")
+    remove_image_if_unused "${image}"
+  done
+}
+
+queue_image_cleanup() {
+  [ -n "$1" ] || return 0
+  PENDING_IMAGE_CLEANUP+=("$1")
+}
+
+cleanup_queued_images() {
+  local images=("${PENDING_IMAGE_CLEANUP[@]}")
+  PENDING_IMAGE_CLEANUP=()
+  remove_images_if_unused "${images[@]}"
+}
+
+cleanup_orphaned_preflight_resources() {
+  local resources
+  local resource
+
+  if ! resources="$(docker ps -aq --filter "label=${PREFLIGHT_RESOURCE_LABEL}")"; then
+    log "WARN: could not list preflight containers"
+    return
+  fi
+  while IFS= read -r resource; do
+    [ -n "${resource}" ] || continue
+    if docker rm -fv "${resource}" >/dev/null; then
+      log "removed orphaned preflight container ${resource}"
+    else
+      log "WARN: failed to remove preflight container ${resource}"
+    fi
+  done <<< "${resources}"
+
+  if ! resources="$(docker network ls -q --filter "label=${PREFLIGHT_RESOURCE_LABEL}")"; then
+    log "WARN: could not list preflight networks"
+    return
+  fi
+  while IFS= read -r resource; do
+    [ -n "${resource}" ] || continue
+    if docker network rm "${resource}" >/dev/null; then
+      log "removed orphaned preflight network ${resource}"
+    else
+      log "WARN: failed to remove preflight network ${resource}"
+    fi
+  done <<< "${resources}"
+
+  if ! resources="$(docker volume ls -q --filter "label=${PREFLIGHT_RESOURCE_LABEL}")"; then
+    log "WARN: could not list preflight volumes"
+    return
+  fi
+  while IFS= read -r resource; do
+    [ -n "${resource}" ] || continue
+    if docker volume rm "${resource}" >/dev/null; then
+      log "removed orphaned preflight volume ${resource}"
+    else
+      log "WARN: failed to remove preflight volume ${resource}"
+    fi
+  done <<< "${resources}"
 }
 
 validate_image_ref() {
@@ -219,6 +369,45 @@ state_set() {
   mv "${candidate}" "${UPGRADE_STATE_FILE}"
 }
 
+cleanup_closed_upgrade_images() {
+  local phase
+
+  [ -f "${UPGRADE_STATE_FILE}" ] || return 0
+  phase="$(state_get phase)"
+  case "${phase}" in
+    finalized)
+      remove_images_if_unused \
+        "$(state_get old_master_image)" \
+        "$(state_get original_active_image)" \
+        "$(state_get original_fallback_image)"
+      ;;
+    rolled-back)
+      remove_image_if_unused "$(state_get candidate_image)"
+      ;;
+    superseded)
+      remove_images_if_unused \
+        "$(state_get old_master_image)" \
+        "$(state_get original_active_image)" \
+        "$(state_get original_fallback_image)" \
+        "$(state_get candidate_image)"
+      ;;
+  esac
+}
+
+cleanup_deployment_artifacts() {
+  cleanup_orphaned_preflight_resources
+  cleanup_closed_upgrade_images
+  cleanup_queued_images
+  log_disk_usage
+}
+
+prepare_for_image_pull() {
+  cleanup_orphaned_preflight_resources
+  cleanup_closed_upgrade_images
+  cleanup_queued_images
+  check_disk_capacity
+}
+
 initialize_upgrade_state() {
   local candidate_image="$1"
   local old_master_image="$2"
@@ -268,7 +457,7 @@ require_upgrade_phase() {
 
 require_closed_upgrade() {
   local phase
-  [ -f "${UPGRADE_STATE_FILE}" ] || return
+  [ -f "${UPGRADE_STATE_FILE}" ] || return 0
   phase="$(state_get phase)"
   case "${phase}" in
     finalized|rolled-back|superseded) return ;;
@@ -626,15 +815,19 @@ deploy_inactive() {
   local inactive_slot
   local inactive_service
   local active_service
+  local previous_inactive_image
 
   validate_image_ref "${image_ref}"
   require_closed_upgrade
+  prepare_for_image_pull
 
   active_slot="$(read_active_slot)"
   inactive_slot="$(other_slot "${active_slot}")"
   inactive_service="$(service_for_slot "${inactive_slot}")"
   active_service="$(service_for_slot "${active_slot}")"
   container_running "${active_service}" || fatal "active service ${active_service} is not running"
+  previous_inactive_image="$(container_image "${inactive_service}" 2>/dev/null || true)"
+  queue_image_cleanup "${previous_inactive_image}"
   switch_caddy \
     "${active_slot}" \
     "${inactive_slot}" \
@@ -657,6 +850,7 @@ deploy_inactive() {
     "$(caddy_health_path_for_slots "${inactive_slot}" "${active_slot}")"
   write_active_slot "${inactive_slot}"
   record_switch "${inactive_slot}" "${active_slot}"
+  cleanup_deployment_artifacts
   log "deployed ${image_ref} to ${inactive_slot}; ${active_slot} remains running"
 }
 
@@ -750,6 +944,7 @@ cleanup_background_tasks() {
     kill -TERM "${EXTERNAL_PROBE_PID}" 2>/dev/null || true
     wait "${EXTERNAL_PROBE_PID}" 2>/dev/null || true
   fi
+  cleanup_queued_images
 }
 
 start_drain_sse() {
@@ -898,6 +1093,7 @@ rollback_upgrade_internal() {
   state_set phase rolled-back
   state_set completed_at "$(date -Ins)"
   log "upgrade rolled back; database schema and candidate logs were preserved"
+  cleanup_deployment_artifacts
 }
 
 preflight_upgrade() {
@@ -921,6 +1117,7 @@ preflight_upgrade() {
       *) fatal "an upgrade is already in phase ${existing_phase:-unknown}" ;;
     esac
   fi
+  prepare_for_image_pull
 
   active_slot="$(read_active_slot)"
   fallback_slot="$(other_slot "${active_slot}")"
@@ -937,13 +1134,17 @@ preflight_upgrade() {
 
   registry_login
   docker pull "${image_ref}"
-  PREFLIGHT_REPORT_FILE="${report_file}" \
+  if ! PREFLIGHT_REPORT_FILE="${report_file}" \
     BASE_ENV_FILE="${BASE_ENV_FILE}" \
     bash "${DEPLOY_PATH}/upgrade-preflight.sh" \
       "${image_ref}" \
       "${old_master_image}" \
       "${active_image}" \
-      "${backup_file}"
+      "${backup_file}"; then
+    remove_image_if_unused "${image_ref}"
+    log_disk_usage
+    fatal "upgrade preflight failed; temporary resources and the unreferenced candidate image were cleaned"
+  fi
 
   [ "$(read_active_slot)" = "${active_slot}" ] \
     || fatal "active slot changed during preflight; rerun the audit"
@@ -961,6 +1162,7 @@ preflight_upgrade() {
     "${fallback_image}" \
     "${backup_file}" \
     "${report_file}"
+  log_disk_usage
   log "upgrade preflight passed; report=${report_file}"
 }
 
@@ -974,6 +1176,7 @@ start_upgrade() {
 
   validate_image_ref "${image_ref}"
   require_upgrade_phase preflight-complete
+  prepare_for_image_pull
   [ "$(state_get candidate_image)" = "${image_ref}" ] \
     || fatal "candidate image does not match upgrade-state"
   active_slot="$(read_active_slot)"
@@ -1011,6 +1214,7 @@ start_upgrade() {
   if ! run_production_migration "${image_ref}"; then
     state_set phase rolled-back
     state_set completed_at "$(date -Ins)"
+    cleanup_deployment_artifacts
     fatal "production migrate-only failed; database backup was not auto-restored"
   fi
   if ! assert_external_probe_clean; then
@@ -1084,6 +1288,7 @@ start_upgrade() {
   fi
 
   state_set phase observing-complete
+  log_disk_usage
   log "candidate served traffic for ${UPGRADE_OBSERVE_SECONDS} seconds; old slot remains untouched"
 }
 
@@ -1134,6 +1339,7 @@ finalize_upgrade() {
   switch_caddy "${candidate_slot}" "${old_slot}" /readyz
   state_set phase finalized
   state_set completed_at "$(date -Ins)"
+  cleanup_deployment_artifacts
   log "upgrade finalized; both slots and master use ${candidate_image}, Caddy health uses /readyz"
 }
 
@@ -1185,6 +1391,7 @@ supersede_upgrade() {
   state_set superseded_state_archive "${archive_file}"
   state_set phase superseded
   state_set completed_at "$(date -Ins)"
+  cleanup_deployment_artifacts
   log "archived superseded upgrade state at ${archive_file}; no service or traffic changes were made"
 }
 
@@ -1223,6 +1430,7 @@ show_status() {
 main() {
   require_command awk
   require_command curl
+  require_command df
   require_command docker
   require_command gzip
   require_command flock
@@ -1235,7 +1443,13 @@ main() {
   [ -f "${CADDYFILE}" ] || fatal "${CADDYFILE} is missing"
 
   exec 9>"${LOCK_FILE}"
-  flock -n 9 || fatal "another blue-green deployment is running"
+  if ! flock -n 9; then
+    if [ "${1:-}" = "cleanup-artifacts" ]; then
+      log "deployment lock is busy; skipping scheduled artifact cleanup"
+      return 0
+    fi
+    fatal "another blue-green deployment is running"
+  fi
   trap cleanup_background_tasks EXIT
 
   case "${1:-}" in
@@ -1271,6 +1485,10 @@ main() {
     supersede-upgrade)
       [ "$#" -eq 1 ] || fatal "supersede-upgrade takes no image argument"
       supersede_upgrade
+      ;;
+    cleanup-artifacts)
+      [ "$#" -eq 1 ] || fatal "cleanup-artifacts takes no argument"
+      cleanup_deployment_artifacts
       ;;
     *)
       usage
