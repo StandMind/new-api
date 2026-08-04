@@ -37,7 +37,7 @@ import {
   getEndpointTypeLabels,
   getQuotaTypeLabels,
 } from '../constants'
-import { parseTags } from '../lib/filters'
+import { parseTags, sortVendors } from '../lib/filters'
 import type { PricingModel, PricingVendor } from '../types'
 
 type FilterOption = {
@@ -164,7 +164,7 @@ export function PricingSidebar(props: PricingSidebarProps) {
       label: t('All Vendors'),
       count: props.models.length,
     },
-    ...props.vendors
+    ...sortVendors(props.vendors)
       .map((vendor) => ({
         value: vendor.name,
         label: vendor.name,

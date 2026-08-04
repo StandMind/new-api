@@ -23,11 +23,31 @@ import {
   QUOTA_TYPE_VALUES,
   ENDPOINT_TYPES,
 } from '../constants'
-import type { PricingModel } from '../types'
+import type { PricingModel, PricingVendor } from '../types'
+
+const PRIORITY_VENDOR_NAMES = ['openai', 'google', 'anthropic']
 
 // ----------------------------------------------------------------------------
 // Filter Utilities
 // ----------------------------------------------------------------------------
+
+/**
+ * Keep the primary vendors first, then sort the remaining vendors by name.
+ */
+export function sortVendors(vendors: PricingVendor[]): PricingVendor[] {
+  return [...vendors].sort((a, b) => {
+    const aPriority = PRIORITY_VENDOR_NAMES.indexOf(a.name.trim().toLowerCase())
+    const bPriority = PRIORITY_VENDOR_NAMES.indexOf(b.name.trim().toLowerCase())
+
+    if (aPriority !== bPriority) {
+      if (aPriority === -1) return 1
+      if (bPriority === -1) return -1
+      return aPriority - bPriority
+    }
+
+    return a.name.localeCompare(b.name, 'en', { sensitivity: 'base' })
+  })
+}
 
 /**
  * Filter models by search query
@@ -199,7 +219,7 @@ export function extractAllTags(models: PricingModel[]): string[] {
     }
   })
 
-  return Array.from(tagSet).sort((a, b) => a.localeCompare(b))
+  return [...tagSet].sort((a, b) => a.localeCompare(b))
 }
 
 /**

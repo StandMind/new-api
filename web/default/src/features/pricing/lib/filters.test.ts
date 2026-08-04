@@ -20,8 +20,8 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
 import { DEFAULT_SORT_OPTION, SORT_OPTIONS } from '../constants'
-import type { PricingModel } from '../types'
-import { sortModels } from './filters'
+import type { PricingModel, PricingVendor } from '../types'
+import { sortModels, sortVendors } from './filters'
 
 function pricingModel(name: string, releaseDate?: string): PricingModel {
   return {
@@ -34,6 +34,34 @@ function pricingModel(name: string, releaseDate?: string): PricingModel {
     release_date: releaseDate,
   }
 }
+
+function pricingVendor(id: number, name: string): PricingVendor {
+  return { id, name }
+}
+
+describe('pricing vendor sorting', () => {
+  test('puts primary vendors first and sorts the rest by name', () => {
+    const vendors = [
+      pricingVendor(1, 'Zhipu'),
+      pricingVendor(2, 'anthropic'),
+      pricingVendor(3, 'Baidu'),
+      pricingVendor(4, 'OpenAI'),
+      pricingVendor(5, 'azure'),
+      pricingVendor(6, 'Google'),
+    ]
+
+    const sorted = sortVendors(vendors)
+
+    assert.deepEqual(
+      sorted.map((vendor) => vendor.name),
+      ['OpenAI', 'Google', 'anthropic', 'azure', 'Baidu', 'Zhipu']
+    )
+    assert.deepEqual(
+      vendors.map((vendor) => vendor.name),
+      ['Zhipu', 'anthropic', 'Baidu', 'OpenAI', 'azure', 'Google']
+    )
+  })
+})
 
 describe('pricing model sorting', () => {
   test('uses release date as the default sort option', () => {
