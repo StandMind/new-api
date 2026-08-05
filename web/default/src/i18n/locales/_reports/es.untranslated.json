@@ -292,5 +292,14 @@
   "Select the route groups served by this channel.": "Select the route groups served by this channel.",
   "The code is permanent after the level is created.": "The code is permanent after the level is created.",
   "The code is permanent after the route group is created.": "The code is permanent after the route group is created.",
-  "The route group that handled the requests": "The route group that handled the requests"
+  "The route group that handled the requests": "The route group that handled the requests",
+  "The error is marked as non-retryable": "The error is marked as non-retryable",
+  "The error code is configured as non-retryable": "The error code is configured as non-retryable",
+  "The status code is not retryable": "The status code is not retryable",
+  "The response had already started": "The response had already started",
+  "The route plan could not be built": "The route plan could not be built",
+  "The request failed before reaching upstream": "The request failed before reaching upstream",
+  "Pricing failed before the upstream request": "Pricing failed before the upstream request",
+  "The request body was unavailable": "The request body was unavailable",
+  "The task could not be retried safely": "The task could not be retried safely"
 }

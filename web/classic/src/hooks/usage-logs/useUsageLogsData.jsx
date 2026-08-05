@@ -50,6 +50,7 @@ export const useLogsData = () => {
   const COLUMN_KEYS = {
     TIME: 'time',
     CHANNEL: 'channel',
+    ROUTING: 'routing',
     USERNAME: 'username',
     TOKEN: 'token',
     GROUP: 'group',
@@ -113,6 +114,7 @@ export const useLogsData = () => {
     return {
       [COLUMN_KEYS.TIME]: true,
       [COLUMN_KEYS.CHANNEL]: isAdminUser,
+      [COLUMN_KEYS.ROUTING]: true,
       [COLUMN_KEYS.USERNAME]: isAdminUser,
       [COLUMN_KEYS.TOKEN]: true,
       [COLUMN_KEYS.GROUP]: true,

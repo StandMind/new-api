@@ -39,7 +39,6 @@ const (
 	requestDetailCleanupBatchSize       = 500
 	requestDetailMaxErrorBytes          = 8 * 1024
 	requestDetailMaxDecodedPayloadBytes = 4 * request_detail_setting.MaxResponseBodyBytes
-	requestDetailMaxRouteAttempts       = 256
 	requestDetailStorageOverheadBytes   = 512
 	requestDetailMinFreeDiskBytes       = 2 << 30
 	requestDetailFailureContextKey      = "request_detail_failure"
@@ -57,7 +56,7 @@ type RequestDetailPayload struct {
 	Headers  map[string]string             `json:"headers,omitempty"`
 	Query    map[string]interface{}        `json:"query,omitempty"`
 	Body     interface{}                   `json:"body,omitempty"`
-	Routing  map[string]interface{}        `json:"routing,omitempty"`
+	Routing  *RoutingDiagnosticSnapshot    `json:"routing,omitempty"`
 	Response *RequestDetailResponsePayload `json:"response,omitempty"`
 }
 
@@ -93,7 +92,7 @@ type queuedRequestDetail struct {
 	body     []byte
 	query    url.Values
 	headers  map[string]string
-	routing  map[string]interface{}
+	routing  *RoutingDiagnosticSnapshot
 	response *RequestDetailResponseSnapshot
 	failed   bool
 }
@@ -253,7 +252,7 @@ func CaptureRequestDetail(c *gin.Context, failure *RequestDetailFailure) {
 		}
 	}
 	detail.IP = boundedRequestDetailString(c.ClientIP(), 64)
-	queued.routing = requestDetailRoutingSnapshot(c, group)
+	queued.routing = requestDetailRoutingSnapshot(c, group, failed)
 
 	if storageValue, ok := c.Get(common.KeyBodyStorage); ok {
 		if storage, storageOK := storageValue.(common.BodyStorage); storageOK && storage != nil {
@@ -793,30 +792,11 @@ func requestDetailHeaderSnapshot(header http.Header) map[string]string {
 	return result
 }
 
-func requestDetailRoutingSnapshot(c *gin.Context, finalGroup string) map[string]interface{} {
-	routing := make(map[string]interface{})
-	if plan := GetRouteAttemptPlan(c); plan != nil {
-		routing["groups"] = plan.ConfiguredGroups()
-		if priority := plan.RoutingPriority(); priority != constant.RoutingPriorityManual {
-			routing["mode"] = string(priority)
-			routing["basis"] = plan.RankingBasis()
-		}
+func requestDetailRoutingSnapshot(c *gin.Context, finalGroup string, finalFailure bool) *RoutingDiagnosticSnapshot {
+	if !finalFailure {
+		return nil
 	}
-	history, _ := common.GetContextKeyType[[]RouteAttempt](c, constant.ContextKeyRouteAttemptHistory)
-	if len(history) > requestDetailMaxRouteAttempts {
-		routing["attempted"] = append([]RouteAttempt(nil), history[:requestDetailMaxRouteAttempts]...)
-		routing["attempted_truncated"] = true
-	} else if len(history) > 0 {
-		routing["attempted"] = append([]RouteAttempt(nil), history...)
-	}
-	if finalGroup != "" {
-		routing["final_group"] = finalGroup
-	}
-	if channelID := c.GetInt("channel_id"); channelID > 0 {
-		routing["final_channel_id"] = channelID
-		routing["final_channel_name"] = c.GetString("channel_name")
-	}
-	return routing
+	return BuildRoutingDiagnosticSnapshot(c, finalGroup)
 }
 
 func cloneURLValues(values url.Values) url.Values {

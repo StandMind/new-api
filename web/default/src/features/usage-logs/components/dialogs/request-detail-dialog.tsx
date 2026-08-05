@@ -28,6 +28,7 @@ import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { formatTimestampToDate } from '@/lib/format'
 
 import { getRequestDetail } from '../../api'
+import { RoutingDiagnostics } from '../routing-diagnostics'
 
 type RequestDetailDialogProps = {
   requestId: string
@@ -54,6 +55,7 @@ export function RequestDetailDialog(props: RequestDetailDialogProps) {
     retry: false,
   })
   const detail = query.data?.data?.detail
+  const routing = query.data?.data?.payload?.routing
   const requestPayloadText = useMemo(() => {
     const payload = query.data?.data?.payload
     if (!payload) return ''
@@ -61,7 +63,6 @@ export function RequestDetailDialog(props: RequestDetailDialogProps) {
       headers: payload.headers,
       query: payload.query,
       body: payload.body,
-      routing: payload.routing,
     }
     return Object.values(requestPayload).some((value) => value !== undefined)
       ? JSON.stringify(requestPayload, null, 2)
@@ -143,6 +144,15 @@ export function RequestDetailDialog(props: RequestDetailDialogProps) {
               />
             )}
           </div>
+
+          {routing && (
+            <div className='min-w-0 space-y-2'>
+              <span className='text-sm font-medium'>
+                {t('Routing diagnostics')}
+              </span>
+              <RoutingDiagnostics routing={routing} />
+            </div>
+          )}
 
           {requestPayloadText && (
             <div className='min-w-0 space-y-2'>

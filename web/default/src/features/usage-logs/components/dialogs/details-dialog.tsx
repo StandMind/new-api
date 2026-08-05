@@ -60,12 +60,14 @@ import {
   getResponseTimeColor,
   renderAuditContent,
 } from '../../lib/format'
+import { getRoutingModeLabel } from '../../lib/routing'
 import {
   getLogTypeConfig,
   isPerCallBilling,
   isTimingLogType,
 } from '../../lib/utils'
 import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
+import { RoutingDiagnostics } from '../routing-diagnostics'
 import { RequestDetailDialog } from './request-detail-dialog'
 
 // Maps a channel-update changed-field token (as recorded by the backend audit)
@@ -501,6 +503,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const showAdminIp =
     !!props.log.ip && (showTiming || (props.isAdmin && isTopup))
   const adminInfo = other?.admin_info
+  const routing = adminInfo?.routing
   const topupAuditFields =
     isTopup && props.isAdmin && adminInfo
       ? ([
@@ -689,8 +692,15 @@ export function DetailsDialog(props: DetailsDialogProps) {
             />
           )}
 
-          {channelChain && props.isAdmin && (
+          {channelChain && props.isAdmin && !routing && (
             <DetailRow label={t('Retry Chain')} value={channelChain} mono />
+          )}
+
+          {other?.routing_mode && (
+            <DetailRow
+              label={t('Routing')}
+              value={getRoutingModeLabel(t, other.routing_mode)}
+            />
           )}
 
           {props.log.token_name && (
@@ -754,6 +764,18 @@ export function DetailsDialog(props: DetailsDialogProps) {
             />
           )}
         </div>
+
+        {props.isAdmin && routing && (
+          <div className='min-w-0 space-y-1.5'>
+            <Label className='flex items-center gap-1.5 text-xs font-semibold'>
+              <IconBadge tone='info' size='xs'>
+                <Route className='size-3.5' aria-hidden='true' />
+              </IconBadge>
+              {t('Routing diagnostics')}
+            </Label>
+            <RoutingDiagnostics routing={routing} />
+          </div>
+        )}
 
         {/* Request conversion (admin only, not for refund) */}
         {showConversion && (

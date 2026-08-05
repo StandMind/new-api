@@ -37,6 +37,7 @@ import {
 } from '../../../helpers';
 import { IconHelpCircle } from '@douyinfe/semi-icons';
 import { CircleAlert, Route, Sparkles } from 'lucide-react';
+import { getRoutingModeLabel } from '../../common/RoutingDiagnostics';
 
 const colors = [
   'amber',
@@ -600,6 +601,49 @@ export const getLogsColumns = ({
             )}
           </Space>
         ) : null;
+      },
+    },
+    {
+      key: COLUMN_KEYS.ROUTING,
+      title: t('Routing'),
+      dataIndex: 'other',
+      render: (_, record) => {
+        if (![0, 2, 5, 6].includes(record.type)) return <></>;
+        const other = getLogOther(record.other);
+        const mode = other?.routing_mode;
+        if (!mode) return <>-</>;
+
+        const groups = Array.isArray(other.group_chain)
+          ? other.group_chain.filter(Boolean)
+          : [];
+        const content = (
+          <div className='flex flex-col gap-1'>
+            <div>{getRoutingModeLabel(t, mode)}</div>
+            {groups.length > 0 && (
+              <div>
+                {t('Candidate groups')}: {groups.join(' → ')}
+              </div>
+            )}
+            {other.routing_basis && (
+              <div>
+                {t('Routing basis')}: {other.routing_basis}
+              </div>
+            )}
+          </div>
+        );
+        const color =
+          mode === 'manual'
+            ? 'grey'
+            : mode === 'fixed_channel'
+              ? 'purple'
+              : 'blue';
+        return (
+          <Tooltip content={content}>
+            <Tag color={color} prefixIcon={<Route size={13} />}>
+              {getRoutingModeLabel(t, mode, true)}
+            </Tag>
+          </Tooltip>
+        );
       },
     },
     {

@@ -117,7 +117,7 @@ func TestRelayGroupRouteRetryBoundariesWithProgrammableUpstream(t *testing.T) {
 	common.BatchUpdateEnabled = false
 	common.LogConsumeEnabled = true
 	constant.CountToken = false
-	constant.ErrorLogEnabled = false
+	constant.ErrorLogEnabled = true
 	service.InitHttpClient()
 	operation_setting.GetQuotaSetting().EnableFreeModelPreConsume = false
 	require.NoError(t, operation_setting.AutomaticRetryStatusCodesFromString("429,500-503"))
@@ -192,9 +192,12 @@ func TestRelayGroupRouteRetryBoundariesWithProgrammableUpstream(t *testing.T) {
 	}).Error)
 
 	engine := gin.New()
+	var snapshotsMu sync.Mutex
+	snapshots := make(map[string]*service.RoutingDiagnosticSnapshot)
 	engine.Use(middleware.BodyStorageCleanup())
 	engine.Use(func(c *gin.Context) {
 		groups := strings.Split(c.GetHeader("X-Test-Group-Chain"), ",")
+		c.Set(common.RequestIdKey, c.GetHeader("X-Test-Request-ID"))
 		common.SetContextKey(c, constant.ContextKeyUserId, 99001)
 		common.SetContextKey(c, constant.ContextKeyUserName, "route-integration-user")
 		common.SetContextKey(c, constant.ContextKeyUserGroup, model.StandardUserLevelCode)
@@ -212,10 +215,19 @@ func TestRelayGroupRouteRetryBoundariesWithProgrammableUpstream(t *testing.T) {
 	engine.POST(
 		"/v1/chat/completions",
 		middleware.Distribute(),
-		func(c *gin.Context) { Relay(c, types.RelayFormatOpenAI) },
+		func(c *gin.Context) {
+			Relay(c, types.RelayFormatOpenAI)
+			snapshot := service.BuildRoutingDiagnosticSnapshot(
+				c,
+				common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
+			)
+			snapshotsMu.Lock()
+			snapshots[c.GetString(common.RequestIdKey)] = snapshot
+			snapshotsMu.Unlock()
+		},
 	)
 
-	performRequest := func(groupChain string, stream bool) *httptest.ResponseRecorder {
+	performRequest := func(requestID, groupChain string, stream bool) (*httptest.ResponseRecorder, *service.RoutingDiagnosticSnapshot) {
 		recorder := httptest.NewRecorder()
 		requestBody := `{"model":"route-integration-model","messages":[{"role":"user","content":"hello"}]}`
 		if stream {
@@ -228,13 +240,18 @@ func TestRelayGroupRouteRetryBoundariesWithProgrammableUpstream(t *testing.T) {
 		)
 		request.Header.Set("Content-Type", "application/json")
 		request.Header.Set("X-Test-Group-Chain", groupChain)
+		request.Header.Set("X-Test-Request-ID", requestID)
 		engine.ServeHTTP(recorder, request)
-		return recorder
+		snapshotsMu.Lock()
+		snapshot := snapshots[requestID]
+		delete(snapshots, requestID)
+		snapshotsMu.Unlock()
+		return recorder, snapshot
 	}
 
 	t.Run("multi-group ignores numeric retry budget and reaches fallback group", func(t *testing.T) {
 		upstream.reset("retry-to-success")
-		recorder := performRequest("group-a,group-b", false)
+		recorder, routing := performRequest("route-multi-retry", "group-a,group-b", false)
 
 		require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
 		assert.Equal(t, []string{
@@ -243,30 +260,97 @@ func TestRelayGroupRouteRetryBoundariesWithProgrammableUpstream(t *testing.T) {
 			"/channel-3/v1/chat/completions",
 		}, upstream.recordedCalls())
 		assert.Contains(t, recorder.Body.String(), `"content":"ok"`)
+		require.NotNil(t, routing)
+		assert.Equal(t, service.RouteModeManual, routing.Mode)
+		assert.Equal(t, []string{"group-a", "group-b"}, routing.Groups)
+		require.Len(t, routing.Attempts, 3)
+		assert.Equal(t, http.StatusTooManyRequests, routing.Attempts[0].StatusCode)
+		assert.Equal(t, service.RouteRetryDecisionRetry, routing.Attempts[0].RetryDecision)
+		assert.Equal(t, http.StatusBadGateway, routing.Attempts[1].StatusCode)
+		assert.Equal(t, service.RouteRetryDecisionRetry, routing.Attempts[1].RetryDecision)
+		assert.Equal(t, service.RouteAttemptOutcomeSucceeded, routing.Attempts[2].Outcome)
+		assert.Equal(t, service.RouteRetryDecisionComplete, routing.Attempts[2].RetryDecision)
+		assert.Equal(t, "success", routing.FinalStopReason)
+
+		var intermediateErrorLogs []model.Log
+		require.NoError(t, db.Where(
+			"request_id = ? AND type = ?", "route-multi-retry", model.LogTypeError,
+		).Find(&intermediateErrorLogs).Error)
+		require.Len(t, intermediateErrorLogs, 2)
+		for _, errorLog := range intermediateErrorLogs {
+			other, err := common.StrToMap(errorLog.Other)
+			require.NoError(t, err)
+			assert.Equal(t, service.RouteModeManual, other["routing_mode"])
+			adminInfo, ok := other["admin_info"].(map[string]interface{})
+			require.True(t, ok)
+			assert.NotContains(t, adminInfo, "routing")
+		}
+
+		var consumeLogs []model.Log
+		require.NoError(t, db.Where(
+			"request_id = ? AND type = ?", "route-multi-retry", model.LogTypeConsume,
+		).Find(&consumeLogs).Error)
+		require.Len(t, consumeLogs, 1)
+		consumeOther, err := common.StrToMap(consumeLogs[0].Other)
+		require.NoError(t, err)
+		assert.Equal(t, service.RouteModeManual, consumeOther["routing_mode"])
+		consumeAdminInfo, ok := consumeOther["admin_info"].(map[string]interface{})
+		require.True(t, ok)
+		assert.NotContains(t, consumeAdminInfo, "routing")
 	})
 
 	t.Run("single group remains bounded by RetryTimes", func(t *testing.T) {
 		upstream.reset("retry-to-success")
-		recorder := performRequest("group-a", false)
+		recorder, routing := performRequest("route-single-429", "group-a", false)
 
 		require.Equal(t, http.StatusTooManyRequests, recorder.Code, recorder.Body.String())
 		assert.Equal(t, []string{"/channel-1/v1/chat/completions"}, upstream.recordedCalls())
+		require.NotNil(t, routing)
+		require.Len(t, routing.Planned, 2)
+		assert.Equal(t, "route-channel-1", routing.Planned[0].ChannelName)
+		assert.Equal(t, "route-channel-2", routing.Planned[1].ChannelName)
+		require.Len(t, routing.Attempts, 1)
+		assert.Equal(t, http.StatusTooManyRequests, routing.Attempts[0].StatusCode)
+		assert.Equal(t, service.RouteRetryDecisionStop, routing.Attempts[0].RetryDecision)
+		assert.Equal(t, "retry_limit_reached", routing.Attempts[0].RetryStopReason)
+		assert.Equal(t, "retry_limit_reached", routing.FinalStopReason)
+
+		var errorLogs []model.Log
+		require.NoError(t, db.Where(
+			"request_id = ? AND type = ?", "route-single-429", model.LogTypeError,
+		).Find(&errorLogs).Error)
+		require.Len(t, errorLogs, 1)
+		other, err := common.StrToMap(errorLogs[0].Other)
+		require.NoError(t, err)
+		adminInfo, ok := other["admin_info"].(map[string]interface{})
+		require.True(t, ok)
+		storedRouting, ok := adminInfo["routing"].(map[string]interface{})
+		require.True(t, ok)
+		assert.Equal(t, "retry_limit_reached", storedRouting["final_stop_reason"])
+		storedAttempts, ok := storedRouting["attempts"].([]interface{})
+		require.True(t, ok)
+		require.Len(t, storedAttempts, 1)
+		assert.Equal(t, float64(http.StatusTooManyRequests), storedAttempts[0].(map[string]interface{})["status_code"])
 	})
 
 	t.Run("non-retry client error stops the multi-group chain", func(t *testing.T) {
 		upstream.reset("bad-request")
-		recorder := performRequest("group-a,group-b", false)
+		recorder, routing := performRequest("route-non-retry", "group-a,group-b", false)
 
 		require.Equal(t, http.StatusBadRequest, recorder.Code, recorder.Body.String())
 		assert.Equal(t, []string{"/channel-1/v1/chat/completions"}, upstream.recordedCalls())
+		require.NotNil(t, routing)
+		assert.Equal(t, "non_retryable_status", routing.FinalStopReason)
 	})
 
 	t.Run("stream output prevents a second upstream call", func(t *testing.T) {
 		upstream.reset("partial-stream")
-		recorder := performRequest("group-a,group-b", true)
+		recorder, routing := performRequest("route-partial-stream", "group-a,group-b", true)
 
 		require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
 		assert.Equal(t, []string{"/channel-1/v1/chat/completions"}, upstream.recordedCalls())
 		assert.Contains(t, recorder.Body.String(), "partial")
+		require.NotNil(t, routing)
+		assert.Equal(t, "success", routing.FinalStopReason)
 	})
 }

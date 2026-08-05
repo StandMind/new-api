@@ -336,6 +336,7 @@ function CommonLogsCard<TData>({
             type={rowData?.type}
           />
         </div>
+        <SummaryField label={t('Routing')} cell={cells.get('routing')} />
         <SummaryField
           cell={cells.get('channel')}
           valueClassName='[&_.flex-col]:max-w-none'

@@ -60,6 +60,19 @@ func TestBoundedRequestDetailStringKeepsValidUTF8(t *testing.T) {
 	assert.Equal(t, "中文", boundedRequestDetailString("中文内容", 7))
 }
 
+func TestRequestDetailRoutingSnapshotOnlyForFinalFailure(t *testing.T) {
+	context, _ := gin.CreateTestContext(httptest.NewRecorder())
+	plan := NewRouteAttemptPlan([]string{"primary", "fallback"}, true)
+	SetRouteAttemptPlan(context, plan)
+
+	assert.Nil(t, requestDetailRoutingSnapshot(context, "primary", false))
+	routing := requestDetailRoutingSnapshot(context, "fallback", true)
+	require.NotNil(t, routing)
+	assert.Equal(t, RouteModeManual, routing.Mode)
+	assert.Equal(t, []string{"primary", "fallback"}, routing.Groups)
+	assert.Equal(t, "fallback", routing.FinalGroup)
+}
+
 func TestCaptureRequestDetailFromContextQueuesDistributorFailure(t *testing.T) {
 	context, _ := gin.CreateTestContext(httptest.NewRecorder())
 	context.Request = httptest.NewRequest(

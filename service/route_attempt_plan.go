@@ -6,6 +6,8 @@ import (
 	"math"
 	"math/rand"
 	"sort"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -16,12 +18,94 @@ import (
 
 var ErrRouteAttemptPlanExhausted = errors.New("route attempt plan exhausted")
 
+const (
+	RouteModeManual       = "manual"
+	RouteModeFixedChannel = "fixed_channel"
+
+	RouteAttemptPhaseSelection = "selection"
+	RouteAttemptPhaseBilling   = "billing"
+	RouteAttemptPhaseRequest   = "request"
+	RouteAttemptPhaseUpstream  = "upstream"
+
+	RouteAttemptOutcomeSkipped   = "skipped"
+	RouteAttemptOutcomeFailed    = "failed"
+	RouteAttemptOutcomeSucceeded = "succeeded"
+
+	RouteRetryDecisionRetry    = "retry"
+	RouteRetryDecisionStop     = "stop"
+	RouteRetryDecisionComplete = "complete"
+
+	routeDiagnosticMaxEvents       = 256
+	routeDiagnosticMaxErrorBytes   = 2 * 1024
+	routeDiagnosticMaxReasonBytes  = 128
+	routeDiagnosticMaxModelBytes   = 512
+	routeDiagnosticMaxRequestBytes = 512
+)
+
 type RouteAttempt struct {
-	Group     string `json:"group"`
-	Model     string `json:"model"`
-	Priority  int64  `json:"priority"`
-	ChannelID int    `json:"channel_id"`
-	Explicit  bool   `json:"explicit"`
+	Group       string `json:"group"`
+	Model       string `json:"model"`
+	Priority    int64  `json:"priority"`
+	ChannelID   int    `json:"channel_id"`
+	ChannelName string `json:"channel_name,omitempty"`
+	Explicit    bool   `json:"explicit"`
+}
+
+type RouteAttemptResult struct {
+	Phase             string
+	Outcome           string
+	Reason            string
+	StatusCode        int
+	ErrorType         string
+	ErrorCode         string
+	ErrorMessage      string
+	DurationMS        int64
+	RetryDecision     string
+	RetryReason       string
+	RetryStopReason   string
+	UpstreamModel     string
+	RequestFormat     string
+	UpstreamRequestID string
+}
+
+type RouteAttemptDiagnostic struct {
+	Sequence          int    `json:"sequence"`
+	Group             string `json:"group"`
+	Model             string `json:"model"`
+	Priority          int64  `json:"priority"`
+	ChannelID         int    `json:"channel_id"`
+	ChannelName       string `json:"channel_name,omitempty"`
+	Explicit          bool   `json:"explicit"`
+	Phase             string `json:"phase"`
+	Outcome           string `json:"outcome"`
+	Reason            string `json:"reason,omitempty"`
+	StatusCode        int    `json:"status_code,omitempty"`
+	ErrorType         string `json:"error_type,omitempty"`
+	ErrorCode         string `json:"error_code,omitempty"`
+	ErrorMessage      string `json:"error_message,omitempty"`
+	DurationMS        int64  `json:"duration_ms"`
+	RetryDecision     string `json:"retry_decision,omitempty"`
+	RetryReason       string `json:"retry_reason,omitempty"`
+	RetryStopReason   string `json:"retry_stop_reason,omitempty"`
+	UpstreamModel     string `json:"upstream_model,omitempty"`
+	RequestFormat     string `json:"request_format,omitempty"`
+	UpstreamRequestID string `json:"upstream_request_id,omitempty"`
+}
+
+type RoutingDiagnosticSnapshot struct {
+	Mode                       string                   `json:"mode"`
+	Basis                      string                   `json:"basis,omitempty"`
+	Groups                     []string                 `json:"groups,omitempty"`
+	Planned                    []RouteAttempt           `json:"planned,omitempty"`
+	PlannedTruncated           bool                     `json:"planned_truncated,omitempty"`
+	Attempts                   []RouteAttemptDiagnostic `json:"attempts,omitempty"`
+	AttemptsTruncated          bool                     `json:"attempts_truncated,omitempty"`
+	FinalGroup                 string                   `json:"final_group,omitempty"`
+	FinalChannelID             int                      `json:"final_channel_id,omitempty"`
+	FinalChannelName           string                   `json:"final_channel_name,omitempty"`
+	FinalStopReason            string                   `json:"final_stop_reason,omitempty"`
+	UpstreamAttempts           []RouteAttempt           `json:"upstream_attempted,omitempty"`
+	UpstreamAttemptedTruncated bool                     `json:"upstream_attempted_truncated,omitempty"`
 }
 
 type RouteAttemptPlan struct {
@@ -33,26 +117,38 @@ type RouteAttemptPlan struct {
 	exhaustive       bool
 	routingPriority  constant.RoutingPriority
 	rankingBasis     string
+	diagnostics      []RouteAttemptDiagnostic
+	diagnosticsCut   bool
+	finalStopReason  string
 }
 
-func BuildRouteAttemptPlan(groups []string, modelName, requestPath string, exhaustive bool) (*RouteAttemptPlan, error) {
+func NewRouteAttemptPlan(groups []string, exhaustive bool) *RouteAttemptPlan {
 	uniqueGroups := make([]string, 0, len(groups))
 	seenGroups := make(map[string]struct{}, len(groups))
 	for _, group := range groups {
+		group = strings.TrimSpace(group)
+		if group == "" {
+			continue
+		}
 		if _, seen := seenGroups[group]; seen {
 			continue
 		}
 		seenGroups[group] = struct{}{}
 		uniqueGroups = append(uniqueGroups, group)
 	}
-	plan := &RouteAttemptPlan{
+	return &RouteAttemptPlan{
 		configuredGroups: uniqueGroups,
 		attempts:         make([]RouteAttempt, 0),
 		consumed:         make(map[int]struct{}),
 		currentIndex:     -1,
 		exhaustive:       exhaustive,
+		diagnostics:      make([]RouteAttemptDiagnostic, 0),
 	}
-	routePlans, err := model.LoadGroupModelRoutePlans(uniqueGroups, modelName, requestPath)
+}
+
+func BuildRouteAttemptPlan(groups []string, modelName, requestPath string, exhaustive bool) (*RouteAttemptPlan, error) {
+	plan := NewRouteAttemptPlan(groups, exhaustive)
+	routePlans, err := model.LoadGroupModelRoutePlans(plan.configuredGroups, modelName, requestPath)
 	if err != nil {
 		return nil, err
 	}
@@ -107,12 +203,14 @@ func BuildRouteAttemptPlan(groups []string, modelName, requestPath string, exhau
 		for _, tier := range tiers {
 			ordered := weightedRouteChannels(tier.Channels, rand.Int63n)
 			for _, channel := range ordered {
+				candidate := available[channel.ChannelID]
 				plan.attempts = append(plan.attempts, RouteAttempt{
-					Group:     group,
-					Model:     routeModel,
-					Priority:  tier.Priority,
-					ChannelID: channel.ChannelID,
-					Explicit:  explicit,
+					Group:       group,
+					Model:       routeModel,
+					Priority:    tier.Priority,
+					ChannelID:   channel.ChannelID,
+					ChannelName: candidate.ChannelName,
+					Explicit:    explicit,
 				})
 			}
 		}
@@ -191,6 +289,13 @@ func (p *RouteAttemptPlan) RankingBasis() string {
 	return p.rankingBasis
 }
 
+func (p *RouteAttemptPlan) Mode() string {
+	if p == nil || p.routingPriority == constant.RoutingPriorityManual {
+		return RouteModeManual
+	}
+	return string(p.routingPriority)
+}
+
 func (p *RouteAttemptPlan) ConfiguredGroups() []string {
 	if p == nil {
 		return nil
@@ -231,6 +336,11 @@ func (p *RouteAttemptPlan) Current() (RouteAttempt, bool) {
 	return p.attempts[p.currentIndex], true
 }
 
+func (p *RouteAttemptPlan) HasNextAvailable() bool {
+	_, ok := p.nextAvailableIndex()
+	return ok
+}
+
 func (p *RouteAttemptPlan) TakePreferred(channelID int) (RouteAttempt, bool) {
 	if p == nil || p.nextIndex != 0 {
 		return RouteAttempt{}, false
@@ -267,6 +377,104 @@ func GetRouteAttemptPlan(c *gin.Context) *RouteAttemptPlan {
 	return plan
 }
 
+func RecordCurrentRouteAttemptResult(c *gin.Context, result RouteAttemptResult) {
+	plan := GetRouteAttemptPlan(c)
+	if plan == nil {
+		return
+	}
+	attempt, ok := plan.Current()
+	if !ok {
+		return
+	}
+	plan.recordDiagnostic(attempt, result)
+}
+
+func SetRouteFinalStopReason(c *gin.Context, reason string) {
+	if plan := GetRouteAttemptPlan(c); plan != nil {
+		plan.SetFinalStopReason(reason)
+	}
+}
+
+func EnsureRouteFinalStopReason(c *gin.Context, reason string) {
+	if plan := GetRouteAttemptPlan(c); plan != nil && plan.FinalStopReason() == "" {
+		plan.SetFinalStopReason(reason)
+	}
+}
+
+func (p *RouteAttemptPlan) SetFinalStopReason(reason string) {
+	if p == nil {
+		return
+	}
+	p.finalStopReason = boundedRouteDiagnosticString(reason, routeDiagnosticMaxReasonBytes, false)
+}
+
+func (p *RouteAttemptPlan) FinalStopReason() string {
+	if p == nil {
+		return ""
+	}
+	return p.finalStopReason
+}
+
+func (p *RouteAttemptPlan) Diagnostics() ([]RouteAttemptDiagnostic, bool) {
+	if p == nil {
+		return nil, false
+	}
+	return append([]RouteAttemptDiagnostic(nil), p.diagnostics...), p.diagnosticsCut
+}
+
+func (p *RouteAttemptPlan) recordDiagnostic(attempt RouteAttempt, result RouteAttemptResult) {
+	if p == nil {
+		return
+	}
+	if len(p.diagnostics) >= routeDiagnosticMaxEvents {
+		p.diagnosticsCut = true
+		return
+	}
+	if result.DurationMS < 0 {
+		result.DurationMS = 0
+	}
+	diagnostic := RouteAttemptDiagnostic{
+		Sequence:          len(p.diagnostics) + 1,
+		Group:             boundedRouteDiagnosticString(attempt.Group, routeDiagnosticMaxReasonBytes, false),
+		Model:             boundedRouteDiagnosticString(attempt.Model, routeDiagnosticMaxModelBytes, false),
+		Priority:          attempt.Priority,
+		ChannelID:         attempt.ChannelID,
+		ChannelName:       boundedRouteDiagnosticString(attempt.ChannelName, routeDiagnosticMaxModelBytes, false),
+		Explicit:          attempt.Explicit,
+		Phase:             boundedRouteDiagnosticString(result.Phase, routeDiagnosticMaxReasonBytes, false),
+		Outcome:           boundedRouteDiagnosticString(result.Outcome, routeDiagnosticMaxReasonBytes, false),
+		Reason:            boundedRouteDiagnosticString(result.Reason, routeDiagnosticMaxReasonBytes, false),
+		StatusCode:        result.StatusCode,
+		ErrorType:         boundedRouteDiagnosticString(result.ErrorType, routeDiagnosticMaxReasonBytes, false),
+		ErrorCode:         boundedRouteDiagnosticString(result.ErrorCode, routeDiagnosticMaxReasonBytes, false),
+		ErrorMessage:      boundedRouteDiagnosticString(result.ErrorMessage, routeDiagnosticMaxErrorBytes, true),
+		DurationMS:        result.DurationMS,
+		RetryDecision:     boundedRouteDiagnosticString(result.RetryDecision, routeDiagnosticMaxReasonBytes, false),
+		RetryReason:       boundedRouteDiagnosticString(result.RetryReason, routeDiagnosticMaxReasonBytes, false),
+		RetryStopReason:   boundedRouteDiagnosticString(result.RetryStopReason, routeDiagnosticMaxReasonBytes, false),
+		UpstreamModel:     boundedRouteDiagnosticString(result.UpstreamModel, routeDiagnosticMaxModelBytes, false),
+		RequestFormat:     boundedRouteDiagnosticString(result.RequestFormat, routeDiagnosticMaxRequestBytes, false),
+		UpstreamRequestID: boundedRouteDiagnosticString(result.UpstreamRequestID, routeDiagnosticMaxRequestBytes, true),
+	}
+	p.diagnostics = append(p.diagnostics, diagnostic)
+	if diagnostic.RetryStopReason != "" {
+		p.finalStopReason = diagnostic.RetryStopReason
+	}
+}
+
+func boundedRouteDiagnosticString(value string, maxBytes int, mask bool) string {
+	if mask {
+		value = common.MaskSensitiveInfo(value)
+	}
+	if maxBytes <= 0 || len(value) <= maxBytes {
+		return value
+	}
+	for maxBytes > 0 && !utf8.RuneStart(value[maxBytes]) {
+		maxBytes--
+	}
+	return value[:maxBytes]
+}
+
 func ApplyRouteAttempt(c *gin.Context, attempt RouteAttempt) (*model.Channel, error) {
 	metricModel := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
 	if metricModel == "" {
@@ -293,4 +501,5 @@ func RecordRouteUpstreamAttempt(c *gin.Context) {
 	history, _ := common.GetContextKeyType[[]RouteAttempt](c, constant.ContextKeyRouteAttemptHistory)
 	history = append(history, attempt)
 	common.SetContextKey(c, constant.ContextKeyRouteAttemptHistory, history)
+	c.Set(common.UpstreamRequestIdKey, "")
 }

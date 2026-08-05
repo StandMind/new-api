@@ -101,9 +101,11 @@ func TestShouldRetryKeepsChannelFailuresInsideTheRouteChain(t *testing.T) {
 	)
 
 	assert.True(t, shouldRetry(context, channelError, 1))
+	assert.Equal(t, "channel_error", getRelayRetryDecision(context, channelError, 1).Reason)
 
 	context.Set("specific_channel_id", "1")
 	assert.False(t, shouldRetry(context, channelError, 1))
+	assert.Equal(t, "specific_channel", getRelayRetryDecision(context, channelError, 1).Reason)
 }
 
 func TestShouldRetryTaskRelayStopsForSpecifiedChannel(t *testing.T) {
@@ -139,4 +141,6 @@ func TestRelayRetryStopsWhenClientRequestIsCanceled(t *testing.T) {
 
 	assert.False(t, shouldRetry(ginContext, channelError, 1))
 	assert.False(t, shouldRetryTaskRelay(ginContext, taskError, 1))
+	assert.Equal(t, "client_context_canceled", getRelayRetryDecision(ginContext, channelError, 1).Reason)
+	assert.Equal(t, "client_context_canceled", getTaskRelayRetryDecision(ginContext, taskError, 1).Reason)
 }

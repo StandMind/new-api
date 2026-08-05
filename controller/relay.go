@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -77,6 +78,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	)
 	defer func() {
 		if newAPIError != nil {
+			service.EnsureRouteFinalStopReason(c, "request_failed_before_upstream")
 			service.SetRequestDetailFailure(c, &service.RequestDetailFailure{
 				StatusCode: newAPIError.StatusCode,
 				ErrorType:  string(newAPIError.GetErrorType()),
@@ -222,6 +224,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	routePlan := service.GetRouteAttemptPlan(c)
 	for attemptIndex := 0; ; attemptIndex++ {
 		if (routePlan == nil || !routePlan.IsExhaustive()) && attemptIndex > common.RetryTimes {
+			service.SetRouteFinalStopReason(c, "retry_limit_reached")
 			break
 		}
 		retryParam.SetRetry(attemptIndex)
@@ -229,9 +232,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
 			if errors.Is(channelErr.Err, service.ErrRouteAttemptPlanExhausted) && relayInfo.LastError != nil {
+				service.SetRouteFinalStopReason(c, "route_plan_exhausted")
 				newAPIError = relayInfo.LastError
 				break
 			}
+			service.EnsureRouteFinalStopReason(c, "get_channel_failed")
 			logger.LogError(c, channelErr.Error())
 			newAPIError = channelErr
 			break
@@ -240,12 +245,34 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			priceData, priceErr := helper.ModelPriceHelper(c, relayInfo, tokens, meta)
 			if priceErr != nil {
 				newAPIError = types.NewError(priceErr, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest), types.ErrOptionWithSkipRetry())
+				service.RecordCurrentRouteAttemptResult(c, service.RouteAttemptResult{
+					Phase:           service.RouteAttemptPhaseBilling,
+					Outcome:         service.RouteAttemptOutcomeFailed,
+					Reason:          "pricing_failed",
+					StatusCode:      newAPIError.StatusCode,
+					ErrorType:       string(newAPIError.GetErrorType()),
+					ErrorCode:       string(newAPIError.GetErrorCode()),
+					ErrorMessage:    newAPIError.MaskSensitiveErrorWithStatusCode(),
+					RetryDecision:   service.RouteRetryDecisionStop,
+					RetryStopReason: "pricing_failed",
+				})
 				break
 			}
 			if relayInfo.Billing == nil {
 				if !priceData.FreeModel {
 					newAPIError = service.PreConsumeBilling(c, priceData.QuotaToPreConsume, relayInfo)
 					if newAPIError != nil {
+						service.RecordCurrentRouteAttemptResult(c, service.RouteAttemptResult{
+							Phase:           service.RouteAttemptPhaseBilling,
+							Outcome:         service.RouteAttemptOutcomeFailed,
+							Reason:          "billing_reserve_failed",
+							StatusCode:      newAPIError.StatusCode,
+							ErrorType:       string(newAPIError.GetErrorType()),
+							ErrorCode:       string(newAPIError.GetErrorCode()),
+							ErrorMessage:    newAPIError.MaskSensitiveErrorWithStatusCode(),
+							RetryDecision:   service.RouteRetryDecisionStop,
+							RetryStopReason: "billing_reserve_failed",
+						})
 						break
 					}
 				}
@@ -256,6 +283,17 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 					http.StatusForbidden,
 					types.ErrOptionWithSkipRetry(),
 				)
+				service.RecordCurrentRouteAttemptResult(c, service.RouteAttemptResult{
+					Phase:           service.RouteAttemptPhaseBilling,
+					Outcome:         service.RouteAttemptOutcomeFailed,
+					Reason:          "billing_reserve_failed",
+					StatusCode:      newAPIError.StatusCode,
+					ErrorType:       string(newAPIError.GetErrorType()),
+					ErrorCode:       string(newAPIError.GetErrorCode()),
+					ErrorMessage:    newAPIError.MaskSensitiveErrorWithStatusCode(),
+					RetryDecision:   service.RouteRetryDecisionStop,
+					RetryStopReason: "billing_reserve_failed",
+				})
 				break
 			}
 			relayInfo.PricedGroup = relayInfo.UsingGroup
@@ -269,11 +307,23 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			} else {
 				newAPIError = types.NewErrorWithStatusCode(bodyErr, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 			}
+			service.RecordCurrentRouteAttemptResult(c, service.RouteAttemptResult{
+				Phase:           service.RouteAttemptPhaseRequest,
+				Outcome:         service.RouteAttemptOutcomeFailed,
+				Reason:          "request_body_unavailable",
+				StatusCode:      newAPIError.StatusCode,
+				ErrorType:       string(newAPIError.GetErrorType()),
+				ErrorCode:       string(newAPIError.GetErrorCode()),
+				ErrorMessage:    newAPIError.MaskSensitiveErrorWithStatusCode(),
+				RetryDecision:   service.RouteRetryDecisionStop,
+				RetryStopReason: "request_body_unavailable",
+			})
 			break
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 		service.RecordRouteUpstreamAttempt(c)
 		addUsedChannel(c, channel.Id)
+		upstreamStartedAt := time.Now()
 
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
@@ -287,6 +337,17 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 
 		if newAPIError == nil {
+			service.RecordCurrentRouteAttemptResult(c, service.RouteAttemptResult{
+				Phase:             service.RouteAttemptPhaseUpstream,
+				Outcome:           service.RouteAttemptOutcomeSucceeded,
+				DurationMS:        time.Since(upstreamStartedAt).Milliseconds(),
+				RetryDecision:     service.RouteRetryDecisionComplete,
+				RetryReason:       "success",
+				UpstreamModel:     relayInfo.UpstreamModelName,
+				RequestFormat:     string(relayInfo.GetFinalRequestRelayFormat()),
+				UpstreamRequestID: c.GetString(common.UpstreamRequestIdKey),
+			})
+			service.SetRouteFinalStopReason(c, "success")
 			relayInfo.LastError = nil
 			return
 		}
@@ -294,16 +355,43 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
 		relayInfo.LastError = newAPIError
 
-		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
-
+		decision := relayRetryDecision{}
 		if relayInfo.IsStream && (relayInfo.SendResponseCount > 0 || c.Writer.Size() > 0) {
-			break
+			decision = relayRetryDecision{Reason: "response_started"}
+		} else {
+			retryAllowance := common.RetryTimes - attemptIndex
+			if routePlan != nil && routePlan.IsExhaustive() {
+				retryAllowance = 1
+			}
+			decision = getRelayRetryDecision(c, newAPIError, retryAllowance)
+			if decision.Retry && routePlan != nil && !routePlan.HasNextAvailable() {
+				decision = relayRetryDecision{Reason: "route_plan_exhausted"}
+			}
 		}
-		retryAllowance := common.RetryTimes - attemptIndex
-		if routePlan != nil && routePlan.IsExhaustive() {
-			retryAllowance = 1
+		retryDecision := service.RouteRetryDecisionStop
+		retryStopReason := decision.Reason
+		if decision.Retry {
+			retryDecision = service.RouteRetryDecisionRetry
+			retryStopReason = ""
 		}
-		if !shouldRetry(c, newAPIError, retryAllowance) {
+		service.RecordCurrentRouteAttemptResult(c, service.RouteAttemptResult{
+			Phase:             service.RouteAttemptPhaseUpstream,
+			Outcome:           service.RouteAttemptOutcomeFailed,
+			StatusCode:        newAPIError.StatusCode,
+			ErrorType:         string(newAPIError.GetErrorType()),
+			ErrorCode:         string(newAPIError.GetErrorCode()),
+			ErrorMessage:      newAPIError.MaskSensitiveErrorWithStatusCode(),
+			DurationMS:        time.Since(upstreamStartedAt).Milliseconds(),
+			RetryDecision:     retryDecision,
+			RetryReason:       decision.Reason,
+			RetryStopReason:   retryStopReason,
+			UpstreamModel:     relayInfo.UpstreamModelName,
+			RequestFormat:     string(relayInfo.GetFinalRequestRelayFormat()),
+			UpstreamRequestID: c.GetString(common.UpstreamRequestIdKey),
+		})
+
+		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError, !decision.Retry)
+		if !decision.Retry {
 			break
 		}
 	}
@@ -378,18 +466,51 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 		for {
 			attempt, ok := routePlan.NextAfterFailure()
 			if !ok {
+				service.SetRouteFinalStopReason(c, "route_plan_exhausted")
 				return nil, types.NewError(service.ErrRouteAttemptPlanExhausted, types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 			}
+			selectionStartedAt := time.Now()
 			channel, err := service.ApplyRouteAttempt(c, attempt)
 			if err != nil {
+				service.RecordCurrentRouteAttemptResult(c, service.RouteAttemptResult{
+					Phase:        service.RouteAttemptPhaseSelection,
+					Outcome:      service.RouteAttemptOutcomeSkipped,
+					Reason:       "channel_unavailable",
+					ErrorType:    "selection_error",
+					ErrorCode:    "channel_unavailable",
+					ErrorMessage: err.Error(),
+					DurationMS:   time.Since(selectionStartedAt).Milliseconds(),
+				})
 				continue
 			}
 			info.UsingGroup = attempt.Group
 			newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
 			if newAPIError != nil {
 				if types.IsChannelError(newAPIError) {
+					service.RecordCurrentRouteAttemptResult(c, service.RouteAttemptResult{
+						Phase:        service.RouteAttemptPhaseSelection,
+						Outcome:      service.RouteAttemptOutcomeSkipped,
+						Reason:       "channel_initialization_failed",
+						StatusCode:   newAPIError.StatusCode,
+						ErrorType:    string(newAPIError.GetErrorType()),
+						ErrorCode:    string(newAPIError.GetErrorCode()),
+						ErrorMessage: newAPIError.MaskSensitiveErrorWithStatusCode(),
+						DurationMS:   time.Since(selectionStartedAt).Milliseconds(),
+					})
 					continue
 				}
+				service.RecordCurrentRouteAttemptResult(c, service.RouteAttemptResult{
+					Phase:           service.RouteAttemptPhaseSelection,
+					Outcome:         service.RouteAttemptOutcomeFailed,
+					Reason:          "channel_initialization_failed",
+					StatusCode:      newAPIError.StatusCode,
+					ErrorType:       string(newAPIError.GetErrorType()),
+					ErrorCode:       string(newAPIError.GetErrorCode()),
+					ErrorMessage:    newAPIError.MaskSensitiveErrorWithStatusCode(),
+					DurationMS:      time.Since(selectionStartedAt).Milliseconds(),
+					RetryDecision:   service.RouteRetryDecisionStop,
+					RetryStopReason: "channel_initialization_failed",
+				})
 				return nil, newAPIError
 			}
 			return channel, nil
@@ -413,42 +534,57 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	return channel, nil
 }
 
+type relayRetryDecision struct {
+	Retry  bool
+	Reason string
+}
+
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
+	return getRelayRetryDecision(c, openaiErr, retryTimes).Retry
+}
+
+func getRelayRetryDecision(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) relayRetryDecision {
 	if openaiErr == nil {
-		return false
+		return relayRetryDecision{Reason: "no_error"}
 	}
 	if c != nil && c.Request != nil && c.Request.Context().Err() != nil {
-		return false
+		if errors.Is(c.Request.Context().Err(), context.DeadlineExceeded) {
+			return relayRetryDecision{Reason: "client_context_deadline_exceeded"}
+		}
+		return relayRetryDecision{Reason: "client_context_canceled"}
 	}
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
-		return false
+		return relayRetryDecision{Reason: "channel_affinity_retry_suppressed"}
 	}
 	if retryTimes <= 0 {
-		return false
+		return relayRetryDecision{Reason: "retry_limit_reached"}
 	}
 	if _, ok := c.Get("specific_channel_id"); ok {
-		return false
+		return relayRetryDecision{Reason: "specific_channel"}
 	}
 	if types.IsChannelError(openaiErr) {
-		return true
+		return relayRetryDecision{Retry: true, Reason: "channel_error"}
 	}
 	if types.IsSkipRetryError(openaiErr) {
-		return false
+		return relayRetryDecision{Reason: "skip_retry_error"}
 	}
 	code := openaiErr.StatusCode
 	if code >= 200 && code < 300 {
-		return false
+		return relayRetryDecision{Reason: "successful_status"}
 	}
 	if code < 100 || code > 599 {
-		return true
+		return relayRetryDecision{Retry: true, Reason: "invalid_status_code"}
 	}
 	if operation_setting.IsAlwaysSkipRetryCode(openaiErr.GetErrorCode()) {
-		return false
+		return relayRetryDecision{Reason: "non_retryable_error_code"}
 	}
-	return operation_setting.ShouldRetryByStatusCode(code)
+	if operation_setting.ShouldRetryByStatusCode(code) {
+		return relayRetryDecision{Retry: true, Reason: "retryable_status"}
+	}
+	return relayRetryDecision{Reason: "non_retryable_status"}
 }
 
-func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
+func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError, finalFailure bool) {
 	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, common.LocalLogPreview(err.Error())))
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
 	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
@@ -484,8 +620,8 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 			adminInfo["multi_key_index"] = common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
 		}
 		service.AppendChannelAffinityAdminInfo(c, adminInfo)
-		service.AppendRoutingAdminInfo(c, adminInfo)
 		other["admin_info"] = adminInfo
+		service.AppendRoutingErrorLogInfo(c, other, finalFailure)
 		startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
 		if startTime.IsZero() {
 			startTime = time.Now()
@@ -582,6 +718,7 @@ func RelayTask(c *gin.Context) {
 	var taskErr *dto.TaskError
 	defer func() {
 		if taskErr != nil {
+			service.EnsureRouteFinalStopReason(c, "request_failed_before_upstream")
 			service.SetRequestDetailFailure(c, &service.RequestDetailFailure{
 				StatusCode: taskErr.StatusCode,
 				ErrorType:  "task_error",
@@ -629,6 +766,7 @@ func RelayTask(c *gin.Context) {
 	}
 	for attemptIndex := 0; ; attemptIndex++ {
 		if (routePlan == nil || !routePlan.IsExhaustive()) && attemptIndex > common.RetryTimes {
+			service.SetRouteFinalStopReason(c, "retry_limit_reached")
 			break
 		}
 		retryParam.SetRetry(attemptIndex)
@@ -639,6 +777,7 @@ func RelayTask(c *gin.Context) {
 			if attemptIndex > 0 {
 				if setupErr := middleware.SetupContextForSelectedChannel(c, channel, relayInfo.OriginModelName); setupErr != nil {
 					taskErr = service.TaskErrorWrapperLocal(setupErr.Err, "setup_locked_channel_failed", http.StatusInternalServerError)
+					service.SetRouteFinalStopReason(c, "channel_initialization_failed")
 					break
 				}
 			}
@@ -647,8 +786,10 @@ func RelayTask(c *gin.Context) {
 			channel, channelErr = getChannel(c, relayInfo, retryParam)
 			if channelErr != nil {
 				if errors.Is(channelErr.Err, service.ErrRouteAttemptPlanExhausted) && taskErr != nil {
+					service.SetRouteFinalStopReason(c, "route_plan_exhausted")
 					break
 				}
+				service.EnsureRouteFinalStopReason(c, "get_channel_failed")
 				logger.LogError(c, channelErr.Error())
 				taskErr = service.TaskErrorWrapperLocal(channelErr.Err, "get_channel_failed", http.StatusInternalServerError)
 				break
@@ -662,29 +803,83 @@ func RelayTask(c *gin.Context) {
 			} else {
 				taskErr = service.TaskErrorWrapperLocal(bodyErr, "read_request_body_failed", http.StatusBadRequest)
 			}
+			service.RecordCurrentRouteAttemptResult(c, service.RouteAttemptResult{
+				Phase:           service.RouteAttemptPhaseRequest,
+				Outcome:         service.RouteAttemptOutcomeFailed,
+				Reason:          "request_body_unavailable",
+				StatusCode:      taskErr.StatusCode,
+				ErrorType:       "task_error",
+				ErrorCode:       taskErr.Code,
+				ErrorMessage:    taskErr.Message,
+				RetryDecision:   service.RouteRetryDecisionStop,
+				RetryStopReason: "request_body_unavailable",
+			})
 			break
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 		service.RecordRouteUpstreamAttempt(c)
 		addUsedChannel(c, channel.Id)
+		upstreamStartedAt := time.Now()
 
 		result, taskErr = relay.RelayTaskSubmit(c, relayInfo)
 		if taskErr == nil {
+			service.RecordCurrentRouteAttemptResult(c, service.RouteAttemptResult{
+				Phase:             service.RouteAttemptPhaseUpstream,
+				Outcome:           service.RouteAttemptOutcomeSucceeded,
+				DurationMS:        time.Since(upstreamStartedAt).Milliseconds(),
+				RetryDecision:     service.RouteRetryDecisionComplete,
+				RetryReason:       "success",
+				UpstreamModel:     relayInfo.UpstreamModelName,
+				RequestFormat:     string(relayInfo.GetFinalRequestRelayFormat()),
+				UpstreamRequestID: c.GetString(common.UpstreamRequestIdKey),
+			})
+			service.SetRouteFinalStopReason(c, "success")
 			break
-		}
-
-		if !taskErr.LocalError {
-			processChannelError(c,
-				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,
-					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
-				types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))
 		}
 
 		retryAllowance := common.RetryTimes - attemptIndex
 		if routePlan != nil && routePlan.IsExhaustive() {
 			retryAllowance = 1
 		}
-		if !shouldRetryTaskRelay(c, taskErr, retryAllowance) {
+		decision := getTaskRelayRetryDecision(c, taskErr, retryAllowance)
+		if decision.Retry && routePlan != nil && !routePlan.HasNextAvailable() {
+			decision = relayRetryDecision{Reason: "route_plan_exhausted"}
+		}
+		retryDecision := service.RouteRetryDecisionStop
+		retryStopReason := decision.Reason
+		if decision.Retry {
+			retryDecision = service.RouteRetryDecisionRetry
+			retryStopReason = ""
+		}
+		taskErrorMessage := taskErr.Message
+		if taskErr.Error != nil {
+			taskErrorMessage = taskErr.Error.Error()
+		}
+		service.RecordCurrentRouteAttemptResult(c, service.RouteAttemptResult{
+			Phase:             service.RouteAttemptPhaseUpstream,
+			Outcome:           service.RouteAttemptOutcomeFailed,
+			StatusCode:        taskErr.StatusCode,
+			ErrorType:         "task_error",
+			ErrorCode:         taskErr.Code,
+			ErrorMessage:      taskErrorMessage,
+			DurationMS:        time.Since(upstreamStartedAt).Milliseconds(),
+			RetryDecision:     retryDecision,
+			RetryReason:       decision.Reason,
+			RetryStopReason:   retryStopReason,
+			UpstreamModel:     relayInfo.UpstreamModelName,
+			RequestFormat:     string(relayInfo.GetFinalRequestRelayFormat()),
+			UpstreamRequestID: c.GetString(common.UpstreamRequestIdKey),
+		})
+
+		if !taskErr.LocalError {
+			processChannelError(c,
+				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,
+					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
+				types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode),
+				!decision.Retry)
+		}
+
+		if !decision.Retry {
 			break
 		}
 	}
@@ -739,23 +934,33 @@ func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 }
 
 func shouldRetryTaskRelay(c *gin.Context, taskErr *dto.TaskError, retryTimes int) bool {
+	return getTaskRelayRetryDecision(c, taskErr, retryTimes).Retry
+}
+
+func getTaskRelayRetryDecision(c *gin.Context, taskErr *dto.TaskError, retryTimes int) relayRetryDecision {
 	if taskErr == nil {
-		return false
+		return relayRetryDecision{Reason: "no_error"}
 	}
 	if c != nil && c.Request != nil && c.Request.Context().Err() != nil {
-		return false
+		if errors.Is(c.Request.Context().Err(), context.DeadlineExceeded) {
+			return relayRetryDecision{Reason: "client_context_deadline_exceeded"}
+		}
+		return relayRetryDecision{Reason: "client_context_canceled"}
 	}
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
-		return false
+		return relayRetryDecision{Reason: "channel_affinity_retry_suppressed"}
 	}
 	if retryTimes <= 0 {
-		return false
+		return relayRetryDecision{Reason: "retry_limit_reached"}
 	}
 	if _, ok := c.Get("specific_channel_id"); ok {
-		return false
+		return relayRetryDecision{Reason: "specific_channel"}
 	}
-	if taskErr.LocalError || !taskErr.RetrySafe {
-		return false
+	if taskErr.LocalError {
+		return relayRetryDecision{Reason: "local_task_error"}
 	}
-	return true
+	if !taskErr.RetrySafe {
+		return relayRetryDecision{Reason: "task_retry_not_safe"}
+	}
+	return relayRetryDecision{Retry: true, Reason: "retry_safe_task_error"}
 }

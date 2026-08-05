@@ -32,6 +32,57 @@ export type LogCategory = 'common' | 'drawing' | 'task'
 
 export type RequestDetailOutcome = 'success' | 'failed'
 
+export type RoutingMode =
+  | 'manual'
+  | 'auto'
+  | 'price'
+  | 'speed'
+  | 'success_rate'
+  | 'fixed_channel'
+
+export interface RouteAttempt {
+  group: string
+  model: string
+  priority: number
+  channel_id: number
+  channel_name?: string
+  explicit: boolean
+}
+
+export interface RouteAttemptDiagnostic extends RouteAttempt {
+  sequence: number
+  phase: 'selection' | 'billing' | 'request' | 'upstream' | string
+  outcome: 'skipped' | 'failed' | 'succeeded' | string
+  reason?: string
+  status_code?: number
+  error_type?: string
+  error_code?: string
+  error_message?: string
+  duration_ms: number
+  retry_decision?: 'retry' | 'stop' | 'complete' | string
+  retry_reason?: string
+  retry_stop_reason?: string
+  upstream_model?: string
+  request_format?: string
+  upstream_request_id?: string
+}
+
+export interface RoutingDiagnosticSnapshot {
+  mode: RoutingMode | string
+  basis?: string
+  groups?: string[]
+  planned?: RouteAttempt[]
+  planned_truncated?: boolean
+  attempts?: RouteAttemptDiagnostic[]
+  attempts_truncated?: boolean
+  final_group?: string
+  final_channel_id?: number
+  final_channel_name?: string
+  final_stop_reason?: string
+  upstream_attempted?: RouteAttempt[]
+  upstream_attempted_truncated?: boolean
+}
+
 export interface RequestDetailRecord {
   id: number
   request_id: string
@@ -61,7 +112,7 @@ export interface RequestDetailPayload {
   headers?: Record<string, string>
   query?: Record<string, unknown>
   body?: unknown
-  routing?: Record<string, unknown>
+  routing?: RoutingDiagnosticSnapshot
   response?: {
     status_code: number
     content_type?: string
@@ -197,6 +248,7 @@ export interface LogOtherData {
       original: number
       clamped: number
     }
+    routing?: RoutingDiagnosticSnapshot
   }
   // Language-independent operation descriptor (audit/login logs).
   // Frontend renders localized content from action + params via i18n templates.
@@ -271,6 +323,12 @@ export interface LogOtherData {
   po?: string[]
   billing_source?: string
   group?: string
+  routing_mode?: RoutingMode | string
+  routing_priority?: string
+  routing_basis?: string
+  group_chain?: string[]
+  attempted_groups?: string[]
+  final_group?: string
   stream_status?: {
     status?: string
     end_reason?: string

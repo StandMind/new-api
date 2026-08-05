@@ -235,10 +235,10 @@ func TestBuildRouteAttemptPlanUsesIndependentGroupModelRoutes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"vip-route-test", "backup-route-test"}, plan.ConfiguredGroups())
 	assert.Equal(t, []RouteAttempt{
-		{Group: "vip-route-test", Model: "route-model", Priority: 100, ChannelID: 7001, Explicit: true},
-		{Group: "vip-route-test", Model: "route-model", Priority: 50, ChannelID: 7002, Explicit: true},
-		{Group: "backup-route-test", Model: "route-model", Priority: 100, ChannelID: 7002, Explicit: true},
-		{Group: "backup-route-test", Model: "route-model", Priority: 50, ChannelID: 7001, Explicit: true},
+		{Group: "vip-route-test", Model: "route-model", Priority: 100, ChannelID: 7001, ChannelName: "channel-one", Explicit: true},
+		{Group: "vip-route-test", Model: "route-model", Priority: 50, ChannelID: 7002, ChannelName: "channel-two", Explicit: true},
+		{Group: "backup-route-test", Model: "route-model", Priority: 100, ChannelID: 7002, ChannelName: "channel-two", Explicit: true},
+		{Group: "backup-route-test", Model: "route-model", Priority: 50, ChannelID: 7001, ChannelName: "channel-one", Explicit: true},
 	}, plan.Attempts())
 
 	deleted, err := model.DeleteGroupModelRoute("vip-route-test", "route-model")
@@ -259,8 +259,8 @@ func TestBuildRouteAttemptPlanUsesIndependentGroupModelRoutes(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.Equal(t, []RouteAttempt{
-		{Group: "vip-route-test", Model: "route-model", Priority: 20, ChannelID: 7002, Explicit: false},
-		{Group: "vip-route-test", Model: "route-model", Priority: 10, ChannelID: 7001, Explicit: false},
+		{Group: "vip-route-test", Model: "route-model", Priority: 20, ChannelID: 7002, ChannelName: "channel-two", Explicit: false},
+		{Group: "vip-route-test", Model: "route-model", Priority: 10, ChannelID: 7001, ChannelName: "channel-one", Explicit: false},
 	}, databasePlan.Attempts())
 
 	common.MemoryCacheEnabled = true
@@ -410,12 +410,86 @@ func TestBuildRouteAttemptPlanNormalizesAfterRequestPathFiltering(t *testing.T) 
 	)
 	require.NoError(t, err)
 	assert.Equal(t, []RouteAttempt{{
-		Group:     "normalized-route-group",
-		Model:     "gpt-4-gizmo-*",
-		Priority:  100,
-		ChannelID: normalizedChannel.Id,
-		Explicit:  true,
+		Group:       "normalized-route-group",
+		Model:       "gpt-4-gizmo-*",
+		Priority:    100,
+		ChannelID:   normalizedChannel.Id,
+		ChannelName: "normalized-route-channel",
+		Explicit:    true,
 	}}, plan.Attempts())
+}
+
+func TestRouteAttemptDiagnosticsRecordFailureAndMaskSensitiveValues(t *testing.T) {
+	context, _ := gin.CreateTestContext(nil)
+	plan := &RouteAttemptPlan{
+		configuredGroups: []string{"fast", "fallback"},
+		attempts: []RouteAttempt{{
+			Group:       "fast",
+			Model:       "diagnostic-model",
+			Priority:    100,
+			ChannelID:   7401,
+			ChannelName: "primary-channel",
+			Explicit:    true,
+		}},
+		consumed:     make(map[int]struct{}),
+		currentIndex: -1,
+		exhaustive:   true,
+	}
+	plan.SetSmartRouting(constant.RoutingPrioritySpeed, "price_fallback")
+	SetRouteAttemptPlan(context, plan)
+
+	attempt, ok := plan.Next()
+	require.True(t, ok)
+	common.SetContextKey(context, constant.ContextKeyRouteAttempt, attempt)
+	RecordRouteUpstreamAttempt(context)
+	RecordCurrentRouteAttemptResult(context, RouteAttemptResult{
+		Phase:             RouteAttemptPhaseUpstream,
+		Outcome:           RouteAttemptOutcomeFailed,
+		StatusCode:        429,
+		ErrorType:         "upstream_error",
+		ErrorCode:         "insufficient_user_quota",
+		ErrorMessage:      "status_code=429 api_key:secret https://api.example.com/v1/chat 10.0.0.1",
+		DurationMS:        87,
+		RetryDecision:     RouteRetryDecisionStop,
+		RetryReason:       "client_context_canceled",
+		RetryStopReason:   "client_context_canceled",
+		UpstreamModel:     "diagnostic-model-v2",
+		RequestFormat:     "openai",
+		UpstreamRequestID: "request from https://api.example.com/private",
+	})
+
+	diagnostics, truncated := plan.Diagnostics()
+	require.False(t, truncated)
+	require.Len(t, diagnostics, 1)
+	diagnostic := diagnostics[0]
+	assert.Equal(t, 1, diagnostic.Sequence)
+	assert.Equal(t, 7401, diagnostic.ChannelID)
+	assert.Equal(t, "primary-channel", diagnostic.ChannelName)
+	assert.Equal(t, 429, diagnostic.StatusCode)
+	assert.Equal(t, RouteRetryDecisionStop, diagnostic.RetryDecision)
+	assert.Equal(t, "client_context_canceled", plan.FinalStopReason())
+	assert.NotContains(t, diagnostic.ErrorMessage, "secret")
+	assert.NotContains(t, diagnostic.ErrorMessage, "api.example.com")
+	assert.NotContains(t, diagnostic.ErrorMessage, "10.0.0.1")
+	assert.NotContains(t, diagnostic.UpstreamRequestID, "api.example.com")
+}
+
+func TestRouteAttemptDiagnosticsAreBounded(t *testing.T) {
+	plan := &RouteAttemptPlan{
+		attempts:     []RouteAttempt{{Group: "default", ChannelID: 1}},
+		consumed:     make(map[int]struct{}),
+		currentIndex: 0,
+		diagnostics:  make([]RouteAttemptDiagnostic, routeDiagnosticMaxEvents),
+	}
+	plan.recordDiagnostic(plan.attempts[0], RouteAttemptResult{
+		Phase:        RouteAttemptPhaseUpstream,
+		Outcome:      RouteAttemptOutcomeFailed,
+		ErrorMessage: "another error",
+	})
+
+	diagnostics, truncated := plan.Diagnostics()
+	assert.Len(t, diagnostics, routeDiagnosticMaxEvents)
+	assert.True(t, truncated)
 }
 
 func TestNormalizeGroupModelRouteRejectsInvalidTiers(t *testing.T) {

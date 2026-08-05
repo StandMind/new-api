@@ -153,14 +153,6 @@ func Distribute() func(c *gin.Context) {
 				} else if len(groups) == 0 {
 					groups = []string{usingGroup}
 				}
-				if len(groups) == 0 {
-					if routingPriority != constant.RoutingPriorityManual {
-						abortWithOpenAiMessage(c, http.StatusServiceUnavailable, fmt.Sprintf("智能路由暂无支持模型 %s 的可用分组", modelRequest.Model), types.ErrorCodeModelNotFound)
-						return
-					}
-					abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}), types.ErrorCodeModelNotFound)
-					return
-				}
 				routePlan, routeErr := service.BuildRouteAttemptPlan(
 					groups,
 					modelRequest.Model,
@@ -168,6 +160,12 @@ func Distribute() func(c *gin.Context) {
 					routingPriority != constant.RoutingPriorityManual || len(groups) > 1,
 				)
 				if routeErr != nil {
+					routePlan = service.NewRouteAttemptPlan(groups, routingPriority != constant.RoutingPriorityManual || len(groups) > 1)
+					if routingPriority != constant.RoutingPriorityManual {
+						routePlan.SetSmartRouting(routingPriority, rankingBasis)
+					}
+					service.SetRouteAttemptPlan(c, routePlan)
+					service.SetRouteFinalStopReason(c, "route_plan_build_failed")
 					message := i18n.T(c, i18n.MsgDistributorGetChannelFailed, map[string]any{"Group": usingGroup, "Model": modelRequest.Model, "Error": routeErr.Error()})
 					abortWithOpenAiMessage(c, http.StatusServiceUnavailable, message, types.ErrorCodeModelNotFound)
 					return
@@ -176,21 +174,63 @@ func Distribute() func(c *gin.Context) {
 					routePlan.SetSmartRouting(routingPriority, rankingBasis)
 				}
 				service.SetRouteAttemptPlan(c, routePlan)
+				if len(groups) == 0 {
+					service.SetRouteFinalStopReason(c, "no_candidate_groups")
+					if routingPriority != constant.RoutingPriorityManual {
+						abortWithOpenAiMessage(c, http.StatusServiceUnavailable, fmt.Sprintf("智能路由暂无支持模型 %s 的可用分组", modelRequest.Model), types.ErrorCodeModelNotFound)
+						return
+					}
+					abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}), types.ErrorCodeModelNotFound)
+					return
+				}
 
 				if len(groups) == 1 {
 					if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, groups[0]); found {
 						if attempt, usable := routePlan.TakePreferred(preferredChannelID); usable {
+							selectionStartedAt := time.Now()
 							channel, err = service.ApplyRouteAttempt(c, attempt)
 							if err == nil {
 								if setupErr := SetupContextForSelectedChannel(c, channel, modelRequest.Model); setupErr == nil {
 									channelContextReady = true
 									service.MarkChannelAffinityUsed(c, attempt.Group, preferredChannelID)
 								} else if types.IsChannelError(setupErr) {
+									service.RecordCurrentRouteAttemptResult(c, service.RouteAttemptResult{
+										Phase:        service.RouteAttemptPhaseSelection,
+										Outcome:      service.RouteAttemptOutcomeSkipped,
+										Reason:       "channel_initialization_failed",
+										StatusCode:   setupErr.StatusCode,
+										ErrorType:    string(setupErr.GetErrorType()),
+										ErrorCode:    string(setupErr.GetErrorCode()),
+										ErrorMessage: setupErr.MaskSensitiveErrorWithStatusCode(),
+										DurationMS:   time.Since(selectionStartedAt).Milliseconds(),
+									})
 									channel = nil
 								} else {
+									service.RecordCurrentRouteAttemptResult(c, service.RouteAttemptResult{
+										Phase:           service.RouteAttemptPhaseSelection,
+										Outcome:         service.RouteAttemptOutcomeFailed,
+										Reason:          "channel_initialization_failed",
+										StatusCode:      setupErr.StatusCode,
+										ErrorType:       string(setupErr.GetErrorType()),
+										ErrorCode:       string(setupErr.GetErrorCode()),
+										ErrorMessage:    setupErr.MaskSensitiveErrorWithStatusCode(),
+										DurationMS:      time.Since(selectionStartedAt).Milliseconds(),
+										RetryDecision:   service.RouteRetryDecisionStop,
+										RetryStopReason: "channel_initialization_failed",
+									})
 									abortWithOpenAiMessage(c, setupErr.StatusCode, setupErr.Error(), setupErr.GetErrorCode())
 									return
 								}
+							} else {
+								service.RecordCurrentRouteAttemptResult(c, service.RouteAttemptResult{
+									Phase:        service.RouteAttemptPhaseSelection,
+									Outcome:      service.RouteAttemptOutcomeSkipped,
+									Reason:       "channel_unavailable",
+									ErrorType:    "selection_error",
+									ErrorCode:    "channel_unavailable",
+									ErrorMessage: err.Error(),
+									DurationMS:   time.Since(selectionStartedAt).Milliseconds(),
+								})
 							}
 						}
 						if channel == nil && !service.ShouldKeepChannelAffinityOnChannelDisabled() {
@@ -204,22 +244,55 @@ func Distribute() func(c *gin.Context) {
 					if !exists {
 						break
 					}
+					selectionStartedAt := time.Now()
 					channel, err = service.ApplyRouteAttempt(c, attempt)
 					if err != nil {
+						service.RecordCurrentRouteAttemptResult(c, service.RouteAttemptResult{
+							Phase:        service.RouteAttemptPhaseSelection,
+							Outcome:      service.RouteAttemptOutcomeSkipped,
+							Reason:       "channel_unavailable",
+							ErrorType:    "selection_error",
+							ErrorCode:    "channel_unavailable",
+							ErrorMessage: err.Error(),
+							DurationMS:   time.Since(selectionStartedAt).Milliseconds(),
+						})
 						channel = nil
 						continue
 					}
 					if setupErr := SetupContextForSelectedChannel(c, channel, modelRequest.Model); setupErr != nil {
 						if types.IsChannelError(setupErr) {
+							service.RecordCurrentRouteAttemptResult(c, service.RouteAttemptResult{
+								Phase:        service.RouteAttemptPhaseSelection,
+								Outcome:      service.RouteAttemptOutcomeSkipped,
+								Reason:       "channel_initialization_failed",
+								StatusCode:   setupErr.StatusCode,
+								ErrorType:    string(setupErr.GetErrorType()),
+								ErrorCode:    string(setupErr.GetErrorCode()),
+								ErrorMessage: setupErr.MaskSensitiveErrorWithStatusCode(),
+								DurationMS:   time.Since(selectionStartedAt).Milliseconds(),
+							})
 							channel = nil
 							continue
 						}
+						service.RecordCurrentRouteAttemptResult(c, service.RouteAttemptResult{
+							Phase:           service.RouteAttemptPhaseSelection,
+							Outcome:         service.RouteAttemptOutcomeFailed,
+							Reason:          "channel_initialization_failed",
+							StatusCode:      setupErr.StatusCode,
+							ErrorType:       string(setupErr.GetErrorType()),
+							ErrorCode:       string(setupErr.GetErrorCode()),
+							ErrorMessage:    setupErr.MaskSensitiveErrorWithStatusCode(),
+							DurationMS:      time.Since(selectionStartedAt).Milliseconds(),
+							RetryDecision:   service.RouteRetryDecisionStop,
+							RetryStopReason: "channel_initialization_failed",
+						})
 						abortWithOpenAiMessage(c, setupErr.StatusCode, setupErr.Error(), setupErr.GetErrorCode())
 						return
 					}
 					channelContextReady = true
 				}
 				if channel == nil {
+					service.SetRouteFinalStopReason(c, "no_available_channel")
 					abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}), types.ErrorCodeModelNotFound)
 					return
 				}

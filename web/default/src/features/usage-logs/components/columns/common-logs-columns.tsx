@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { ColumnDef } from '@tanstack/react-table'
-import { GitBranch, Sparkles, KeyRound } from 'lucide-react'
+import { GitBranch, KeyRound, Route, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -50,6 +50,10 @@ import {
   isViolationFeeLog,
   renderAuditContent,
 } from '../../lib/format'
+import {
+  getRoutingModeLabel,
+  getRoutingModeShortLabel,
+} from '../../lib/routing'
 import {
   isDisplayableLogType,
   isTimingLogType,
@@ -539,6 +543,74 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
       }
     )
   }
+
+  columns.push({
+    id: 'routing',
+    header: t('Routing'),
+    accessorFn: (row) => parseLogOther(row.other)?.routing_mode ?? '',
+    cell: ({ row }) => {
+      const log = row.original
+      if (!isDisplayableLogType(log.type)) return null
+
+      const other = parseLogOther(log.other)
+      const mode = other?.routing_mode
+      if (!mode) return <span className='text-muted-foreground/40'>-</span>
+
+      const groups = Array.isArray(other.group_chain)
+        ? other.group_chain.filter(Boolean)
+        : []
+      const basis = other.routing_basis
+      let variant: 'neutral' | 'purple' | 'blue' = 'blue'
+      if (mode === 'manual') {
+        variant = 'neutral'
+      } else if (mode === 'fixed_channel') {
+        variant = 'purple'
+      }
+
+      return (
+        <TooltipProvider delay={300}>
+          <Tooltip>
+            <TooltipTrigger
+              render={<div className='inline-flex max-w-[150px] cursor-help' />}
+            >
+              <StatusBadge
+                label={getRoutingModeShortLabel(t, mode)}
+                icon={Route}
+                variant={variant}
+                size='sm'
+                copyable={false}
+                className='max-w-full [&>span]:truncate'
+              />
+            </TooltipTrigger>
+            <TooltipContent className='max-w-80'>
+              <div className='space-y-1 text-xs'>
+                <p className='font-medium'>{getRoutingModeLabel(t, mode)}</p>
+                {groups.length > 0 && (
+                  <p>
+                    <span className='text-muted-foreground'>
+                      {t('Candidate groups')}:{' '}
+                    </span>
+                    <span className='font-mono break-all'>
+                      {groups.join(' → ')}
+                    </span>
+                  </p>
+                )}
+                {basis && (
+                  <p>
+                    <span className='text-muted-foreground'>
+                      {t('Routing basis')}:{' '}
+                    </span>
+                    <span className='font-mono break-all'>{basis}</span>
+                  </p>
+                )}
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )
+    },
+    size: 150,
+  })
 
   columns.push({
     accessorKey: 'token_name',

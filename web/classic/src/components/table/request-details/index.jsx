@@ -31,6 +31,7 @@ import {
 import { IconEyeOpened, IconRefresh, IconSearch } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import { API, showError } from '../../../helpers';
+import RoutingDiagnostics from '../../common/RoutingDiagnostics';
 
 const { Text } = Typography;
 const PAGE_SIZE = 50;
@@ -199,12 +200,12 @@ export default function RequestDetailsTable() {
         },
       ]
     : [];
+  const routing = selectedDetail?.payload?.routing;
   const requestPayload = selectedDetail?.payload
     ? {
         headers: selectedDetail.payload.headers,
         query: selectedDetail.payload.query,
         body: selectedDetail.payload.body,
-        routing: selectedDetail.payload.routing,
       }
     : null;
   const requestPayloadText =
@@ -306,6 +307,12 @@ export default function RequestDetailsTable() {
           {selectedDetail && (
             <div className='space-y-4'>
               <Descriptions data={detailDescription} row />
+              {routing && (
+                <div>
+                  <Text strong>{t('Routing diagnostics')}</Text>
+                  <RoutingDiagnostics routing={routing} />
+                </div>
+              )}
               {requestPayloadText && (
                 <div>
                   <Text strong>{t('脱敏后的请求内容')}</Text>
