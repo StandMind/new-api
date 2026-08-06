@@ -18,14 +18,20 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import { buildQueryParams } from './lib/utils'
+import type { AdminUsageLog, UserUsageLog } from './data/schema'
 import type {
+  AdminMidjourneyLog,
+  AdminTaskLog,
   GetLogsParams,
   GetLogsResponse,
   GetLogStatsParams,
   GetLogStatsResponse,
   GetMidjourneyLogsParams,
+  GetUserMidjourneyLogsParams,
   GetTaskLogsParams,
+  GetUserTaskLogsParams,
+  UserMidjourneyLog,
+  UserTaskLog,
   RequestDetailResponse,
   RequestDetailsResponse,
   UserInfo,
@@ -35,15 +41,36 @@ import type {
 // Generic API Helpers
 // ============================================================================
 
+function buildQueryParams(params: Record<string, unknown>): URLSearchParams {
+  const queryParams = new URLSearchParams()
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      queryParams.append(key, String(value))
+    }
+  })
+
+  return queryParams
+}
+
 function buildApiPath(endpoint: string, isAdmin: boolean): string {
   return isAdmin ? endpoint : `${endpoint}/self`
 }
 
-async function fetchLogs<T>(
+async function fetchLogs<
+  T,
+  TItem extends
+    | AdminUsageLog
+    | UserUsageLog
+    | AdminMidjourneyLog
+    | UserMidjourneyLog
+    | AdminTaskLog
+    | UserTaskLog,
+>(
   endpoint: string,
   params: T,
   isAdmin: boolean
-): Promise<GetLogsResponse> {
+): Promise<GetLogsResponse<TItem>> {
   const paramRecord = params as unknown as Record<string, unknown>
   const queryParams = buildQueryParams({
     p: paramRecord.p || 1,
@@ -73,11 +100,16 @@ async function fetchLogStats<T>(
 // ============================================================================
 
 export const getAllLogs = (params: GetLogsParams = {}) =>
-  fetchLogs('/api/log', params, true)
+  fetchLogs<GetLogsParams, AdminUsageLog>('/api/log', params, true)
 
 export const getUserLogs = (
   params: Omit<GetLogsParams, 'username' | 'channel'> = {}
-) => fetchLogs('/api/log', params, false)
+) =>
+  fetchLogs<Omit<GetLogsParams, 'username' | 'channel'>, UserUsageLog>(
+    '/api/log',
+    params,
+    false
+  )
 
 export const getLogStats = (params: GetLogStatsParams = {}) =>
   fetchLogStats('/api/log', params, true)
@@ -120,17 +152,25 @@ export async function getRequestDetail(
 // ============================================================================
 
 export const getAllMidjourneyLogs = (params: GetMidjourneyLogsParams) =>
-  fetchLogs('/api/mj', params, true)
+  fetchLogs<GetMidjourneyLogsParams, AdminMidjourneyLog>(
+    '/api/mj',
+    params,
+    true
+  )
 
-export const getUserMidjourneyLogs = (params: GetMidjourneyLogsParams) =>
-  fetchLogs('/api/mj', params, false)
+export const getUserMidjourneyLogs = (params: GetUserMidjourneyLogsParams) =>
+  fetchLogs<GetUserMidjourneyLogsParams, UserMidjourneyLog>(
+    '/api/mj',
+    params,
+    false
+  )
 
 // ============================================================================
 // Task Logs API
 // ============================================================================
 
 export const getAllTaskLogs = (params: GetTaskLogsParams) =>
-  fetchLogs('/api/task', params, true)
+  fetchLogs<GetTaskLogsParams, AdminTaskLog>('/api/task', params, true)
 
-export const getUserTaskLogs = (params: GetTaskLogsParams) =>
-  fetchLogs('/api/task', params, false)
+export const getUserTaskLogs = (params: GetUserTaskLogsParams) =>
+  fetchLogs<GetUserTaskLogsParams, UserTaskLog>('/api/task', params, false)

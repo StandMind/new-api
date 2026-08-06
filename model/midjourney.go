@@ -52,7 +52,7 @@ func GetAllUserTask(userId int, startIdx int, num int, queryParams TaskQueryPara
 	}
 
 	// 获取数据
-	err = query.Order("id desc").Limit(num).Offset(startIdx).Find(&tasks).Error
+	err = query.Omit("channel_id").Order("id desc").Limit(num).Offset(startIdx).Find(&tasks).Error
 	if err != nil {
 		return nil
 	}
@@ -137,7 +137,9 @@ func GetByMJId(userId int, mjId string) *Midjourney {
 func GetByMJIds(userId int, mjIds []string) []*Midjourney {
 	var mj []*Midjourney
 	var err error
-	err = DB.Where("user_id = ? and mj_id in (?)", userId, mjIds).Find(&mj).Error
+	err = DB.Where("user_id = ? and mj_id in (?)", userId, mjIds).
+		Omit("channel_id").
+		Find(&mj).Error
 	if err != nil {
 		return nil
 	}

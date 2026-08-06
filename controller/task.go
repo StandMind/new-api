@@ -32,7 +32,7 @@ func GetAllTask(c *gin.Context) {
 	items := model.TaskGetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	total := model.TaskCountAllTasks(queryParams)
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(tasksToDto(items, true))
+	pageInfo.SetItems(adminTasksToDto(items))
 	common.ApiSuccess(c, pageInfo)
 }
 
@@ -56,33 +56,36 @@ func GetUserTask(c *gin.Context) {
 	items := model.TaskGetAllUserTask(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	total := model.TaskCountAllUserTask(userId, queryParams)
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(tasksToDto(items, false))
+	pageInfo.SetItems(userTasksToDto(c, items))
 	common.ApiSuccess(c, pageInfo)
 }
 
-func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {
-	var userIdMap map[int]*model.UserBase
-	if fillUser {
-		userIdMap = make(map[int]*model.UserBase)
-		userIds := types.NewSet[int]()
-		for _, task := range tasks {
-			userIds.Add(task.UserId)
-		}
-		for _, userId := range userIds.Items() {
-			cacheUser, err := model.GetUserCache(userId)
-			if err == nil {
-				userIdMap[userId] = cacheUser
-			}
+func adminTasksToDto(tasks []*model.Task) []*dto.TaskDto {
+	userIdMap := make(map[int]*model.UserBase)
+	userIds := types.NewSet[int]()
+	for _, task := range tasks {
+		userIds.Add(task.UserId)
+	}
+	for _, userId := range userIds.Items() {
+		cacheUser, err := model.GetUserCache(userId)
+		if err == nil {
+			userIdMap[userId] = cacheUser
 		}
 	}
 	result := make([]*dto.TaskDto, len(tasks))
 	for i, task := range tasks {
-		if fillUser {
-			if user, ok := userIdMap[task.UserId]; ok {
-				task.Username = user.Username
-			}
-		}
 		result[i] = relay.TaskModel2Dto(task)
+		if user, ok := userIdMap[task.UserId]; ok {
+			result[i].Username = user.Username
+		}
+	}
+	return result
+}
+
+func userTasksToDto(c *gin.Context, tasks []*model.Task) []*dto.UserTaskDto {
+	result := make([]*dto.UserTaskDto, len(tasks))
+	for i, task := range tasks {
+		result[i] = relay.TaskModel2UserDto(c, task)
 	}
 	return result
 }

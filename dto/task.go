@@ -55,6 +55,30 @@ type TaskDto struct {
 	Data       json.RawMessage `json:"data"`
 }
 
+// UserTaskDto is the self-service task representation. ChannelId is omitted by
+// construction so it cannot reappear through a missing role check or zero value.
+type UserTaskDto struct {
+	ID         int64           `json:"id"`
+	CreatedAt  int64           `json:"created_at"`
+	UpdatedAt  int64           `json:"updated_at"`
+	TaskID     string          `json:"task_id"`
+	Platform   string          `json:"platform"`
+	UserId     int             `json:"user_id"`
+	Group      string          `json:"group"`
+	Quota      int             `json:"quota"`
+	Action     string          `json:"action"`
+	Status     string          `json:"status"`
+	FailReason string          `json:"fail_reason"`
+	ResultURL  string          `json:"result_url,omitempty"`
+	SubmitTime int64           `json:"submit_time"`
+	StartTime  int64           `json:"start_time"`
+	FinishTime int64           `json:"finish_time"`
+	Progress   string          `json:"progress"`
+	Properties any             `json:"properties"`
+	Username   string          `json:"username,omitempty"`
+	Data       json.RawMessage `json:"data"`
+}
+
 type FetchReq struct {
 	IDs []string `json:"ids"`
 }

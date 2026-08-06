@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type {
+  AdminFlowQuotaDataItem,
   DashboardFlowGraph,
   DashboardFlowLink,
   DashboardFlowNode,
@@ -219,16 +220,24 @@ function modelNode(row: FlowQuotaDataItem): FlowPathNode {
 }
 
 function channelNode(row: FlowQuotaDataItem): FlowPathNode {
-  const channelID = numberValue(row.channel_id)
+  const adminRow = isAdminFlowQuotaDataItem(row) ? row : undefined
+  const channelID = numberValue(adminRow?.channel_id)
   return {
     id:
       channelID > 0
         ? `channel:${channelID}`
-        : `channel:${row.channel_name || 'unknown'}`,
+        : `channel:${adminRow?.channel_name || 'unknown'}`,
     label:
-      row.channel_name || (channelID > 0 ? `channel-${channelID}` : 'Unknown'),
+      adminRow?.channel_name ||
+      (channelID > 0 ? `channel-${channelID}` : 'Unknown'),
     kind: 'channel',
   }
+}
+
+function isAdminFlowQuotaDataItem(
+  row: FlowQuotaDataItem
+): row is AdminFlowQuotaDataItem {
+  return 'channel_id' in row || 'channel_name' in row
 }
 
 const NODE_BUILDERS: Record<

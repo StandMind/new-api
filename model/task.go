@@ -366,6 +366,7 @@ func GetByTaskIds(userId int, taskIds []any) ([]*Task, error) {
 	var task []*Task
 	var err error
 	err = DB.Where("user_id = ? and task_id in (?)", userId, taskIds).
+		Omit("channel_id").
 		Find(&task).Error
 	if err != nil {
 		return nil, err

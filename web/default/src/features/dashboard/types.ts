@@ -33,20 +33,27 @@ export interface QuotaDataItem {
   quota?: number
 }
 
-export interface FlowQuotaDataItem {
+interface FlowQuotaDataBase {
   user_id?: number
   username?: string
   node_name?: string
   use_group?: string
   token_id?: number
   token_name?: string
-  channel_id?: number
-  channel_name?: string
   model_name?: string
   token_used?: number
   count?: number
   quota?: number
 }
+
+export type UserFlowQuotaDataItem = FlowQuotaDataBase
+
+export interface AdminFlowQuotaDataItem extends FlowQuotaDataBase {
+  channel_id?: number
+  channel_name?: string
+}
+
+export type FlowQuotaDataItem = UserFlowQuotaDataItem | AdminFlowQuotaDataItem
 
 export type FlowMetric = 'quota' | 'tokens' | 'requests'
 

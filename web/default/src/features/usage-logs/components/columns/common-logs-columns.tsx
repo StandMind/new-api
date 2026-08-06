@@ -41,7 +41,7 @@ import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { LOG_TYPE_ALL_VALUE } from '../../constants'
-import type { UsageLog } from '../../data/schema'
+import { isAdminUsageLog, type UsageLog } from '../../data/schema'
 import {
   formatModelName,
   getTieredBillingSummary,
@@ -333,11 +333,12 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
       {
         id: 'channel',
         header: t('Channel'),
-        accessorFn: (row) => row.channel,
+        accessorFn: (row) => (isAdminUsageLog(row) ? row.channel : undefined),
         cell: function ChannelCell({ row }) {
           const { sensitiveVisible, setAffinityTarget, setAffinityDialogOpen } =
             useUsageLogsContext()
           const log = row.original
+          if (!isAdminUsageLog(log)) return null
 
           if (!isDisplayableLogType(log.type)) return null
 

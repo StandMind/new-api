@@ -1,17 +1,22 @@
 package model
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 
 	"gorm.io/gorm"
 )
@@ -113,30 +118,266 @@ func assignDisplayLogIds(logs []*Log, startIdx int) {
 	}
 }
 
-func formatUserLogs(logs []*Log, startIdx int) {
-	for i := range logs {
-		logs[i].ChannelName = ""
-		var otherMap map[string]interface{}
-		otherMap, _ = common.StrToMap(logs[i].Other)
-		if otherMap != nil {
-			// Remove admin-only debug fields.
-			delete(otherMap, "admin_info")
-			// Remove operation-audit details (operator/route info), admin-only.
-			delete(otherMap, "audit_info")
-			// delete(otherMap, "reject_reason")
-			delete(otherMap, "stream_status")
-		}
-		logs[i].Other = common.MapToJsonStr(otherMap)
-	}
-	assignDisplayLogIds(logs, startIdx)
+func userLogSelectColumns() string {
+	return "id, user_id, created_at, type, content, username, token_name, model_name, quota, prompt_tokens, completion_tokens, use_time, is_stream, token_id, " + logGroupCol + ", ip, request_id, upstream_request_id, other"
 }
 
-func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
+func assignDisplayUserLogIds(logs []*dto.UserLog, startIdx int) {
+	for i := range logs {
+		logs[i].Id = startIdx + i + 1
+	}
+}
+
+func formatUserLogs(logs []*dto.UserLog, startIdx int) {
+	for i := range logs {
+		var contentReplacement string
+		logs[i].Other, contentReplacement = sanitizeUserLogOther(logs[i].Other)
+		if contentReplacement != "" {
+			logs[i].Content = contentReplacement
+		}
+	}
+	assignDisplayUserLogIds(logs, startIdx)
+}
+
+func sanitizeUserLogOther(raw string) (string, string) {
+	if strings.TrimSpace(raw) == "" {
+		return "", ""
+	}
+
+	var source map[string]json.RawMessage
+	if err := common.Unmarshal([]byte(raw), &source); err != nil || source == nil {
+		return "{}", ""
+	}
+	contentReplacement := ""
+	if userLogHasInternalRouteError(source) {
+		contentReplacement = constant.TaskFailReasonRouteUnavailable
+	} else if userLogHasNonPublicOperation(source) {
+		contentReplacement = constant.UserLogContentHidden
+	}
+
+	var encoded strings.Builder
+	encoded.Grow(min(len(raw), 4096))
+	encoded.WriteByte('{')
+	first := true
+	for key, value := range source {
+		sanitized, ok := sanitizeUserLogOtherField(key, value)
+		if !ok {
+			continue
+		}
+		if !first {
+			encoded.WriteByte(',')
+		}
+		first = false
+		encoded.WriteByte('"')
+		encoded.WriteString(key)
+		encoded.WriteString(`":`)
+		_, _ = encoded.Write(sanitized)
+	}
+	encoded.WriteByte('}')
+	return encoded.String(), contentReplacement
+}
+
+func userLogHasNonPublicOperation(source map[string]json.RawMessage) bool {
+	rawOperation, ok := source["op"]
+	if !ok {
+		return false
+	}
+	var operation struct {
+		Action string `json:"action"`
+	}
+	if err := common.Unmarshal(rawOperation, &operation); err != nil || operation.Action == "" {
+		return true
+	}
+	return !isUserLogOperationAllowed(operation.Action)
+}
+
+func userLogHasInternalRouteError(source map[string]json.RawMessage) bool {
+	rawCode, ok := source["error_code"]
+	if !ok {
+		return false
+	}
+	var code string
+	if err := common.Unmarshal(rawCode, &code); err != nil {
+		return false
+	}
+	return isInternalRouteErrorCode(code)
+}
+
+func isInternalRouteErrorCode(code string) bool {
+	if strings.HasPrefix(code, "channel:") {
+		return true
+	}
+	switch code {
+	case "channel_no_available_key", "channel_not_found", "get_channel_failed", "invalid_channel_id",
+		"setup_locked_channel_failed", "task_channel_disable", "task_route_unavailable":
+		return true
+	default:
+		return false
+	}
+}
+
+func sanitizeUserLogOtherField(key string, raw json.RawMessage) (json.RawMessage, bool) {
+	switch key {
+	case "routing_mode":
+		trimmed := bytes.TrimSpace(raw)
+		if len(trimmed) < 2 || trimmed[0] != '"' || !gjson.ValidBytes(trimmed) {
+			return nil, false
+		}
+		if !bytes.ContainsRune(trimmed, '\\') {
+			if bytes.Equal(trimmed, []byte(`"fixed_channel"`)) {
+				encoded, err := common.Marshal("manual")
+				return encoded, err == nil
+			}
+			return raw, true
+		}
+		var mode string
+		if err := common.Unmarshal(trimmed, &mode); err != nil {
+			return nil, false
+		}
+		if mode != "fixed_channel" {
+			return raw, true
+		}
+		encoded, err := common.Marshal("manual")
+		return encoded, err == nil
+	case "error_code":
+		var code string
+		if err := common.Unmarshal(raw, &code); err != nil {
+			return nil, false
+		}
+		if !isInternalRouteErrorCode(code) {
+			return raw, true
+		}
+		encoded, err := common.Marshal("route_unavailable")
+		return encoded, err == nil
+	case "group_chain", "attempted_groups", "request_conversion", "po":
+		if !isJSONStringArray(raw) {
+			return nil, false
+		}
+		return raw, true
+	case "billing_ratios":
+		var ratios map[string]float64
+		if err := common.Unmarshal(raw, &ratios); err != nil {
+			return nil, false
+		}
+		for ratioName := range ratios {
+			if isUserLogChannelKey(ratioName) {
+				delete(ratios, ratioName)
+			}
+		}
+		encoded, err := common.Marshal(ratios)
+		return encoded, err == nil
+	case "op":
+		return sanitizeUserLogOperation(raw)
+	default:
+		if !isUserLogScalarField(key) || !isJSONScalar(raw) {
+			return nil, false
+		}
+		return raw, true
+	}
+}
+
+func sanitizeUserLogOperation(raw json.RawMessage) (json.RawMessage, bool) {
+	var operation struct {
+		Action string                     `json:"action"`
+		Params map[string]json.RawMessage `json:"params,omitempty"`
+	}
+	if err := common.Unmarshal(raw, &operation); err != nil || operation.Action == "" {
+		return nil, false
+	}
+	if !isUserLogOperationAllowed(operation.Action) {
+		return nil, false
+	}
+	for key, value := range operation.Params {
+		if !isUserLogOperationParamAllowed(operation.Action, key) || (!isJSONScalar(value) && !isJSONStringArray(value)) {
+			delete(operation.Params, key)
+		}
+	}
+	encoded, err := common.Marshal(operation)
+	return encoded, err == nil
+}
+
+func isUserLogOperationAllowed(action string) bool {
+	switch action {
+	case "login", "user.passkey_register", "user.passkey_delete":
+		return true
+	default:
+		return false
+	}
+}
+
+func isUserLogOperationParamAllowed(action string, key string) bool {
+	return action == "login" && key == "method"
+}
+
+func isJSONStringArray(raw json.RawMessage) bool {
+	if !gjson.ValidBytes(raw) {
+		return false
+	}
+	value := gjson.ParseBytes(raw)
+	if !value.IsArray() {
+		return false
+	}
+	valid := true
+	value.ForEach(func(_, item gjson.Result) bool {
+		valid = item.Type == gjson.String
+		return valid
+	})
+	return valid
+}
+
+func isJSONScalar(raw json.RawMessage) bool {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" || trimmed[0] == '{' || trimmed[0] == '[' {
+		return false
+	}
+	return gjson.ValidBytes(raw)
+}
+
+func isUserLogChannelKey(key string) bool {
+	normalized := strings.NewReplacer("_", "", "-", "", ".", "").Replace(strings.ToLower(strings.TrimSpace(key)))
+	if strings.Contains(normalized, "channel") {
+		return true
+	}
+	switch normalized {
+	case "ismultikey", "multikeyindex":
+		return true
+	default:
+		return false
+	}
+}
+
+func isUserLogScalarField(key string) bool {
+	switch key {
+	case "actual_quota", "audio_input_price", "audio_input_seperate_price", "audio_input_token_count",
+		"billing_mode", "billing_preference", "billing_source", "cache_creation_ratio",
+		"cache_creation_ratio_1h", "cache_creation_ratio_5m", "cache_creation_tokens",
+		"cache_creation_tokens_1h", "cache_creation_tokens_5m", "cache_ratio", "cache_tokens",
+		"cache_write_tokens", "claude", "completion_ratio", "error_code", "error_type", "expr_b64",
+		"file_search", "file_search_call_count", "file_search_price", "final_group", "frt",
+		"group", "group_ratio", "group_ratio_source", "identity", "image", "image_generation_call",
+		"image_generation_call_price", "image_output", "image_ratio", "image_resolution",
+		"image_resolution_multiplier", "input_tokens_total", "is_model_mapped", "is_system_prompt_overwritten",
+		"is_task", "login_method", "matched_tier", "model_price", "model_ratio", "pre_consumed_quota",
+		"reason", "reasoning_effort", "request_path", "routing_basis", "routing_priority", "seconds",
+		"status_code", "subscription_consumed", "subscription_id", "subscription_plan_id",
+		"subscription_plan_title", "subscription_post_delta", "subscription_pre_consumed",
+		"subscription_remain", "subscription_total", "subscription_used", "task_id", "upstream_model_name",
+		"usage_semantic", "user_agent", "user_group_ratio", "wallet_quota_deducted", "web_search",
+		"web_search_call_count", "web_search_price", "ws", "audio", "audio_input", "audio_output",
+		"text_input", "text_output", "audio_ratio", "audio_completion_ratio", "violation_fee",
+		"violation_fee_code", "violation_fee_marker", "fee_quota":
+		return true
+	default:
+		return false
+	}
+}
+
+func GetLogByTokenId(tokenId int) (logs []*dto.UserLog, err error) {
 	order := "id desc"
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		order = clickHouseLogOrder("")
 	}
-	err = LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId).Order(order).Limit(common.MaxRecentItems).Find(&logs).Error
+	err = LOG_DB.Model(&Log{}).Select(userLogSelectColumns()).Where("token_id = ?", tokenId).Order(order).Limit(common.MaxRecentItems).Find(&logs).Error
 	formatUserLogs(logs, 0)
 	return logs, err
 }
@@ -561,7 +802,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 
 const logSearchCountLimit = 10000
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*dto.UserLog, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB.Where("logs.user_id = ?", userId)
@@ -599,7 +840,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		order = clickHouseLogOrder("logs.")
 	}
-	err = tx.Order(order).Limit(num).Offset(startIdx).Find(&logs).Error
+	err = tx.Model(&Log{}).Select(userLogSelectColumns()).Order(order).Limit(num).Offset(startIdx).Find(&logs).Error
 	if err != nil {
 		common.SysError("failed to search user logs: " + err.Error())
 		return nil, 0, errors.New("查询日志失败")

@@ -92,24 +92,6 @@ function timestampToSeconds(ms: number): number {
 }
 
 /**
- * Build query parameters from filters
- */
-export function buildQueryParams(
-  params: Record<string, unknown>
-): URLSearchParams {
-  const queryParams = new URLSearchParams()
-
-  Object.entries(params).forEach(([key, value]) => {
-    // Keep 0 as a valid value, only filter out undefined, null, and empty string
-    if (value !== undefined && value !== null && value !== '') {
-      queryParams.append(key, String(value))
-    }
-  })
-
-  return queryParams
-}
-
-/**
  * Build time range parameters with default values
  * Shared logic for all log types
  */
@@ -145,6 +127,7 @@ export function buildBaseParams(config: {
   page: number
   pageSize: number
   searchParams: Record<string, unknown>
+  isAdmin: boolean
   useMilliseconds?: boolean
 }): {
   p: number
@@ -153,12 +136,18 @@ export function buildBaseParams(config: {
   start_timestamp?: number
   end_timestamp?: number
 } {
-  const { page, pageSize, searchParams, useMilliseconds = false } = config
+  const {
+    page,
+    pageSize,
+    searchParams,
+    isAdmin,
+    useMilliseconds = false,
+  } = config
 
   return {
     p: page,
     page_size: pageSize,
-    ...(searchParams.channel
+    ...(isAdmin && searchParams.channel
       ? {
           channel_id: String(searchParams.channel),
         }
@@ -278,6 +267,7 @@ export async function fetchLogsByCategory(
     page,
     pageSize,
     searchParams,
+    isAdmin,
     useMilliseconds: logCategory === 'drawing',
   })
 

@@ -323,7 +323,7 @@ export const getMjLogsColumns = ({
   openImageModal,
   isAdminUser,
 }) => {
-  return [
+  const columns = [
     {
       key: COLUMN_KEYS.SUBMIT_TIME,
       title: t('提交时间'),
@@ -508,4 +508,7 @@ export const getMjLogsColumns = ({
       },
     },
   ];
+
+  if (isAdminUser) return columns;
+  return columns.filter((column) => column.key !== COLUMN_KEYS.CHANNEL);
 };

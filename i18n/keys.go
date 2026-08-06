@@ -382,6 +382,7 @@ const (
 	MsgRelayInternalPanic             = "relay.internal_panic"
 	MsgRelayAPINotImplemented         = "relay.api_not_implemented"
 	MsgRelayInvalidURL                = "relay.invalid_url"
+	MsgRelayTaskUnavailable           = "relay.task_unavailable"
 )
 
 // Setting related messages

@@ -3889,6 +3889,13 @@
         "responses": {
           "200": {
             "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLogPageResponse"
+                }
+              }
+            },
             "headers": {}
           }
         },
@@ -3963,6 +3970,10 @@
           "200": {
             "description": "成功",
             "headers": {}
+          },
+          "400": {
+            "description": "普通用户接口不支持渠道维度筛选",
+            "headers": {}
           }
         },
         "security": [
@@ -4022,6 +4033,13 @@
         "responses": {
           "200": {
             "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserLogPageResponse"
+                }
+              }
+            },
             "headers": {}
           }
         },
@@ -4092,6 +4110,13 @@
         "responses": {
           "200": {
             "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserLogListResponse"
+                }
+              }
+            },
             "headers": {}
           }
         },
@@ -4130,6 +4155,112 @@
         ]
       }
     },
+    "/api/data/flow": {
+      "get": {
+        "summary": "获取管理员分组用量流",
+        "deprecated": false,
+        "description": "管理员响应保留渠道维度。",
+        "tags": [
+          "数据统计"
+        ],
+        "parameters": [
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "username",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminFlowQuotaListResponse"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/data/flow/self": {
+      "get": {
+        "summary": "获取个人分组用量流",
+        "deprecated": false,
+        "description": "按令牌、分组和模型聚合；不包含本站内部渠道字段。",
+        "tags": [
+          "数据统计"
+        ],
+        "parameters": [
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserFlowQuotaListResponse"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
     "/api/data/self": {
       "get": {
         "summary": "获取个人额度数据",
@@ -4142,6 +4273,13 @@
         "responses": {
           "200": {
             "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserQuotaDataListResponse"
+                }
+              }
+            },
             "headers": {}
           }
         },
@@ -4299,6 +4437,13 @@
         "responses": {
           "200": {
             "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMidjourneyPageResponse"
+                }
+              }
+            },
             "headers": {}
           }
         },
@@ -4324,6 +4469,13 @@
         "responses": {
           "200": {
             "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMidjourneyPageResponse"
+                }
+              }
+            },
             "headers": {}
           }
         },
@@ -4349,6 +4501,13 @@
         "responses": {
           "200": {
             "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTaskPageResponse"
+                }
+              }
+            },
             "headers": {}
           }
         },
@@ -4374,6 +4533,13 @@
         "responses": {
           "200": {
             "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserTaskPageResponse"
+                }
+              }
+            },
             "headers": {}
           }
         },
@@ -4995,7 +5161,197 @@
           }
         }
       },
-      "Log": {
+      "UserQuotaData": {
+        "type": "object",
+        "description": "个人用量聚合；不包含本站内部渠道维度。",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "user_id": {
+            "type": "integer"
+          },
+          "username": {
+            "type": "string"
+          },
+          "model_name": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "use_group": {
+            "type": "string"
+          },
+          "token_id": {
+            "type": "integer"
+          },
+          "node_name": {
+            "type": "string"
+          },
+          "token_used": {
+            "type": "integer"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "quota": {
+            "type": "integer"
+          }
+        },
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "channel_id"
+              ]
+            },
+            {
+              "required": [
+                "channel_name"
+              ]
+            }
+          ]
+        }
+      },
+      "UserFlowQuotaData": {
+        "type": "object",
+        "description": "个人分组用量流；路由维度只公开 use_group。",
+        "properties": {
+          "token_id": {
+            "type": "integer"
+          },
+          "token_name": {
+            "type": "string"
+          },
+          "use_group": {
+            "type": "string"
+          },
+          "model_name": {
+            "type": "string"
+          },
+          "token_used": {
+            "type": "integer"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "quota": {
+            "type": "integer"
+          }
+        },
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "channel_id"
+              ]
+            },
+            {
+              "required": [
+                "channel_name"
+              ]
+            }
+          ]
+        }
+      },
+      "AdminFlowQuotaData": {
+        "type": "object",
+        "description": "管理员分组用量流，保留渠道维度。",
+        "properties": {
+          "user_id": {
+            "type": "integer"
+          },
+          "username": {
+            "type": "string"
+          },
+          "node_name": {
+            "type": "string"
+          },
+          "token_id": {
+            "type": "integer"
+          },
+          "token_name": {
+            "type": "string"
+          },
+          "use_group": {
+            "type": "string"
+          },
+          "channel_id": {
+            "type": "integer"
+          },
+          "channel_name": {
+            "type": "string"
+          },
+          "model_name": {
+            "type": "string"
+          },
+          "token_used": {
+            "type": "integer"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "quota": {
+            "type": "integer"
+          }
+        }
+      },
+      "UserQuotaDataListResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ApiResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/UserQuotaData"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "UserFlowQuotaListResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ApiResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/UserFlowQuotaData"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "AdminFlowQuotaListResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ApiResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AdminFlowQuotaData"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "LogBase": {
         "type": "object",
         "properties": {
           "id": {
@@ -5012,8 +5368,456 @@
           },
           "created_at": {
             "type": "integer"
+          },
+          "token_name": {
+            "type": "string"
+          },
+          "model_name": {
+            "type": "string"
+          },
+          "quota": {
+            "type": "integer"
+          },
+          "prompt_tokens": {
+            "type": "integer"
+          },
+          "completion_tokens": {
+            "type": "integer"
+          },
+          "use_time": {
+            "type": "integer"
+          },
+          "is_stream": {
+            "type": "boolean"
+          },
+          "token_id": {
+            "type": "integer"
+          },
+          "group": {
+            "type": "string",
+            "description": "用户可见的路由分组"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "upstream_request_id": {
+            "type": "string"
+          },
+          "other": {
+            "type": "string",
+            "description": "JSON 字符串。普通用户响应仅包含计费、用量和分组级路由摘要。"
           }
         }
+      },
+      "UserLog": {
+        "description": "个人和令牌日志响应；不包含本站渠道 ID、名称、类型或渠道尝试链。",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/LogBase"
+          }
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "channel"
+              ]
+            },
+            {
+              "required": [
+                "channel_name"
+              ]
+            }
+          ]
+        }
+      },
+      "AdminLog": {
+        "description": "管理员日志响应，保留渠道诊断字段。",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/LogBase"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "channel": {
+                "type": "integer"
+              },
+              "channel_name": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "TaskBase": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "integer"
+          },
+          "group": {
+            "type": "string"
+          },
+          "quota": {
+            "type": "integer"
+          },
+          "action": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "fail_reason": {
+            "type": "string"
+          },
+          "result_url": {
+            "type": "string"
+          },
+          "submit_time": {
+            "type": "integer"
+          },
+          "start_time": {
+            "type": "integer"
+          },
+          "finish_time": {
+            "type": "integer"
+          },
+          "progress": {
+            "type": "string"
+          },
+          "properties": {},
+          "data": {}
+        }
+      },
+      "UserTask": {
+        "description": "普通用户异步任务；只公开分组，不公开具体渠道。",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TaskBase"
+          }
+        ],
+        "not": {
+          "required": [
+            "channel_id"
+          ]
+        }
+      },
+      "AdminTask": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TaskBase"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "channel_id": {
+                "type": "integer"
+              },
+              "username": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "MidjourneyTaskBase": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "code": {
+            "type": "integer"
+          },
+          "user_id": {
+            "type": "integer"
+          },
+          "action": {
+            "type": "string"
+          },
+          "mj_id": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "image_url": {
+            "type": "string"
+          },
+          "video_url": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "progress": {
+            "type": "string"
+          },
+          "fail_reason": {
+            "type": "string"
+          },
+          "quota": {
+            "type": "integer"
+          }
+        }
+      },
+      "UserMidjourneyTask": {
+        "description": "普通用户 Midjourney 任务；不公开具体渠道。",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MidjourneyTaskBase"
+          }
+        ],
+        "not": {
+          "required": [
+            "channel_id"
+          ]
+        }
+      },
+      "AdminMidjourneyTask": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MidjourneyTaskBase"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "channel_id": {
+                "type": "integer"
+              }
+            }
+          }
+        ]
+      },
+      "UserLogPage": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PageInfo"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/UserLog"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "AdminLogPage": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PageInfo"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AdminLog"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "UserTaskPage": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PageInfo"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/UserTask"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "AdminTaskPage": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PageInfo"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AdminTask"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "UserMidjourneyPage": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PageInfo"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/UserMidjourneyTask"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "AdminMidjourneyPage": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PageInfo"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AdminMidjourneyTask"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "UserLogPageResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ApiResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/UserLogPage"
+              }
+            }
+          }
+        ]
+      },
+      "AdminLogPageResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ApiResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/AdminLogPage"
+              }
+            }
+          }
+        ]
+      },
+      "UserTaskPageResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ApiResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/UserTaskPage"
+              }
+            }
+          }
+        ]
+      },
+      "AdminTaskPageResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ApiResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/AdminTaskPage"
+              }
+            }
+          }
+        ]
+      },
+      "UserMidjourneyPageResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ApiResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/UserMidjourneyPage"
+              }
+            }
+          }
+        ]
+      },
+      "AdminMidjourneyPageResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ApiResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/AdminMidjourneyPage"
+              }
+            }
+          }
+        ]
+      },
+      "UserLogListResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ApiResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "maxItems": 1000,
+                "items": {
+                  "$ref": "#/components/schemas/UserLog"
+                }
+              }
+            }
+          }
+        ]
       },
       "User": {
         "type": "object",

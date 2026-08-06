@@ -242,7 +242,7 @@ export const getTaskLogsColumns = ({
   openVideoModal,
   openAudioModal,
 }) => {
-  return [
+  const columns = [
     {
       key: COLUMN_KEYS.SUBMIT_TIME,
       title: t('提交时间'),
@@ -301,15 +301,10 @@ export const getTaskLogsColumns = ({
         const displayText = String(record.username || userId || '?');
         return (
           <Space>
-            <Avatar
-              size='extra-small'
-              color={stringToColor(displayText)}
-            >
+            <Avatar size='extra-small' color={stringToColor(displayText)}>
               {displayText.slice(0, 1)}
             </Avatar>
-            <Typography.Text>
-              {displayText}
-            </Typography.Text>
+            <Typography.Text>{displayText}</Typography.Text>
           </Space>
         );
       },
@@ -416,7 +411,8 @@ export const getTaskLogsColumns = ({
           record.action === TASK_ACTION_REMIX_GENERATE;
         const isSuccess = record.status === 'SUCCESS';
         const resultUrl = record.result_url;
-        const hasResultUrl = typeof resultUrl === 'string' && /^https?:\/\//.test(resultUrl);
+        const hasResultUrl =
+          typeof resultUrl === 'string' && /^https?:\/\//.test(resultUrl);
         if (isSuccess && isVideoTask && hasResultUrl) {
           return (
             <a
@@ -447,4 +443,10 @@ export const getTaskLogsColumns = ({
       },
     },
   ];
+
+  if (isAdminUser) return columns;
+  return columns.filter(
+    (column) =>
+      column.key !== COLUMN_KEYS.CHANNEL && column.key !== COLUMN_KEYS.USERNAME,
+  );
 };

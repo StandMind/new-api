@@ -47,7 +47,7 @@ import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { formatLogQuota, formatTokens, formatUseTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-import type { UsageLog } from '../../data/schema'
+import { isAdminUsageLog, type UsageLog } from '../../data/schema'
 import {
   parseLogOther,
   getParamOverrideActionLabel,
@@ -486,6 +486,8 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const details = props.log.content ?? ''
   const other = parseLogOther(props.log.other)
   const typeConfig = getLogTypeConfig(props.log.type)
+  const adminLog =
+    props.isAdmin && isAdminUsageLog(props.log) ? props.log : undefined
 
   const isViolation = isViolationFeeLog(other)
   const isRefund = props.log.type === 6
@@ -674,16 +676,16 @@ export function DetailsDialog(props: DetailsDialogProps) {
             />
           )}
 
-          {props.isAdmin && props.log.channel > 0 && (
+          {adminLog && adminLog.channel > 0 && (
             <DetailRow
               label={t('Channel')}
               value={
                 <span>
-                  {props.log.channel}
-                  {props.log.channel_name && (
+                  {adminLog.channel}
+                  {adminLog.channel_name && (
                     <span className='text-muted-foreground'>
                       {' '}
-                      ({props.log.channel_name})
+                      ({adminLog.channel_name})
                     </span>
                   )}
                 </span>

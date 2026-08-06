@@ -2490,10 +2490,248 @@
           }
         ]
       }
+    },
+    "/suno/fetch/{id}": {
+      "get": {
+        "summary": "获取个人异步任务",
+        "description": "通过当前令牌查询任务。响应仅公开分组信息，不包含本站内部渠道字段。",
+        "tags": [
+          "异步任务"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserAsyncTaskResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/suno/fetch": {
+      "post": {
+        "summary": "批量获取个人异步任务",
+        "description": "响应仅公开分组信息，不包含本站内部渠道字段。",
+        "tags": [
+          "异步任务"
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserAsyncTaskListResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/mj/task/{id}/fetch": {
+      "get": {
+        "summary": "获取个人 Midjourney 任务",
+        "description": "响应不包含本站内部渠道字段。",
+        "tags": [
+          "Midjourney"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMidjourneyTask"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/mj/task/list-by-condition": {
+      "post": {
+        "summary": "批量获取个人 Midjourney 任务",
+        "description": "响应不包含本站内部渠道字段。",
+        "tags": [
+          "Midjourney"
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UserMidjourneyTask"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
     "schemas": {
+      "UserAsyncTask": {
+        "type": "object",
+        "description": "令牌所有者可见的异步任务。路由维度仅公开 group。",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "group": {
+            "type": "string"
+          },
+          "quota": {
+            "type": "integer"
+          },
+          "action": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "fail_reason": {
+            "type": "string"
+          },
+          "result_url": {
+            "type": "string"
+          },
+          "progress": {
+            "type": "string"
+          },
+          "data": {}
+        },
+        "not": {
+          "required": [
+            "channel_id"
+          ]
+        }
+      },
+      "UserAsyncTaskResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/UserAsyncTask"
+          }
+        }
+      },
+      "UserAsyncTaskListResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserAsyncTask"
+            }
+          }
+        }
+      },
+      "UserMidjourneyTask": {
+        "type": "object",
+        "description": "令牌所有者可见的 Midjourney 任务，不包含本站内部渠道字段。",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "imageUrl": {
+            "type": "string"
+          },
+          "videoUrl": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "progress": {
+            "type": "string"
+          },
+          "failReason": {
+            "type": "string"
+          }
+        },
+        "not": {
+          "required": [
+            "channel_id"
+          ]
+        }
+      },
       "ErrorResponse": {
         "type": "object",
         "properties": {

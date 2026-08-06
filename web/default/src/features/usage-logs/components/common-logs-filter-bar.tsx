@@ -125,11 +125,11 @@ export function CommonLogsFilterBar<TData>(
     const sourceValues = {
       startTime: searchParams.startTime,
       endTime: searchParams.endTime,
-      channel: searchParams.channel,
+      channel: isAdmin ? searchParams.channel : undefined,
       model: searchParams.model,
       token: searchParams.token,
       group: searchParams.group,
-      username: searchParams.username,
+      username: isAdmin ? searchParams.username : undefined,
       requestId: searchParams.requestId,
       upstreamRequestId: searchParams.upstreamRequestId,
       type: searchParams.type,
@@ -139,11 +139,11 @@ export function CommonLogsFilterBar<TData>(
         ? new Date(searchParams.startTime)
         : start,
       endTime: searchParams.endTime ? new Date(searchParams.endTime) : end,
-      channel: searchParams.channel || undefined,
+      channel: isAdmin ? searchParams.channel || undefined : undefined,
       model: searchParams.model || undefined,
       token: searchParams.token || undefined,
       group: searchParams.group || undefined,
-      username: searchParams.username || undefined,
+      username: isAdmin ? searchParams.username || undefined : undefined,
       requestId: searchParams.requestId || undefined,
       upstreamRequestId: searchParams.upstreamRequestId || undefined,
     }
@@ -153,6 +153,7 @@ export function CommonLogsFilterBar<TData>(
       logType: getLogTypeValue(searchParams.type),
     }
   }, [
+    isAdmin,
     searchParams.startTime,
     searchParams.endTime,
     searchParams.channel,
@@ -186,7 +187,14 @@ export function CommonLogsFilterBar<TData>(
   )
 
   const handleApply = useCallback(() => {
-    const filterParams = buildSearchParams(filters, 'common')
+    const filterParams = buildSearchParams(
+      {
+        ...filters,
+        channel: isAdmin ? filters.channel : undefined,
+        username: isAdmin ? filters.username : undefined,
+      },
+      'common'
+    )
     navigate({
       to: '/usage-logs/$section',
       params: { section: 'common' },
@@ -198,7 +206,7 @@ export function CommonLogsFilterBar<TData>(
     })
     queryClient.invalidateQueries({ queryKey: ['logs'] })
     queryClient.invalidateQueries({ queryKey: ['usage-logs-stats'] })
-  }, [filters, logType, navigate, queryClient])
+  }, [filters, isAdmin, logType, navigate, queryClient])
 
   const handleReset = useCallback(() => {
     const { start, end } = getDefaultTimeRange()
@@ -235,8 +243,8 @@ export function CommonLogsFilterBar<TData>(
 
   const hasExpandedFilters =
     !!filters.token ||
-    !!filters.username ||
-    !!filters.channel ||
+    (isAdmin && !!filters.username) ||
+    (isAdmin && !!filters.channel) ||
     !!filters.requestId ||
     !!filters.upstreamRequestId
 

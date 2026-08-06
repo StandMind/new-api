@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/types"
@@ -79,6 +80,45 @@ func TestLocalTaskErrorIsTranslatedWithoutMutatingOriginal(t *testing.T) {
 	assert.Equal(t, "请求的模型没有有效的价格配置", response.Message)
 	assert.Equal(t, "internal pricing detail", taskErr.Message)
 	assert.Equal(t, "internal pricing detail", taskErr.Error.Error())
+}
+
+func TestInternalTaskRouteErrorHidesChannelCodeAndMessage(t *testing.T) {
+	c := newPublicErrorTestContext("en")
+	taskErr := TaskErrorWrapperLocal(errors.New("invalid channel id: 99403"), "invalid_channel_id", http.StatusBadRequest)
+
+	response := TaskErrorForResponse(c, taskErr)
+
+	assert.Equal(t, "route_unavailable", response.Code)
+	assert.Equal(t, i18n.Translate(i18n.LangEn, i18n.MsgRelayTaskUnavailable), response.Message)
+	assert.Equal(t, "invalid_channel_id", taskErr.Code)
+	assert.Equal(t, "invalid channel id: 99403", taskErr.Message)
+}
+
+func TestUserTaskFailureReasonOnlyRewritesInternalFailures(t *testing.T) {
+	c := newPublicErrorTestContext("fr")
+
+	assert.Equal(t, i18n.Translate(i18n.LangFr, i18n.MsgRelayTaskUnavailable), UserTaskFailureReason(c, "Failed to get channel info, channel ID: 99403"))
+	assert.Equal(t, "provider channel capacity warning", UserTaskFailureReason(c, "provider channel capacity warning"))
+}
+
+func TestUserLogContentRewritesHistoricalRouteFailureWithStatusPrefix(t *testing.T) {
+	c := newPublicErrorTestContext("fr")
+
+	assert.Equal(t,
+		i18n.Translate(i18n.LangFr, i18n.MsgRelayGetChannelFailed),
+		UserLogContent(c, "status_code=500, invalid channel id: 99403"),
+	)
+	assert.Equal(t, "provider channel capacity warning", UserLogContent(c, "provider channel capacity warning"))
+	assert.Equal(t,
+		i18n.Translate(i18n.LangFr, i18n.MsgRelayGetChannelFailed),
+		UserLogContent(c, "status_code=500, channel ID is 0: openlux-secret-channel"),
+	)
+}
+
+func TestUserLogContentHidesInternalOperationMarker(t *testing.T) {
+	c := newPublicErrorTestContext("en")
+
+	assert.Empty(t, UserLogContent(c, constant.UserLogContentHidden))
 }
 
 func TestUpstreamTaskErrorPreservesProviderMessage(t *testing.T) {

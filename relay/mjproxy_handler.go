@@ -163,7 +163,7 @@ func coverMidjourneyTaskDto(c *gin.Context, originTask *model.Midjourney) (midjo
 		midjourneyTask.VideoUrl = originTask.VideoUrl
 	}
 	midjourneyTask.Status = originTask.Status
-	midjourneyTask.FailReason = originTask.FailReason
+	midjourneyTask.FailReason = service.UserTaskFailureReason(c, originTask.FailReason)
 	midjourneyTask.Action = originTask.Action
 	midjourneyTask.Description = originTask.Description
 	midjourneyTask.Prompt = originTask.Prompt

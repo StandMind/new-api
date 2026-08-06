@@ -50,7 +50,7 @@ func midjourneyPublicMessageKey(desc string) string {
 	case "quota_not_enough":
 		return i18n.MsgQuotaInsufficient
 	case "get_channel_info_failed", "该任务所属渠道已被禁用":
-		return i18n.MsgRelayGetChannelFailed
+		return i18n.MsgRelayTaskUnavailable
 	case "do_request_failed", "create_request_failed":
 		return i18n.MsgRelayUpstreamRequestFailed
 	case "read_response_body_failed", "empty_response_body", "unmarshal_response_body_failed":

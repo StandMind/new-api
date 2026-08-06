@@ -503,7 +503,7 @@ export const getLogsColumns = ({
   isAdminUser,
   billingDisplayMode = 'price',
 }) => {
-  return [
+  const columns = [
     {
       key: COLUMN_KEYS.TIME,
       title: t('时间'),
@@ -996,4 +996,12 @@ export const getLogsColumns = ({
       },
     },
   ];
+
+  if (isAdminUser) return columns;
+  return columns.filter(
+    (column) =>
+      column.key !== COLUMN_KEYS.CHANNEL &&
+      column.key !== COLUMN_KEYS.USERNAME &&
+      column.key !== COLUMN_KEYS.RETRY,
+  );
 };

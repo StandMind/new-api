@@ -371,10 +371,9 @@ export interface LogStatistics {
 // Drawing Logs (MjProxy) Types
 // ============================================================================
 
-export interface MidjourneyLog {
+export interface UserMidjourneyLog {
   id: number
   user_id: number
-  channel_id: number
   code: number
   mj_id: string
   action: string // IMAGINE, UPSCALE, VARIATION, etc. (backend field name)
@@ -395,18 +394,23 @@ export interface MidjourneyLog {
   updated_at?: number
 }
 
+export interface AdminMidjourneyLog extends UserMidjourneyLog {
+  channel_id: number
+}
+
+export type MidjourneyLog = UserMidjourneyLog | AdminMidjourneyLog
+
 // ============================================================================
 // Task Logs Types
 // ============================================================================
 
-export interface TaskLog {
+export interface UserTaskLog {
   id: number
   user_id: number
   username?: string
   platform: string // suno, kling, runway, etc.
   task_id: string
   action: string // MUSIC, LYRICS, GENERATE, TEXT_GENERATE, etc.
-  channel_id: number
   submit_time: number // seconds
   finish_time?: number // seconds
   progress?: string
@@ -418,6 +422,12 @@ export interface TaskLog {
   created_at?: number
   updated_at?: number
 }
+
+export interface AdminTaskLog extends UserTaskLog {
+  channel_id: number
+}
+
+export type TaskLog = UserTaskLog | AdminTaskLog
 
 // ============================================================================
 // Common Log Types
@@ -438,11 +448,16 @@ export interface GetLogsParams {
   upstream_request_id?: string
 }
 
-export interface GetLogsResponse {
+export interface GetLogsResponse<
+  TItem extends UsageLog | MidjourneyLog | TaskLog =
+    | UsageLog
+    | MidjourneyLog
+    | TaskLog,
+> {
   success: boolean
   message?: string
   data?: {
-    items: UsageLog[] | MidjourneyLog[] | TaskLog[]
+    items: TItem[]
     total: number
     page: number
     page_size: number
@@ -481,6 +496,11 @@ export interface GetMidjourneyLogsParams {
   end_timestamp?: number
 }
 
+export type GetUserMidjourneyLogsParams = Omit<
+  GetMidjourneyLogsParams,
+  'channel_id'
+>
+
 // ============================================================================
 // Task Log Types
 // ============================================================================
@@ -493,6 +513,8 @@ export interface GetTaskLogsParams {
   start_timestamp?: number
   end_timestamp?: number
 }
+
+export type GetUserTaskLogsParams = Omit<GetTaskLogsParams, 'channel_id'>
 
 // ============================================================================
 // Fetch Logs Configuration

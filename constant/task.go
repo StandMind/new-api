@@ -18,6 +18,11 @@ const (
 	TaskActionRemix             = "remixGenerate"
 )
 
+const (
+	TaskFailReasonRouteUnavailable = "internal_route_unavailable"
+	UserLogContentHidden           = "internal_log_details_hidden"
+)
+
 var SunoModel2Action = map[string]string{
 	"suno_music":  SunoActionMusic,
 	"suno_lyrics": SunoActionLyrics,

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
@@ -89,9 +90,9 @@ func runMidjourneyTaskUpdateOnce(ctx context.Context, report func(processed, tot
 		}
 		midjourneyChannel, err := model.CacheGetChannel(channelId)
 		if err != nil {
-			logger.LogError(ctx, fmt.Sprintf("CacheGetChannel: %v", err))
+			logger.LogError(ctx, fmt.Sprintf("CacheGetChannel failed for Midjourney task channel_id=%d: %v", channelId, err))
 			err := model.MjBulkUpdate(taskIds, map[string]any{
-				"fail_reason": fmt.Sprintf("获取渠道信息失败，请联系管理员，渠道ID：%d", channelId),
+				"fail_reason": constant.TaskFailReasonRouteUnavailable,
 				"status":      "FAILURE",
 				"progress":    "100%",
 			})
@@ -331,14 +332,41 @@ func GetUserMidjourney(c *gin.Context) {
 
 	items := model.GetAllUserTask(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	total := model.CountAllUserTask(userId, queryParams)
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(userMidjourneyTasksToDto(c, items))
+	common.ApiSuccess(c, pageInfo)
+}
 
-	if setting.MjForwardUrlEnabled {
-		for i, midjourney := range items {
-			midjourney.ImageUrl = system_setting.ServerAddress + "/mj/image/" + midjourney.MjId
-			items[i] = midjourney
+func userMidjourneyTasksToDto(c *gin.Context, tasks []*model.Midjourney) []*dto.UserMidjourneyTask {
+	result := make([]*dto.UserMidjourneyTask, len(tasks))
+	for i, task := range tasks {
+		imageURL := task.ImageUrl
+		if setting.MjForwardUrlEnabled {
+			imageURL = system_setting.ServerAddress + "/mj/image/" + task.MjId
+		}
+		result[i] = &dto.UserMidjourneyTask{
+			Id:          task.Id,
+			Code:        task.Code,
+			UserId:      task.UserId,
+			Action:      task.Action,
+			MjId:        task.MjId,
+			Prompt:      task.Prompt,
+			PromptEn:    task.PromptEn,
+			Description: task.Description,
+			State:       task.State,
+			SubmitTime:  task.SubmitTime,
+			StartTime:   task.StartTime,
+			FinishTime:  task.FinishTime,
+			ImageUrl:    imageURL,
+			VideoUrl:    task.VideoUrl,
+			VideoUrls:   task.VideoUrls,
+			Status:      task.Status,
+			Progress:    task.Progress,
+			FailReason:  service.UserTaskFailureReason(c, task.FailReason),
+			Quota:       task.Quota,
+			Buttons:     task.Buttons,
+			Properties:  task.Properties,
 		}
 	}
-	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(items)
-	common.ApiSuccess(c, pageInfo)
+	return result
 }

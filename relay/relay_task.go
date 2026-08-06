@@ -344,7 +344,7 @@ func sunoFetchRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dto.Ta
 			return
 		}
 		for _, task := range taskModels {
-			tasks = append(tasks, TaskModel2Dto(task))
+			tasks = append(tasks, TaskModel2UserDto(c, task))
 		}
 	} else {
 		tasks = make([]any, 0)
@@ -372,7 +372,7 @@ func sunoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dt
 
 	respBody, err = common.Marshal(dto.TaskResponse[any]{
 		Code: "success",
-		Data: TaskModel2Dto(originTask),
+		Data: TaskModel2UserDto(c, originTask),
 	})
 	return
 }
@@ -406,7 +406,8 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	if isOpenAIVideoAPI {
 		adaptor := GetTaskAdaptor(originTask.Platform)
 		if adaptor == nil {
-			taskResp = service.TaskErrorWrapperLocal(fmt.Errorf("invalid channel id: %d", originTask.ChannelId), "invalid_channel_id", http.StatusBadRequest)
+			common.SysError(fmt.Sprintf("task route unavailable: task_id=%s channel_id=%d platform=%s", originTask.TaskID, originTask.ChannelId, originTask.Platform))
+			taskResp = service.TaskErrorWrapperLocal(errors.New("task route unavailable"), "task_route_unavailable", http.StatusBadRequest)
 			return
 		}
 		if converter, ok := adaptor.(channel.OpenAIVideoConverter); ok {
@@ -425,7 +426,7 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	// 通用 TaskDto 格式
 	respBody, err = common.Marshal(dto.TaskResponse[any]{
 		Code: "success",
-		Data: TaskModel2Dto(originTask),
+		Data: TaskModel2UserDto(c, originTask),
 	})
 	if err != nil {
 		taskResp = service.TaskErrorWrapperLocal(err, "marshal_response_failed", http.StatusInternalServerError)
@@ -571,6 +572,35 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		Status:     string(task.Status),
 		FailReason: task.FailReason,
 		ResultURL:  task.GetResultURL(),
+		SubmitTime: task.SubmitTime,
+		StartTime:  task.StartTime,
+		FinishTime: task.FinishTime,
+		Progress:   task.Progress,
+		Properties: task.Properties,
+		Username:   task.Username,
+		Data:       task.Data,
+	}
+}
+
+func TaskModel2UserDto(c *gin.Context, task *model.Task) *dto.UserTaskDto {
+	failReason := service.UserTaskFailureReason(c, task.FailReason)
+	resultURL := task.GetResultURL()
+	if service.IsInternalTaskRouteFailure(task.FailReason) && task.PrivateData.ResultURL == "" {
+		resultURL = ""
+	}
+	return &dto.UserTaskDto{
+		ID:         task.ID,
+		CreatedAt:  task.CreatedAt,
+		UpdatedAt:  task.UpdatedAt,
+		TaskID:     task.TaskID,
+		Platform:   string(task.Platform),
+		UserId:     task.UserId,
+		Group:      task.Group,
+		Quota:      task.Quota,
+		Action:     task.Action,
+		Status:     string(task.Status),
+		FailReason: failReason,
+		ResultURL:  resultURL,
 		SubmitTime: task.SubmitTime,
 		StartTime:  task.StartTime,
 		FinishTime: task.FinishTime,

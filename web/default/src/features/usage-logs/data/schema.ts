@@ -22,8 +22,7 @@ For commercial licensing, please contact support@quantumnous.com
  */
 import { z } from 'zod'
 
-// Usage log schema
-export const usageLogSchema = z.object({
+const usageLogBaseSchema = z.object({
   id: z.number(),
   user_id: z.number(),
   created_at: z.number(),
@@ -37,8 +36,6 @@ export const usageLogSchema = z.object({
   completion_tokens: z.number().default(0),
   use_time: z.number().default(0),
   is_stream: z.boolean().default(false),
-  channel: z.number().default(0),
-  channel_name: z.string().nullish().default(''),
   token_id: z.number().default(0),
   group: z.string().default(''),
   ip: z.string().default(''),
@@ -47,4 +44,21 @@ export const usageLogSchema = z.object({
   upstream_request_id: z.string().default(''),
 })
 
-export type UsageLog = z.infer<typeof usageLogSchema>
+export const userUsageLogSchema = usageLogBaseSchema
+
+export const adminUsageLogSchema = usageLogBaseSchema.extend({
+  channel: z.number(),
+  channel_name: z.string().nullish().default(''),
+})
+
+// Admin is checked first so callers that choose to parse the union retain the
+// administrator-only fields instead of having them stripped by the base schema.
+export const usageLogSchema = z.union([adminUsageLogSchema, userUsageLogSchema])
+
+export type UserUsageLog = z.infer<typeof userUsageLogSchema>
+export type AdminUsageLog = z.infer<typeof adminUsageLogSchema>
+export type UsageLog = UserUsageLog | AdminUsageLog
+
+export function isAdminUsageLog(log: UsageLog): log is AdminUsageLog {
+  return 'channel' in log && typeof log.channel === 'number'
+}

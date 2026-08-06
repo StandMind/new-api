@@ -109,12 +109,32 @@ func TestGetUserFlowQuotaDatesRestrictsToAuthenticatedUser(t *testing.T) {
 
 	GetUserFlowQuotaDates(ctx)
 
+	require.NotContains(t, recorder.Body.String(), "channel_id")
+	require.NotContains(t, recorder.Body.String(), "channel_name")
+	require.NotContains(t, recorder.Body.String(), "east")
 	payload := decodeFlowQuotaResponse(t, recorder)
 	require.Len(t, payload.Data, 1)
 	require.Empty(t, payload.Data[0].Username)
 	require.Equal(t, "primary", payload.Data[0].TokenName)
 	require.Equal(t, "default", payload.Data[0].UseGroup)
 	require.Empty(t, payload.Data[0].ChannelName)
+}
+
+func TestGetUserQuotaDatesOmitsChannelFields(t *testing.T) {
+	setupFlowControllerTestDB(t)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Set("id", 1)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/data/self?start_timestamp=1000&end_timestamp=2000", nil)
+
+	GetUserQuotaDates(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.NotContains(t, recorder.Body.String(), "channel_id")
+	require.NotContains(t, recorder.Body.String(), "channel_name")
+	require.NotContains(t, recorder.Body.String(), "east")
+	require.Contains(t, recorder.Body.String(), "gpt-a")
 }
 
 func TestGetUserFlowQuotaDatesRejectsInvalidTimeRange(t *testing.T) {
