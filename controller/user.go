@@ -59,7 +59,7 @@ func handleUserPayloadError(c *gin.Context, err error) bool {
 	if !errors.Is(err, errLegacyUserGroupField) {
 		return false
 	}
-	c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+	common.ApiErrorI18nStatus(c, http.StatusBadRequest, i18n.MsgUserGroupFieldDeprecated)
 	return true
 }
 
@@ -177,6 +177,13 @@ func setupLogin(user *model.User, c *gin.Context) {
 	session.Set("status", user.Status)
 	userLevel := user.UserLevel
 	session.Set("user_level", userLevel)
+	if lang, ok := i18n.NormalizeLanguage(user.GetSetting().Language); ok {
+		session.Set("language", lang)
+	} else {
+		// An empty string distinguishes a new session with no preference from a
+		// legacy session whose language has not been loaded yet.
+		session.Set("language", "")
+	}
 	err := session.Save()
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)
@@ -203,10 +210,8 @@ func Logout(c *gin.Context) {
 	session.Clear()
 	err := session.Save()
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"message": err.Error(),
-			"success": false,
-		})
+		common.SysLog(fmt.Sprintf("failed to clear session during logout: %v", err))
+		common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -474,7 +479,15 @@ func TransferAffQuota(c *gin.Context) {
 	}
 	err = user.TransferAffQuotaToQuota(tran.Quota)
 	if err != nil {
-		common.ApiErrorI18n(c, i18n.MsgUserTransferFailed, map[string]any{"Error": err.Error()})
+		switch {
+		case errors.Is(err, model.ErrAffQuotaTransferMinimum):
+			common.ApiErrorI18n(c, i18n.MsgUserTransferQuotaMinimum, map[string]any{"Min": logger.LogQuota(int(common.QuotaPerUnit))})
+		case errors.Is(err, model.ErrAffQuotaInsufficient):
+			common.ApiErrorI18n(c, i18n.MsgUserInviteQuotaInsufficient)
+		default:
+			common.SysLog(fmt.Sprintf("failed to transfer affiliate quota for user %d: %v", id, err))
+			common.ApiErrorI18n(c, i18n.MsgUserTransferFailed)
+		}
 		return
 	}
 	common.ApiSuccessI18n(c, i18n.MsgUserTransferSuccess, nil)
@@ -490,10 +503,8 @@ func GetAffCode(c *gin.Context) {
 	if user.AffCode == "" {
 		user.AffCode = common.GetRandomString(4)
 		if err := user.Update(false); err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": err.Error(),
-			})
+			common.SysLog(fmt.Sprintf("failed to save affiliate code for user %d: %v", id, err))
+			common.ApiErrorI18n(c, i18n.MsgUpdateFailed)
 			return
 		}
 	}
@@ -661,7 +672,7 @@ func GetUserModels(c *gin.Context) {
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "unsupported model endpoint",
+			"message": i18n.T(c, i18n.MsgInvalidParams),
 			"data":    []string{},
 		})
 		return
@@ -744,7 +755,7 @@ func UpdateUser(c *gin.Context) {
 		updatedUser.UserLevel = originUser.UserLevel
 	}
 	if level, ok := model.GetUserLevelFromSnapshot(updatedUser.UserLevel); !ok || !level.Enabled {
-		common.ApiErrorMsg(c, "用户等级不存在或未启用")
+		common.ApiErrorI18n(c, i18n.MsgUserLevelUnavailable)
 		return
 	}
 	myRole := c.GetInt("role")
@@ -836,7 +847,7 @@ func UpdateSelf(c *gin.Context) {
 		return
 	}
 	if _, exists := requestData["group"]; exists {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": errLegacyUserGroupField.Error()})
+		common.ApiErrorI18nStatus(c, http.StatusBadRequest, i18n.MsgUserGroupFieldDeprecated)
 		return
 	}
 
@@ -868,6 +879,16 @@ func UpdateSelf(c *gin.Context) {
 
 	// 检查是否是语言偏好更新请求
 	if language, langExists := requestData["language"]; langExists {
+		langStr, ok := language.(string)
+		if !ok {
+			common.ApiErrorI18n(c, i18n.MsgInvalidLanguage)
+			return
+		}
+		canonicalLanguage, ok := i18n.NormalizeLanguage(langStr)
+		if !ok {
+			common.ApiErrorI18n(c, i18n.MsgInvalidLanguage)
+			return
+		}
 		userId := c.GetInt("id")
 		user, err := model.GetUserById(userId, false)
 		if err != nil {
@@ -878,15 +899,21 @@ func UpdateSelf(c *gin.Context) {
 		// 获取当前用户设置
 		currentSetting := user.GetSetting()
 
-		// 更新language字段
-		if langStr, ok := language.(string); ok {
-			currentSetting.Language = langStr
-		}
+		currentSetting.Language = canonicalLanguage
 
 		if err := model.UpdateUserSetting(user.Id, currentSetting); err != nil {
 			common.ApiErrorI18n(c, i18n.MsgUpdateFailed)
 			return
 		}
+		session := sessions.Default(c)
+		session.Set("language", canonicalLanguage)
+		if err := session.Save(); err != nil {
+			common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)
+			return
+		}
+		common.SetContextKey(c, constant.ContextKeyUserLanguage, canonicalLanguage)
+		common.SetContextKey(c, constant.ContextKeyLanguage, canonicalLanguage)
+		common.SetContextKey(c, constant.ContextKeyLanguageResolved, true)
 
 		common.ApiSuccessI18n(c, i18n.MsgUpdateSuccess, nil)
 		return
@@ -1056,7 +1083,7 @@ func CreateUser(c *gin.Context) {
 	}
 	if cleanUser.UserLevel != "" {
 		if level, ok := model.GetUserLevelFromSnapshot(cleanUser.UserLevel); !ok || !level.Enabled {
-			common.ApiErrorMsg(c, "用户等级不存在或未启用")
+			common.ApiErrorI18n(c, i18n.MsgUserLevelUnavailable)
 			return
 		}
 	}
@@ -1152,10 +1179,8 @@ func ManageUser(c *gin.Context) {
 			return
 		}
 		if err := user.Delete(); err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": err.Error(),
-			})
+			common.SysLog(fmt.Sprintf("failed to delete user %d: %v", user.Id, err))
+			common.ApiErrorI18n(c, i18n.MsgDeleteFailed)
 			return
 		}
 		// 删除用户后，强制清理 Redis 中所有该用户令牌的缓存，
@@ -1291,7 +1316,7 @@ type emailBindRequest struct {
 func EmailBind(c *gin.Context) {
 	var req emailBindRequest
 	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
-		common.ApiError(c, errors.New("invalid request body"))
+		common.ApiErrorI18n(c, i18n.MsgInvalidRequestBody)
 		return
 	}
 	email := req.Email
@@ -1511,6 +1536,10 @@ func UpdateUserSetting(c *gin.Context) {
 	if user.Role >= common.RoleAdminUser && req.UpstreamModelUpdateNotifyEnabled != nil {
 		upstreamModelUpdateNotifyEnabled = *req.UpstreamModelUpdateNotifyEnabled
 	}
+	storedLanguage := ""
+	if language, ok := i18n.NormalizeLanguage(existingSettings.Language); ok {
+		storedLanguage = language
+	}
 
 	// 构建设置
 	settings := dto.UserSetting{
@@ -1519,6 +1548,9 @@ func UpdateUserSetting(c *gin.Context) {
 		UpstreamModelUpdateNotifyEnabled: upstreamModelUpdateNotifyEnabled,
 		AcceptUnsetRatioModel:            req.AcceptUnsetModelRatioModel,
 		RecordIpLog:                      req.RecordIpLog,
+		SidebarModules:                   existingSettings.SidebarModules,
+		BillingPreference:                existingSettings.BillingPreference,
+		Language:                         storedLanguage,
 	}
 
 	// 如果是webhook类型,添加webhook相关设置

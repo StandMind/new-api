@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
@@ -59,30 +60,30 @@ type replaceRouteGroupGrantsRequest struct {
 
 func validateAccessPolicyCode(code string) error {
 	if code != strings.TrimSpace(code) || code == "auto" || !accessPolicyCodePattern.MatchString(code) {
-		return errors.New("code 只能包含字母、数字、空格及 . _ - ( )，长度为 1-64")
+		return common.NewPublicError(i18n.MsgAccessPolicyCodeInvalid, nil)
 	}
 	return nil
 }
 
 func validateUserLevelRequest(req userLevelRequest) error {
 	if strings.TrimSpace(req.Name) == "" {
-		return errors.New("显示名称不能为空")
+		return common.NewPublicError(i18n.MsgAccessPolicyDisplayNameRequired, nil)
 	}
 	if req.TopupRatio <= 0 || math.IsNaN(float64(req.TopupRatio)) || math.IsInf(float64(req.TopupRatio), 0) {
-		return errors.New("充值倍率必须是大于 0 的有限数字")
+		return common.NewPublicError(i18n.MsgAccessPolicyTopupRatioInvalid, nil)
 	}
 	if req.RequestLimit < 0 || req.SuccessRequestLimit < 0 {
-		return errors.New("限流值不能小于 0")
+		return common.NewPublicError(i18n.MsgAccessPolicyRateLimitInvalid, nil)
 	}
 	return nil
 }
 
 func validateRouteGroupRequest(req routeGroupRequest) error {
 	if strings.TrimSpace(req.Name) == "" {
-		return errors.New("显示名称不能为空")
+		return common.NewPublicError(i18n.MsgAccessPolicyDisplayNameRequired, nil)
 	}
 	if req.BaseRatio < 0 || math.IsNaN(float64(req.BaseRatio)) || math.IsInf(float64(req.BaseRatio), 0) {
-		return errors.New("基础价格倍率必须是非负有限数字")
+		return common.NewPublicError(i18n.MsgAccessPolicyBaseRatioInvalid, nil)
 	}
 	return nil
 }
@@ -120,19 +121,19 @@ func ListUserLevels(c *gin.Context) {
 func CreateUserLevel(c *gin.Context) {
 	var req createUserLevelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ApiErrorMsg(c, "参数错误")
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	if err := validateAccessPolicyCode(req.Code); err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		common.ApiError(c, err)
 		return
 	}
 	if req.Code == model.LegacyDefaultGroupCode {
-		common.ApiErrorMsg(c, "default 是迁移兼容保留值，请使用其他用户等级 code")
+		common.ApiErrorI18n(c, i18n.MsgAccessPolicyReservedUserLevel)
 		return
 	}
 	if err := validateUserLevelRequest(req.userLevelRequest); err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		common.ApiError(c, err)
 		return
 	}
 	level := model.UserLevel{Code: req.Code, Name: strings.TrimSpace(req.Name), Description: strings.TrimSpace(req.Description), IsDefault: req.IsDefault, Enabled: req.Enabled, TopupRatio: req.TopupRatio, RequestLimit: req.RequestLimit, SuccessRequestLimit: req.SuccessRequestLimit}
@@ -142,7 +143,7 @@ func CreateUserLevel(c *gin.Context) {
 		}
 		if level.IsDefault {
 			if !level.Enabled {
-				return errors.New("默认等级必须启用")
+				return common.NewPublicError(i18n.MsgAccessPolicyDefaultMustBeEnabled, nil)
 			}
 			if err := tx.Model(&model.UserLevel{}).Where("is_default = ?", true).Update("is_default", false).Error; err != nil {
 				return err
@@ -154,7 +155,7 @@ func CreateUserLevel(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		common.ApiError(c, err)
 		return
 	}
 	finishAccessPolicyMutation(c, level)
@@ -164,11 +165,11 @@ func UpdateUserLevel(c *gin.Context) {
 	code := c.Param("code")
 	var req userLevelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ApiErrorMsg(c, "参数错误")
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	if err := validateUserLevelRequest(req); err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		common.ApiError(c, err)
 		return
 	}
 	var updated model.UserLevel
@@ -185,11 +186,11 @@ func UpdateUserLevel(c *gin.Context) {
 				return err
 			}
 			if len(refs) > 0 {
-				return errors.New("该用户等级仍有业务引用，不能停用")
+				return common.NewPublicError(i18n.MsgAccessPolicyUserLevelReferenced, nil)
 			}
 		}
 		if req.IsDefault && !req.Enabled {
-			return errors.New("默认等级必须启用")
+			return common.NewPublicError(i18n.MsgAccessPolicyDefaultMustBeEnabled, nil)
 		}
 		if updated.IsDefault && !req.IsDefault {
 			var otherDefaults int64
@@ -197,7 +198,7 @@ func UpdateUserLevel(c *gin.Context) {
 				return err
 			}
 			if otherDefaults == 0 {
-				return errors.New("系统必须保留一个启用的默认用户等级")
+				return common.NewPublicError(i18n.MsgAccessPolicyDefaultRequired, nil)
 			}
 		}
 		if req.IsDefault {
@@ -215,7 +216,7 @@ func UpdateUserLevel(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		common.ApiError(c, err)
 		return
 	}
 	finishAccessPolicyMutation(c, updated)
@@ -229,7 +230,7 @@ func DeleteUserLevel(c *gin.Context) {
 		return
 	}
 	if len(refs) > 0 {
-		c.JSON(http.StatusConflict, gin.H{"success": false, "message": "该用户等级仍有业务引用", "references": refs})
+		c.JSON(http.StatusConflict, gin.H{"success": false, "message": common.TranslateMessage(c, i18n.MsgAccessPolicyUserLevelReferenced), "references": refs})
 		return
 	}
 	err = model.DB.Transaction(func(tx *gorm.DB) error {
@@ -241,14 +242,14 @@ func DeleteUserLevel(c *gin.Context) {
 			return err
 		}
 		if level.IsDefault {
-			return errors.New("不能删除默认用户等级")
+			return common.NewPublicError(i18n.MsgAccessPolicyDeleteDefaultDenied, nil)
 		}
 		refs, err = model.InspectUserLevelReferences(tx, code)
 		if err != nil {
 			return err
 		}
 		if len(refs) > 0 {
-			return errUserLevelReferenced
+			return common.NewPublicError(i18n.MsgAccessPolicyUserLevelReferenced, errUserLevelReferenced)
 		}
 		if err := tx.Where("user_level_code = ?", code).Delete(&model.UserLevelRouteGroup{}).Error; err != nil {
 			return err
@@ -260,10 +261,10 @@ func DeleteUserLevel(c *gin.Context) {
 	})
 	if err != nil {
 		if errors.Is(err, errUserLevelReferenced) {
-			c.JSON(http.StatusConflict, gin.H{"success": false, "message": "该用户等级仍有业务引用", "references": refs})
+			c.JSON(http.StatusConflict, gin.H{"success": false, "message": common.TranslateMessage(c, i18n.MsgAccessPolicyUserLevelReferenced), "references": refs})
 			return
 		}
-		common.ApiErrorMsg(c, err.Error())
+		common.ApiError(c, err)
 		return
 	}
 	finishAccessPolicyMutation(c, gin.H{"code": code})
@@ -273,22 +274,22 @@ func ReplaceUserLevelRouteGroups(c *gin.Context) {
 	levelCode := c.Param("code")
 	var req replaceRouteGroupGrantsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ApiErrorMsg(c, "参数错误")
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	seen := make(map[string]struct{}, len(req.RouteGroups))
 	for _, grant := range req.RouteGroups {
 		if _, exists := seen[grant.Code]; exists {
-			common.ApiErrorMsg(c, "路由分组不能重复")
+			common.ApiErrorI18n(c, i18n.MsgAccessPolicyRouteGroupDuplicate)
 			return
 		}
 		seen[grant.Code] = struct{}{}
 		if grant.Code == model.LegacyDefaultGroupCode {
-			common.ApiErrorMsg(c, "default 路由分组已退役，不能授权")
+			common.ApiErrorI18n(c, i18n.MsgAccessPolicyRouteGroupRetired)
 			return
 		}
 		if grant.PriceRatio != nil && (*grant.PriceRatio < 0 || math.IsNaN(float64(*grant.PriceRatio)) || math.IsInf(float64(*grant.PriceRatio), 0)) {
-			common.ApiErrorMsg(c, "价格覆盖必须是非负有限数字")
+			common.ApiErrorI18n(c, i18n.MsgAccessPolicyPriceRatioInvalid)
 			return
 		}
 	}
@@ -306,7 +307,7 @@ func ReplaceUserLevelRouteGroups(c *gin.Context) {
 				return err
 			}
 			if count == 0 {
-				return errors.New("路由分组不存在: " + grant.Code)
+				return common.NewPublicError(i18n.MsgAccessPolicyRouteGroupNotFound, nil, map[string]any{"Group": grant.Code})
 			}
 		}
 		if err := tx.Where("user_level_code = ?", levelCode).Delete(&model.UserLevelRouteGroup{}).Error; err != nil {
@@ -321,7 +322,7 @@ func ReplaceUserLevelRouteGroups(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		common.ApiError(c, err)
 		return
 	}
 	if err := model.RefreshAccessPolicyCaches(); err != nil {
@@ -356,19 +357,19 @@ func ListRouteGroups(c *gin.Context) {
 func CreateRouteGroup(c *gin.Context) {
 	var req createRouteGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ApiErrorMsg(c, "参数错误")
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	if err := validateAccessPolicyCode(req.Code); err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		common.ApiError(c, err)
 		return
 	}
 	if req.Code == model.LegacyDefaultGroupCode {
-		common.ApiErrorMsg(c, "default 路由分组已退役")
+		common.ApiErrorI18n(c, i18n.MsgAccessPolicyRouteGroupRetired)
 		return
 	}
 	if err := validateRouteGroupRequest(req.routeGroupRequest); err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		common.ApiError(c, err)
 		return
 	}
 	group := model.RouteGroup{Code: req.Code, Name: strings.TrimSpace(req.Name), Description: strings.TrimSpace(req.Description), BaseRatio: req.BaseRatio, Enabled: req.Enabled}
@@ -382,7 +383,7 @@ func CreateRouteGroup(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		common.ApiError(c, err)
 		return
 	}
 	finishAccessPolicyMutation(c, group)
@@ -391,16 +392,16 @@ func CreateRouteGroup(c *gin.Context) {
 func UpdateRouteGroup(c *gin.Context) {
 	code := c.Param("code")
 	if code == model.LegacyDefaultGroupCode {
-		common.ApiErrorMsg(c, "default 路由分组已退役")
+		common.ApiErrorI18n(c, i18n.MsgAccessPolicyRouteGroupRetired)
 		return
 	}
 	var req routeGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		common.ApiErrorMsg(c, "参数错误")
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	if err := validateRouteGroupRequest(req); err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		common.ApiError(c, err)
 		return
 	}
 	var updated model.RouteGroup
@@ -421,7 +422,7 @@ func UpdateRouteGroup(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		common.ApiError(c, err)
 		return
 	}
 	finishAccessPolicyMutation(c, updated)
@@ -430,7 +431,7 @@ func UpdateRouteGroup(c *gin.Context) {
 func DeleteRouteGroup(c *gin.Context) {
 	code := c.Param("code")
 	if code == model.LegacyDefaultGroupCode {
-		common.ApiErrorMsg(c, "default 路由分组在扩展阶段由迁移工具管理")
+		common.ApiErrorI18n(c, i18n.MsgAccessPolicyRetiredGroupManaged)
 		return
 	}
 	refs, err := model.RouteGroupReferences(code)
@@ -439,7 +440,7 @@ func DeleteRouteGroup(c *gin.Context) {
 		return
 	}
 	if len(refs) > 0 {
-		c.JSON(http.StatusConflict, gin.H{"success": false, "message": "该路由分组仍有业务引用", "references": refs})
+		c.JSON(http.StatusConflict, gin.H{"success": false, "message": common.TranslateMessage(c, i18n.MsgAccessPolicyRouteGroupReferenced), "references": refs})
 		return
 	}
 	err = model.DB.Transaction(func(tx *gorm.DB) error {
@@ -451,7 +452,7 @@ func DeleteRouteGroup(c *gin.Context) {
 			return err
 		}
 		if len(refs) > 0 {
-			return errRouteGroupReferenced
+			return common.NewPublicError(i18n.MsgAccessPolicyRouteGroupReferenced, errRouteGroupReferenced)
 		}
 		result := tx.Where("code = ?", code).Delete(&model.RouteGroup{})
 		if result.Error != nil {
@@ -469,10 +470,10 @@ func DeleteRouteGroup(c *gin.Context) {
 	})
 	if err != nil {
 		if errors.Is(err, errRouteGroupReferenced) {
-			c.JSON(http.StatusConflict, gin.H{"success": false, "message": "该路由分组仍有业务引用", "references": refs})
+			c.JSON(http.StatusConflict, gin.H{"success": false, "message": common.TranslateMessage(c, i18n.MsgAccessPolicyRouteGroupReferenced), "references": refs})
 			return
 		}
-		common.ApiErrorMsg(c, err.Error())
+		common.ApiError(c, err)
 		return
 	}
 	finishAccessPolicyMutation(c, gin.H{"code": code})

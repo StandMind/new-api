@@ -47,6 +47,7 @@ import {
   API,
   authHeader,
   getUserIdFromLocalStorage,
+  getLanguageHeaders,
   showError,
   showSuccess,
 } from '../../../../helpers';
@@ -336,6 +337,7 @@ const OllamaModelModal = ({
         'Content-Type': 'application/json',
         Accept: 'text/event-stream',
         'New-API-User': String(userId),
+        ...getLanguageHeaders(),
         ...authHeaders,
       };
 

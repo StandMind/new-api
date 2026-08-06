@@ -2,6 +2,7 @@ package controller
 
 import (
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -17,20 +18,25 @@ func GetSubscription(c *gin.Context) {
 	if common.DisplayTokenStatEnabled {
 		tokenId := c.GetInt("token_id")
 		token, err = model.GetTokenById(tokenId)
-		expiredTime = token.ExpiredTime
-		remainQuota = token.RemainQuota
-		usedQuota = token.UsedQuota
+		if err == nil && token != nil {
+			expiredTime = token.ExpiredTime
+			remainQuota = token.RemainQuota
+			usedQuota = token.UsedQuota
+		}
 	} else {
 		userId := c.GetInt("id")
 		remainQuota, err = model.GetUserQuota(userId, false)
-		usedQuota, err = model.GetUserUsedQuota(userId)
+		if err == nil {
+			usedQuota, err = model.GetUserUsedQuota(userId)
+		}
 	}
 	if expiredTime <= 0 {
 		expiredTime = 0
 	}
 	if err != nil {
+		common.SysError("failed to load dashboard billing subscription: " + common.MaskSensitiveInfo(err.Error()))
 		openAIError := types.OpenAIError{
-			Message: err.Error(),
+			Message: i18n.T(c, i18n.MsgOperationFailed),
 			Type:    "upstream_error",
 		}
 		c.JSON(200, gin.H{
@@ -81,8 +87,9 @@ func GetUsage(c *gin.Context) {
 		quota, err = model.GetUserUsedQuota(userId)
 	}
 	if err != nil {
+		common.SysError("failed to load dashboard billing usage: " + common.MaskSensitiveInfo(err.Error()))
 		openAIError := types.OpenAIError{
-			Message: err.Error(),
+			Message: i18n.T(c, i18n.MsgOperationFailed),
 			Type:    "new_api_error",
 		}
 		c.JSON(200, gin.H{

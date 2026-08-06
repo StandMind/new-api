@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/request_detail_setting"
@@ -19,7 +20,7 @@ func GetRequestDetails(c *gin.Context) {
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 	outcome := strings.TrimSpace(c.Query("outcome"))
 	if outcome != "" && outcome != model.RequestDetailOutcomeSuccess && outcome != model.RequestDetailOutcomeFailed {
-		common.ApiErrorMsg(c, "invalid request detail outcome")
+		common.ApiErrorI18n(c, i18n.MsgRequestDetailInvalidOutcome)
 		return
 	}
 	details, total, err := model.GetRequestDetails(model.RequestDetailFilter{
@@ -44,7 +45,7 @@ func GetRequestDetails(c *gin.Context) {
 func GetRequestDetail(c *gin.Context) {
 	requestID := strings.TrimSpace(c.Param("request_id"))
 	if requestID == "" {
-		common.ApiErrorMsg(c, "request id is required")
+		common.ApiErrorI18n(c, i18n.MsgRequestDetailIDRequired)
 		return
 	}
 	detail, err := model.GetRequestDetailByRequestID(requestID)
@@ -52,7 +53,7 @@ func GetRequestDetail(c *gin.Context) {
 		if model.IsRequestDetailNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{
 				"success": false,
-				"message": "request detail not found or expired",
+				"message": common.TranslateMessage(c, i18n.MsgRequestDetailNotFound),
 			})
 			return
 		}

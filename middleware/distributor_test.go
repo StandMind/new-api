@@ -301,10 +301,13 @@ func setupPlaygroundSmartRoutingTest(t *testing.T) *gin.Engine {
 	return router
 }
 
-func postDistributorRequest(router *gin.Engine, path, body string) *httptest.ResponseRecorder {
+func postDistributorRequest(router *gin.Engine, path, body string, languages ...string) *httptest.ResponseRecorder {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
+	if len(languages) > 0 && languages[0] != "" {
+		request.Header.Set("Accept-Language", languages[0])
+	}
 	router.ServeHTTP(recorder, request)
 	return recorder
 }
@@ -351,18 +354,20 @@ func TestDistributePlaygroundRoutingValidation(t *testing.T) {
 		body       string
 		statusCode int
 		message    string
+		language   string
 	}{
 		{
 			name:       "invalid mode",
 			body:       `{"model":"playground-smart-model","routing_priority":"random"}`,
 			statusCode: http.StatusBadRequest,
-			message:    "routing_priority 无效",
+			message:    "Invalid Playground routing_priority",
 		},
 		{
-			name:       "conflicting fields",
+			name:       "conflicting fields in Chinese",
 			body:       `{"model":"playground-smart-model","route_group":"playground-cheap","routing_priority":"price"}`,
 			statusCode: http.StatusBadRequest,
 			message:    "不能同时使用",
+			language:   "zh-CN",
 		},
 		{
 			name:       "unauthorized manual group",
@@ -373,12 +378,12 @@ func TestDistributePlaygroundRoutingValidation(t *testing.T) {
 			name:       "no smart candidate",
 			body:       `{"model":"missing-model","routing_priority":"price"}`,
 			statusCode: http.StatusServiceUnavailable,
-			message:    "智能路由暂无支持模型 missing-model 的可用分组",
+			message:    "Smart routing has no available group that supports model missing-model",
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			recorder := postDistributorRequest(router, "/pg/chat/completions", test.body)
+			recorder := postDistributorRequest(router, "/pg/chat/completions", test.body, test.language)
 			assert.Equal(t, test.statusCode, recorder.Code)
 			if test.message != "" {
 				assert.Contains(t, recorder.Body.String(), test.message)

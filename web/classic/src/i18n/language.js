@@ -21,6 +21,7 @@ export const supportedLanguages = [
   'zh-CN',
   'zh-TW',
   'en',
+  'es',
   'fr',
   'ru',
   'ja',
@@ -56,6 +57,10 @@ export const normalizeLanguage = (language) => {
   const matchedLanguage = supportedLanguages.find(
     (supportedLanguage) => supportedLanguage.toLowerCase() === lower,
   );
+
+  if (lower === 'es' || lower.startsWith('es-')) {
+    return 'es';
+  }
 
   return matchedLanguage || normalized;
 };

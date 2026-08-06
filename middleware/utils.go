@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/QuantumNous/new-api/common"
@@ -10,27 +11,37 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func abortWithOpenAiMessage(c *gin.Context, statusCode int, message string, code ...types.ErrorCode) {
-	codeStr := ""
-	if len(code) > 0 {
-		codeStr = string(code[0])
+func abortWithOpenAIMessageKey(c *gin.Context, statusCode int, key string, args map[string]any, code ...types.ErrorCode) {
+	errorCode := types.ErrorCode("")
+	if len(code) > 0 && code[0] != "" {
+		errorCode = code[0]
 	}
+	err := types.NewErrorWithStatusCode(
+		errors.New(key),
+		errorCode,
+		statusCode,
+		types.ErrOptionWithPublicMessage(key, args),
+	)
+	abortWithNewAPIError(c, err)
+}
+
+func abortWithNewAPIError(c *gin.Context, err *types.NewAPIError) {
+	if err == nil {
+		return
+	}
+	openAIError := service.OpenAIErrorForResponse(c, err, c.GetString(common.RequestIdKey))
 	service.SetRequestDetailFailure(c, &service.RequestDetailFailure{
-		StatusCode: statusCode,
-		ErrorType:  "new_api_error",
-		ErrorCode:  codeStr,
-		Message:    message,
+		StatusCode: err.StatusCode,
+		ErrorType:  string(err.GetErrorType()),
+		ErrorCode:  string(err.GetErrorCode()),
+		Message:    err.MaskSensitiveErrorWithStatusCode(),
 	})
 	userId := c.GetInt("id")
-	c.JSON(statusCode, gin.H{
-		"error": gin.H{
-			"message": common.MessageWithRequestId(message, c.GetString(common.RequestIdKey)),
-			"type":    "new_api_error",
-			"code":    codeStr,
-		},
+	c.JSON(err.StatusCode, gin.H{
+		"error": openAIError,
 	})
 	c.Abort()
-	logger.LogError(c.Request.Context(), fmt.Sprintf("user %d | %s", userId, message))
+	logger.LogError(c.Request.Context(), fmt.Sprintf("user %d | %s", userId, err.MaskSensitiveError()))
 }
 
 func abortWithMidjourneyMessage(c *gin.Context, statusCode int, code int, description string) {

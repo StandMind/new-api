@@ -17,10 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import axios, { type AxiosRequestConfig } from 'axios'
-import i18next, { t } from 'i18next'
+import i18next from 'i18next'
 import { toast } from 'sonner'
 
 import { useAuthStore } from '@/stores/auth-store'
+
+import { extractApiErrorMessage } from './api-error'
 
 declare module 'axios' {
   export interface AxiosRequestConfig {
@@ -92,7 +94,7 @@ api.interceptors.response.use(
     ) {
       if (!response.data.success) {
         // Show error toast for business failures
-        const msg = response.data.message || t('Request failed')
+        const msg = extractApiErrorMessage(response.data, 'Request failed')
         toast.error(msg)
       }
     }
@@ -110,13 +112,10 @@ api.interceptors.response.use(
       }
 
       if (!skip) {
-        toast.error(t('Session expired!'))
+        toast.error(extractApiErrorMessage(error, 'Session expired!'))
       }
     } else if (!skip) {
-      // Other errors: show error message from response or default
-      const msg =
-        error?.response?.data?.message || error?.message || t('Request failed')
-      toast.error(msg)
+      toast.error(extractApiErrorMessage(error))
     }
     return Promise.reject(error)
   }

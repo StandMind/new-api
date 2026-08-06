@@ -1,0 +1,125 @@
+package service
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/types"
+)
+
+const fallbackPublicErrorKey = "common.operation_failed"
+
+func LocalizeNewAPIError(c *gin.Context, err *types.NewAPIError) string {
+	if err == nil {
+		return ""
+	}
+	if err.GetSource() == types.ErrorSourceUpstream {
+		return err.MaskSensitiveError()
+	}
+	key := err.PublicMessageKey()
+	if key == "" {
+		key = fallbackPublicErrorKey
+	}
+	return common.MaskSensitiveInfo(i18n.T(c, key, err.PublicMessageArgs()))
+}
+
+func OpenAIErrorForResponse(c *gin.Context, err *types.NewAPIError, requestID string) types.OpenAIError {
+	result := err.ToOpenAIError()
+	if err.GetSource() == types.ErrorSourceUpstream {
+		if requestID != "" {
+			result.Message = common.MessageWithRequestId(result.Message, requestID)
+		}
+		return result
+	}
+	message := LocalizeNewAPIError(c, err)
+	if requestID != "" {
+		message = common.MessageWithRequestId(message, requestID)
+	}
+	result.Message = message
+	return result
+}
+
+func ClaudeErrorForResponse(c *gin.Context, err *types.NewAPIError, requestID string) types.ClaudeError {
+	result := err.ToClaudeError()
+	if err.GetSource() == types.ErrorSourceUpstream {
+		if requestID != "" {
+			result.Message = common.MessageWithRequestId(result.Message, requestID)
+		}
+		return result
+	}
+	message := LocalizeNewAPIError(c, err)
+	if requestID != "" {
+		message = common.MessageWithRequestId(message, requestID)
+	}
+	result.Message = message
+	return result
+}
+
+func MidjourneyErrorDescriptionForResponse(c *gin.Context, err *dto.MidjourneyResponse) string {
+	if err == nil {
+		return ""
+	}
+	if !err.LocalError {
+		return common.MaskSensitiveInfo(fmt.Sprintf("%s %s", err.Description, err.Result))
+	}
+	key := err.MessageKey
+	if key == "" {
+		key = fallbackPublicErrorKey
+	}
+	return common.MaskSensitiveInfo(i18n.T(c, key, common.CopyPublicMessageArgs(err.MessageArgs)))
+}
+
+// TaskErrorForResponse returns a detached response value so localization never
+// changes the error retained by retry decisions and diagnostic logging.
+func TaskErrorForResponse(c *gin.Context, taskErr *dto.TaskError) dto.TaskError {
+	if taskErr == nil {
+		return dto.TaskError{}
+	}
+	result := *taskErr
+	if !taskErr.LocalError {
+		result.Message = common.MaskSensitiveInfo(taskErr.Message)
+		return result
+	}
+	if taskErr.StatusCode == 429 {
+		result.Message = i18n.T(c, i18n.MsgChannelUpstreamSaturated)
+		return result
+	}
+	key := taskErr.MessageKey
+	if key == "" {
+		key = taskPublicMessageKey(taskErr.Code)
+	}
+	result.Message = common.MaskSensitiveInfo(i18n.T(c, key, common.CopyPublicMessageArgs(taskErr.MessageArgs)))
+	return result
+}
+
+func taskPublicMessageKey(code string) string {
+	switch code {
+	case "insufficient_user_quota":
+		return i18n.MsgQuotaInsufficient
+	case "model_price_error":
+		return i18n.MsgRelayModelPriceError
+	case "channel_no_available_key", "channel_not_found", "task_channel_disable", "get_channel_failed", "setup_locked_channel_failed":
+		return i18n.MsgRelayGetChannelFailed
+	case "build_request_failed", "model_mapping_failed":
+		return i18n.MsgRelayRequestConversionFailed
+	case "do_request_failed", "get_task_request_failed", "fail_to_fetch_task":
+		return i18n.MsgRelayUpstreamRequestFailed
+	case "read_response_body_failed", "unmarshal_response_failed", "unmarshal_response_body_failed", "invalid_response":
+		return i18n.MsgRelayInvalidUpstreamResponse
+	case "not_implemented":
+		return i18n.MsgRelayAPINotImplemented
+	case "get_origin_task_failed", "get_tasks_failed", "get_task_failed":
+		return i18n.MsgDatabaseError
+	case "copy_response_body_failed", "convert_to_openai_video_failed", "marshal_response_failed":
+		return i18n.MsgOperationFailed
+	}
+	if strings.HasPrefix(code, "invalid_") || strings.HasPrefix(code, "missing_") || code == "task_not_exist" {
+		return i18n.MsgRelayInvalidRequest
+	}
+	return fallbackPublicErrorKey
+}

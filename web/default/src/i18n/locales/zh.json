@@ -5627,6 +5627,19 @@
     "Truncated": "已截断",
     "Attempt chain": "尝试链路",
     "No channel attempt was recorded.": "没有记录到渠道尝试。",
-    "Routing diagnostics": "路由诊断"
+    "Routing diagnostics": "路由诊断",
+    "Unsupported verification method: {{method}}": "Unsupported verification method: {{method}}",
+    "Please enter the verification code or backup code": "Please enter the verification code or backup code",
+    "Passkey verification is not supported in this environment": "Passkey verification is not supported in this environment",
+    "Failed to start verification": "Failed to start verification",
+    "Passkey verification was cancelled": "Passkey verification was cancelled",
+    "Unable to build Passkey assertion": "Unable to build Passkey assertion",
+    "Passkey verification failed": "Passkey verification failed",
+    "Failed to complete verification": "Failed to complete verification",
+    "Passkey verification was cancelled or timed out": "Passkey verification was cancelled or timed out",
+    "Passkey verification is not available in the current state": "Passkey verification is not available in the current state",
+    "Unable to parse Passkey login options from response": "Unable to parse Passkey login options from response",
+    "Secure verification is required": "Secure verification is required",
+    "No verification methods available. Enable 2FA or Passkey to continue.": "No verification methods available. Enable 2FA or Passkey to continue."
   }
 }

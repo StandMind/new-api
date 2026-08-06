@@ -202,11 +202,13 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 		if errMsg == "" {
 			errMsg = "replicate adaptor: prediction error"
 		}
-		return nil, types.NewError(errors.New(errMsg), types.ErrorCodeBadResponse)
+		return nil, types.NewError(errors.New(errMsg), types.ErrorCodeBadResponse,
+			types.ErrOptionWithErrorSource(types.ErrorSourceUpstream))
 	}
 
 	if prediction.Status != "" && !strings.EqualFold(prediction.Status, "succeeded") {
-		return nil, types.NewError(fmt.Errorf("replicate adaptor: prediction status %q", prediction.Status), types.ErrorCodeBadResponse)
+		return nil, types.NewError(fmt.Errorf("replicate adaptor: prediction status %q", prediction.Status), types.ErrorCodeBadResponse,
+			types.ErrOptionWithErrorSource(types.ErrorSourceUpstream))
 	}
 
 	var urls []string

@@ -69,5 +69,13 @@
   "The request failed before reaching upstream": "The request failed before reaching upstream",
   "Pricing failed before the upstream request": "Pricing failed before the upstream request",
   "The request body was unavailable": "The request body was unavailable",
-  "The task could not be retried safely": "The task could not be retried safely"
+  "The task could not be retried safely": "The task could not be retried safely",
+  "Please enter the verification code or backup code": "Please enter the verification code or backup code",
+  "Failed to start verification": "Failed to start verification",
+  "Unable to build Passkey assertion": "Unable to build Passkey assertion",
+  "Failed to complete verification": "Failed to complete verification",
+  "Passkey verification was cancelled or timed out": "Passkey verification was cancelled or timed out",
+  "Passkey verification is not available in the current state": "Passkey verification is not available in the current state",
+  "Unable to parse Passkey login options from response": "Unable to parse Passkey login options from response",
+  "No verification methods available. Enable 2FA or Passkey to continue.": "No verification methods available. Enable 2FA or Passkey to continue."
 }

@@ -5,6 +5,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
@@ -46,10 +47,7 @@ func GetSetup(c *gin.Context) {
 func PostSetup(c *gin.Context) {
 	// Check if setup is already completed
 	if constant.Setup {
-		c.JSON(200, gin.H{
-			"success": false,
-			"message": "系统已经初始化完成",
-		})
+		common.ApiErrorI18n(c, i18n.MsgSetupAlreadyCompleted)
 		return
 	}
 
@@ -59,10 +57,7 @@ func PostSetup(c *gin.Context) {
 	var req SetupRequest
 	err := c.ShouldBindJSON(&req)
 	if err != nil {
-		c.JSON(200, gin.H{
-			"success": false,
-			"message": "请求参数有误",
-		})
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 
@@ -70,36 +65,25 @@ func PostSetup(c *gin.Context) {
 	if !rootExists {
 		// Validate username length: max 12 characters to align with model.User validation
 		if len(req.Username) > 12 {
-			c.JSON(200, gin.H{
-				"success": false,
-				"message": "用户名长度不能超过12个字符",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSetupUsernameTooLong, map[string]any{"Max": 12})
 			return
 		}
 		// Validate password
 		if req.Password != req.ConfirmPassword {
-			c.JSON(200, gin.H{
-				"success": false,
-				"message": "两次输入的密码不一致",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSetupPasswordMismatch)
 			return
 		}
 
 		if len(req.Password) < 8 {
-			c.JSON(200, gin.H{
-				"success": false,
-				"message": "密码长度至少为8个字符",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSetupPasswordTooShort, map[string]any{"Min": 8})
 			return
 		}
 
 		// Create root user
 		hashedPassword, err := common.Password2Hash(req.Password)
 		if err != nil {
-			c.JSON(200, gin.H{
-				"success": false,
-				"message": "系统错误: " + err.Error(),
-			})
+			common.SysError("failed to hash initial root password: " + err.Error())
+			common.ApiErrorI18n(c, i18n.MsgSetupInitializationFailed)
 			return
 		}
 		rootUser := model.User{
@@ -113,10 +97,8 @@ func PostSetup(c *gin.Context) {
 		}
 		err = model.DB.Create(&rootUser).Error
 		if err != nil {
-			c.JSON(200, gin.H{
-				"success": false,
-				"message": "创建管理员账号失败: " + err.Error(),
-			})
+			common.SysError("failed to create initial root user: " + err.Error())
+			common.ApiErrorI18n(c, i18n.MsgSetupInitializationFailed)
 			return
 		}
 	}
@@ -128,19 +110,15 @@ func PostSetup(c *gin.Context) {
 	// Save operation modes to database for persistence
 	err = model.UpdateOption("SelfUseModeEnabled", boolToString(req.SelfUseModeEnabled))
 	if err != nil {
-		c.JSON(200, gin.H{
-			"success": false,
-			"message": "保存自用模式设置失败: " + err.Error(),
-		})
+		common.SysError("failed to save initial self-use mode: " + err.Error())
+		common.ApiErrorI18n(c, i18n.MsgSetupInitializationFailed)
 		return
 	}
 
 	err = model.UpdateOption("DemoSiteEnabled", boolToString(req.DemoSiteEnabled))
 	if err != nil {
-		c.JSON(200, gin.H{
-			"success": false,
-			"message": "保存演示站点模式设置失败: " + err.Error(),
-		})
+		common.SysError("failed to save initial demo mode: " + err.Error())
+		common.ApiErrorI18n(c, i18n.MsgSetupInitializationFailed)
 		return
 	}
 
@@ -153,16 +131,14 @@ func PostSetup(c *gin.Context) {
 	}
 	err = model.DB.Create(&setup).Error
 	if err != nil {
-		c.JSON(200, gin.H{
-			"success": false,
-			"message": "系统初始化失败: " + err.Error(),
-		})
+		common.SysError("failed to persist initial setup record: " + err.Error())
+		common.ApiErrorI18n(c, i18n.MsgSetupInitializationFailed)
 		return
 	}
 
 	c.JSON(200, gin.H{
 		"success": true,
-		"message": "系统初始化成功",
+		"message": i18n.T(c, i18n.MsgSetupInitializationSuccess),
 	})
 }
 

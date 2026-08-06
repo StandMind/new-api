@@ -95,13 +95,13 @@ func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, req
 func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *dto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		taskErr = service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
+		taskErr = service.TaskErrorWrapperLocal(err, "read_response_body_failed", http.StatusInternalServerError)
 		return
 	}
 	var sunoResponse dto.TaskResponse[string]
 	err = common.Unmarshal(responseBody, &sunoResponse)
 	if err != nil {
-		taskErr = service.TaskErrorWrapper(err, "unmarshal_response_body_failed", http.StatusInternalServerError)
+		taskErr = service.TaskErrorWrapperLocal(err, "unmarshal_response_body_failed", http.StatusInternalServerError)
 		return
 	}
 	if !sunoResponse.IsSuccess() {

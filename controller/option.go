@@ -148,10 +148,7 @@ func UpdateOption(c *gin.Context) {
 	var option OptionUpdateRequest
 	err := common.DecodeJson(c.Request.Body, &option)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "无效的参数",
-		})
+		common.ApiErrorI18nStatus(c, http.StatusBadRequest, i18n.MsgInvalidParams)
 		return
 	}
 	switch option.Value.(type) {
@@ -172,124 +169,88 @@ func UpdateOption(c *gin.Context) {
 		}
 	default:
 		if option.Key == "AutoGroups" || option.Key == "DefaultUseAutoGroup" || option.Key == "routing_setting.user_group_chain_enabled" {
-			common.ApiErrorMsg(c, "该配置项已废弃")
+			common.ApiErrorI18n(c, i18n.MsgSettingDeprecated)
 			return
 		}
 		if isPaymentComplianceOptionKey(option.Key) {
-			common.ApiErrorMsg(c, "合规确认字段不允许通过通用设置接口修改")
+			common.ApiErrorI18n(c, i18n.MsgSettingComplianceReadOnly)
 			return
 		}
 		switch option.Key {
 		case "GroupRatio", "GroupGroupRatio", "UserUsableGroups", "TopupGroupRatio", "ModelRequestRateLimitGroup", "group_ratio_setting.group_special_usable_group":
-			common.ApiErrorMsg(c, "该配置已迁移到用户等级与路由分组管理接口")
+			common.ApiErrorI18n(c, i18n.MsgSettingAccessPolicyMigrated)
 			return
 		}
 	}
 	switch option.Key {
 	case "GitHubOAuthEnabled":
 		if option.Value == "true" && common.GitHubClientId == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法启用 GitHub OAuth，请先填入 GitHub Client Id 以及 GitHub Client Secret！",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingGitHubOAuthConfigRequired)
 			return
 		}
 	case "discord.enabled":
 		if option.Value == "true" && system_setting.GetDiscordSettings().ClientId == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法启用 Discord OAuth，请先填入 Discord Client Id 以及 Discord Client Secret！",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingDiscordOAuthConfigRequired)
 			return
 		}
 	case "oidc.enabled":
 		if option.Value == "true" && system_setting.GetOIDCSettings().ClientId == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法启用 OIDC 登录，请先填入 OIDC Client Id 以及 OIDC Client Secret！",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingOIDCConfigRequired)
 			return
 		}
 	case "LinuxDOOAuthEnabled":
 		if option.Value == "true" && common.LinuxDOClientId == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法启用 LinuxDO OAuth，请先填入 LinuxDO Client Id 以及 LinuxDO Client Secret！",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingLinuxDOConfigRequired)
 			return
 		}
 	case "EmailDomainRestrictionEnabled":
 		if option.Value == "true" && len(common.EmailDomainWhitelist) == 0 {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法启用邮箱域名限制，请先填入限制的邮箱域名！",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingEmailDomainRequired)
 			return
 		}
 	case "WeChatAuthEnabled":
 		if option.Value == "true" && common.WeChatServerAddress == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法启用微信登录，请先填入微信登录相关配置信息！",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingWeChatConfigRequired)
 			return
 		}
 	case "TurnstileCheckEnabled":
 		if option.Value == "true" && common.TurnstileSiteKey == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法启用 Turnstile 校验，请先填入 Turnstile 校验相关配置信息！",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingTurnstileConfigRequired)
 
 			return
 		}
 	case "TelegramOAuthEnabled":
 		if option.Value == "true" && common.TelegramBotToken == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法启用 Telegram OAuth，请先填入 Telegram Bot Token！",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingTelegramConfigRequired)
 			return
 		}
 	case "theme.frontend":
 		if option.Value != "default" && option.Value != "classic" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无效的主题值，可选值：default（新版前端）、classic（经典前端）",
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingThemeInvalid)
 			return
 		}
 	case smart_routing_setting.ConfigName + ".default_priority":
 		value := option.Value.(string)
 		if !smart_routing_setting.ValidateDefaultPriority(value) {
-			common.ApiErrorMsg(c, "invalid smart routing default priority")
+			common.ApiErrorI18n(c, i18n.MsgSettingRoutingPriorityInvalid)
 			return
 		}
 	case "GroupRatio":
 		err = ratio_setting.CheckGroupRatio(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": err.Error(),
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingValueInvalid)
 			return
 		}
 	case "GroupModelRatio":
 		err = ratio_setting.CheckGroupModelRatio(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": err.Error(),
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingValueInvalid)
 			return
 		}
 	case official_price_setting.OptionKey:
 		err = official_price_setting.ValidateModelPricesJSON(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": err.Error(),
-			})
+			common.ApiErrorI18n(c, i18n.MsgSettingValueInvalid)
 			return
 		}
 	case request_detail_setting.ConfigName + ".mode",
@@ -297,115 +258,91 @@ func UpdateOption(c *gin.Context) {
 		request_detail_setting.ConfigName + ".max_storage_mb":
 		err = request_detail_setting.ValidateOption(option.Key, option.Value.(string))
 		if err != nil {
-			common.ApiErrorMsg(c, err.Error())
+			common.ApiErrorI18n(c, i18n.MsgSettingValueInvalid)
 			return
 		}
 	case "ImageRatio":
 		err = ratio_setting.UpdateImageRatioByJSONString(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "图片倍率设置失败: " + err.Error(),
-			})
+			common.SysError(fmt.Sprintf("invalid ImageRatio setting: %v", err))
+			common.ApiErrorI18n(c, i18n.MsgSettingValueInvalid)
 			return
 		}
 	case "AudioRatio":
 		err = ratio_setting.UpdateAudioRatioByJSONString(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "音频倍率设置失败: " + err.Error(),
-			})
+			common.SysError(fmt.Sprintf("invalid AudioRatio setting: %v", err))
+			common.ApiErrorI18n(c, i18n.MsgSettingValueInvalid)
 			return
 		}
 	case "AudioCompletionRatio":
 		err = ratio_setting.UpdateAudioCompletionRatioByJSONString(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "音频补全倍率设置失败: " + err.Error(),
-			})
+			common.SysError(fmt.Sprintf("invalid AudioCompletionRatio setting: %v", err))
+			common.ApiErrorI18n(c, i18n.MsgSettingValueInvalid)
 			return
 		}
 	case "CreateCacheRatio":
 		err = ratio_setting.UpdateCreateCacheRatioByJSONString(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "缓存创建倍率设置失败: " + err.Error(),
-			})
+			common.SysError(fmt.Sprintf("invalid CreateCacheRatio setting: %v", err))
+			common.ApiErrorI18n(c, i18n.MsgSettingValueInvalid)
 			return
 		}
 	case "ModelRequestRateLimitGroup":
 		err = setting.CheckModelRequestRateLimitGroup(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": err.Error(),
-			})
+			common.SysError(fmt.Sprintf("invalid ModelRequestRateLimitGroup setting: %v", err))
+			common.ApiErrorI18n(c, i18n.MsgSettingValueInvalid)
 			return
 		}
 	case "AutomaticDisableStatusCodes":
 		_, err = operation_setting.ParseHTTPStatusCodeRanges(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": err.Error(),
-			})
+			common.SysError(fmt.Sprintf("invalid AutomaticDisableStatusCodes setting: %v", err))
+			common.ApiErrorI18n(c, i18n.MsgSettingValueInvalid)
 			return
 		}
 	case "AutomaticRetryStatusCodes":
 		_, err = operation_setting.ParseHTTPStatusCodeRanges(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": err.Error(),
-			})
+			common.SysError(fmt.Sprintf("invalid AutomaticRetryStatusCodes setting: %v", err))
+			common.ApiErrorI18n(c, i18n.MsgSettingValueInvalid)
 			return
 		}
 	case "console_setting.api_info":
 		err = console_setting.ValidateConsoleSettings(option.Value.(string), "ApiInfo")
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": err.Error(),
-			})
+			common.SysError(fmt.Sprintf("invalid console ApiInfo setting: %v", err))
+			common.ApiErrorI18n(c, i18n.MsgSettingValueInvalid)
 			return
 		}
 	case "console_setting.announcements":
 		err = console_setting.ValidateConsoleSettings(option.Value.(string), "Announcements")
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": err.Error(),
-			})
+			common.SysError(fmt.Sprintf("invalid console Announcements setting: %v", err))
+			common.ApiErrorI18n(c, i18n.MsgSettingValueInvalid)
 			return
 		}
 	case "console_setting.faq":
 		err = console_setting.ValidateConsoleSettings(option.Value.(string), "FAQ")
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": err.Error(),
-			})
+			common.SysError(fmt.Sprintf("invalid console FAQ setting: %v", err))
+			common.ApiErrorI18n(c, i18n.MsgSettingValueInvalid)
 			return
 		}
 	case "console_setting.uptime_kuma_groups":
 		err = console_setting.ValidateConsoleSettings(option.Value.(string), "UptimeKumaGroups")
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": err.Error(),
-			})
+			common.SysError(fmt.Sprintf("invalid console UptimeKumaGroups setting: %v", err))
+			common.ApiErrorI18n(c, i18n.MsgSettingValueInvalid)
 			return
 		}
 	case emailtemplatesetting.OptionKey:
 		err = emailtemplatesetting.ValidateSettingsJSON(option.Value.(string))
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": err.Error(),
-			})
+			common.SysError(fmt.Sprintf("invalid email template setting: %v", err))
+			common.ApiErrorI18n(c, i18n.MsgSettingValueInvalid)
 			return
 		}
 	}

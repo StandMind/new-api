@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
@@ -34,19 +36,13 @@ func ClearChannelAffinityCache(c *gin.Context) {
 	}
 
 	if ruleName == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "缺少参数：rule_name，或使用 all=true 清空全部",
-		})
+		common.ApiErrorI18nStatus(c, http.StatusBadRequest, i18n.MsgInvalidParams)
 		return
 	}
 
 	deleted, err := service.ClearChannelAffinityCacheByRuleName(ruleName)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
+		common.ApiErrorI18nStatus(c, http.StatusBadRequest, i18n.MsgInvalidParams)
 		return
 	}
 
@@ -65,17 +61,11 @@ func GetChannelAffinityUsageCacheStats(c *gin.Context) {
 	keyFp := strings.TrimSpace(c.Query("key_fp"))
 
 	if ruleName == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "missing param: rule_name",
-		})
+		common.ApiErrorI18nStatus(c, http.StatusBadRequest, i18n.MsgInvalidParams)
 		return
 	}
 	if keyFp == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "missing param: key_fp",
-		})
+		common.ApiErrorI18nStatus(c, http.StatusBadRequest, i18n.MsgInvalidParams)
 		return
 	}
 

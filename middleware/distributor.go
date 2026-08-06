@@ -37,7 +37,7 @@ func Distribute() func(c *gin.Context) {
 		channelId, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId)
 		modelRequest, shouldSelectChannel, err := getModelRequest(c)
 		if err != nil {
-			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
+			abortWithOpenAIMessageKey(c, http.StatusBadRequest, i18n.MsgDistributorInvalidRequest, nil)
 			return
 		}
 		if modelRequest.Model != "" {
@@ -46,16 +46,16 @@ func Distribute() func(c *gin.Context) {
 		if ok {
 			id, err := strconv.Atoi(channelId.(string))
 			if err != nil {
-				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidChannelId))
+				abortWithOpenAIMessageKey(c, http.StatusBadRequest, i18n.MsgDistributorInvalidChannelId, nil)
 				return
 			}
 			channel, err = model.GetChannelById(id, true)
 			if err != nil {
-				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidChannelId))
+				abortWithOpenAIMessageKey(c, http.StatusBadRequest, i18n.MsgDistributorInvalidChannelId, nil)
 				return
 			}
 			if channel.Status != common.ChannelStatusEnabled {
-				abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorChannelDisabled))
+				abortWithOpenAIMessageKey(c, http.StatusForbidden, i18n.MsgDistributorChannelDisabled, nil)
 				return
 			}
 		} else {
@@ -66,7 +66,7 @@ func Distribute() func(c *gin.Context) {
 				s, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
 				if !ok {
 					// token model limit is empty, all models are not allowed
-					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenNoModelAccess))
+					abortWithOpenAIMessageKey(c, http.StatusForbidden, i18n.MsgDistributorTokenNoModelAccess, nil)
 					return
 				}
 				var tokenModelLimit map[string]bool
@@ -76,14 +76,14 @@ func Distribute() func(c *gin.Context) {
 				}
 				matchName := ratio_setting.FormatMatchingModelName(modelRequest.Model) // match gpts & thinking-*
 				if _, ok := tokenModelLimit[matchName]; !ok {
-					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": modelRequest.Model}))
+					abortWithOpenAIMessageKey(c, http.StatusForbidden, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": modelRequest.Model})
 					return
 				}
 			}
 
 			if shouldSelectChannel {
 				if modelRequest.Model == "" {
-					abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorModelNameRequired))
+					abortWithOpenAIMessageKey(c, http.StatusBadRequest, i18n.MsgDistributorModelNameRequired, nil)
 					return
 				}
 				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
@@ -94,15 +94,15 @@ func Distribute() func(c *gin.Context) {
 					playgroundRequest := &dto.PlayGroundRequest{}
 					err = common.UnmarshalBodyReusable(c, playgroundRequest)
 					if err != nil {
-						abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidPlayground, map[string]any{"Error": err.Error()}))
+						abortWithOpenAIMessageKey(c, http.StatusBadRequest, i18n.MsgDistributorInvalidPlayground, nil)
 						return
 					}
 					if playgroundRequest.Group != "" {
-						abortWithOpenAiMessage(c, http.StatusBadRequest, "Playground group 字段已废弃，请使用 route_group")
+						abortWithOpenAIMessageKey(c, http.StatusBadRequest, i18n.MsgDistributorPlaygroundGroupDeprecated, nil)
 						return
 					}
 					if playgroundRequest.RouteGroup != "" && playgroundRequest.RoutingPriority != "" {
-						abortWithOpenAiMessage(c, http.StatusBadRequest, "Playground route_group 与 routing_priority 不能同时使用")
+						abortWithOpenAIMessageKey(c, http.StatusBadRequest, i18n.MsgDistributorPlaygroundRouteConflict, nil)
 						return
 					}
 					if playgroundRequest.RouteGroup != "" {
@@ -111,7 +111,7 @@ func Distribute() func(c *gin.Context) {
 							userLevel = common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 						}
 						if !service.GroupInUserUsableGroups(userLevel, playgroundRequest.RouteGroup) {
-							abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorGroupAccessDenied))
+							abortWithOpenAIMessageKey(c, http.StatusForbidden, i18n.MsgDistributorGroupAccessDenied, nil)
 							return
 						}
 						usingGroup = playgroundRequest.RouteGroup
@@ -121,7 +121,7 @@ func Distribute() func(c *gin.Context) {
 					if playgroundRequest.RoutingPriority != "" {
 						priority := constant.NormalizeRoutingPriority(playgroundRequest.RoutingPriority)
 						if !constant.IsValidRoutingPriority(priority, false) {
-							abortWithOpenAiMessage(c, http.StatusBadRequest, "Playground routing_priority 无效，仅支持 auto、price、speed、success_rate")
+							abortWithOpenAIMessageKey(c, http.StatusBadRequest, i18n.MsgDistributorPlaygroundPriorityInvalid, nil)
 							return
 						}
 						common.SetContextKey(c, constant.ContextKeyTokenRoutingPriority, string(priority))
@@ -166,8 +166,10 @@ func Distribute() func(c *gin.Context) {
 					}
 					service.SetRouteAttemptPlan(c, routePlan)
 					service.SetRouteFinalStopReason(c, "route_plan_build_failed")
-					message := i18n.T(c, i18n.MsgDistributorGetChannelFailed, map[string]any{"Group": usingGroup, "Model": modelRequest.Model, "Error": routeErr.Error()})
-					abortWithOpenAiMessage(c, http.StatusServiceUnavailable, message, types.ErrorCodeModelNotFound)
+					abortWithOpenAIMessageKey(c, http.StatusServiceUnavailable, i18n.MsgDistributorGetChannelFailed, map[string]any{
+						"Group": usingGroup,
+						"Model": modelRequest.Model,
+					}, types.ErrorCodeModelNotFound)
 					return
 				}
 				if routingPriority != constant.RoutingPriorityManual {
@@ -177,10 +179,10 @@ func Distribute() func(c *gin.Context) {
 				if len(groups) == 0 {
 					service.SetRouteFinalStopReason(c, "no_candidate_groups")
 					if routingPriority != constant.RoutingPriorityManual {
-						abortWithOpenAiMessage(c, http.StatusServiceUnavailable, fmt.Sprintf("智能路由暂无支持模型 %s 的可用分组", modelRequest.Model), types.ErrorCodeModelNotFound)
+						abortWithOpenAIMessageKey(c, http.StatusServiceUnavailable, i18n.MsgDistributorNoSmartRoutingGroup, map[string]any{"Model": modelRequest.Model}, types.ErrorCodeModelNotFound)
 						return
 					}
-					abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}), types.ErrorCodeModelNotFound)
+					abortWithOpenAIMessageKey(c, http.StatusServiceUnavailable, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}, types.ErrorCodeModelNotFound)
 					return
 				}
 
@@ -218,7 +220,7 @@ func Distribute() func(c *gin.Context) {
 										RetryDecision:   service.RouteRetryDecisionStop,
 										RetryStopReason: "channel_initialization_failed",
 									})
-									abortWithOpenAiMessage(c, setupErr.StatusCode, setupErr.Error(), setupErr.GetErrorCode())
+									abortWithNewAPIError(c, setupErr)
 									return
 								}
 							} else {
@@ -286,14 +288,14 @@ func Distribute() func(c *gin.Context) {
 							RetryDecision:   service.RouteRetryDecisionStop,
 							RetryStopReason: "channel_initialization_failed",
 						})
-						abortWithOpenAiMessage(c, setupErr.StatusCode, setupErr.Error(), setupErr.GetErrorCode())
+						abortWithNewAPIError(c, setupErr)
 						return
 					}
 					channelContextReady = true
 				}
 				if channel == nil {
 					service.SetRouteFinalStopReason(c, "no_available_channel")
-					abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}), types.ErrorCodeModelNotFound)
+					abortWithOpenAIMessageKey(c, http.StatusServiceUnavailable, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}, types.ErrorCodeModelNotFound)
 					return
 				}
 			}
@@ -301,7 +303,7 @@ func Distribute() func(c *gin.Context) {
 		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
 		if channel != nil && !channelContextReady {
 			if setupErr := SetupContextForSelectedChannel(c, channel, modelRequest.Model); setupErr != nil {
-				abortWithOpenAiMessage(c, setupErr.StatusCode, setupErr.Error(), setupErr.GetErrorCode())
+				abortWithNewAPIError(c, setupErr)
 				return
 			}
 		}

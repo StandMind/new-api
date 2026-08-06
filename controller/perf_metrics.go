@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 
@@ -22,10 +24,7 @@ func GetPerfMetricsSummary(c *gin.Context) {
 	activeGroups := model.GetEnabledRouteGroupCodes()
 	result, err := perfmetrics.QuerySummaryAll(hours, activeGroups)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
+		common.ApiErrorStatus(c, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -38,10 +37,7 @@ func GetPerfMetricsSummary(c *gin.Context) {
 func GetPerfMetrics(c *gin.Context) {
 	modelName := c.Query("model")
 	if modelName == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "model is required",
-		})
+		common.ApiErrorI18nStatus(c, http.StatusBadRequest, i18n.MsgModelNameEmpty)
 		return
 	}
 
@@ -58,10 +54,7 @@ func GetPerfMetrics(c *gin.Context) {
 		Hours: hours,
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
+		common.ApiErrorStatus(c, http.StatusInternalServerError, err)
 		return
 	}
 

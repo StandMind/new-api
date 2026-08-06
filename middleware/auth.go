@@ -33,14 +33,34 @@ func validUserInfo(username string, role int) bool {
 	return true
 }
 
+func applySessionLanguage(c *gin.Context, session sessions.Session) {
+	value := session.Get("language")
+	if value == nil {
+		return
+	}
+	common.SetContextKey(c, constant.ContextKeyUserLanguageLookupDone, true)
+	if sessionLanguage, ok := value.(string); ok {
+		if lang, valid := i18n.NormalizeLanguage(sessionLanguage); valid {
+			common.SetContextKey(c, constant.ContextKeyUserLanguage, lang)
+		}
+	}
+}
+
 func authHelper(c *gin.Context, minRole int) {
 	session := sessions.Default(c)
 	username := session.Get("username")
 	role := session.Get("role")
 	id := session.Get("id")
 	status := session.Get("status")
+	if sessionID, ok := id.(int); ok && sessionID > 0 {
+		// Legacy sessions do not contain a language. Expose the signed session ID
+		// early so an authentication error can load that preference once.
+		c.Set("id", sessionID)
+	}
+	applySessionLanguage(c, session)
 	useAccessToken := false
 	accessTokenUserLevel := ""
+	accessTokenLanguage := ""
 	if username == nil {
 		// Check access token
 		accessToken := c.Request.Header.Get("Authorization")
@@ -85,6 +105,11 @@ func authHelper(c *gin.Context, minRole int) {
 			status = user.Status
 			model.PopulateUserLevelDisplay(user)
 			accessTokenUserLevel = user.UserLevel
+			accessTokenLanguage = user.GetSetting().Language
+			common.SetContextKey(c, constant.ContextKeyUserLanguageLookupDone, true)
+			if lang, ok := i18n.NormalizeLanguage(accessTokenLanguage); ok {
+				common.SetContextKey(c, constant.ContextKeyUserLanguage, lang)
+			}
 			useAccessToken = true
 		} else {
 			c.JSON(http.StatusOK, gin.H{
@@ -164,6 +189,9 @@ func authHelper(c *gin.Context, minRole int) {
 	c.Set("user_group", userLevel)
 	c.Set("user_level", userLevel)
 	c.Set("use_access_token", useAccessToken)
+	if lang, ok := i18n.NormalizeLanguage(accessTokenLanguage); useAccessToken && ok {
+		common.SetContextKey(c, constant.ContextKeyUserLanguage, lang)
+	}
 
 	// 管理/root 写操作审计兜底：内聚在鉴权链路里，保证任何经过 AdminAuth/RootAuth
 	// 的写接口都会自动留痕（无需在路由上单独挂审计中间件，避免漏挂）。
@@ -185,6 +213,7 @@ func TryUserAuth() func(c *gin.Context) {
 		if id != nil {
 			c.Set("id", id)
 		}
+		applySessionLanguage(c, session)
 		c.Next()
 	}
 }
@@ -236,6 +265,7 @@ func TokenOrUserAuth() func(c *gin.Context) {
 		if id := session.Get("id"); id != nil {
 			if status, ok := session.Get("status").(int); ok && status == common.UserStatusEnabled {
 				c.Set("id", id)
+				applySessionLanguage(c, session)
 				c.Next()
 				return
 			}
@@ -315,6 +345,7 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 			return
 		}
 
+		userCache.WriteContext(c)
 		c.Set("id", token.UserId)
 		c.Set("token_id", token.Id)
 		c.Set("token_key", token.Key)
@@ -388,12 +419,22 @@ func TokenAuth() func(c *gin.Context) {
 		if err != nil {
 			if errors.Is(err, model.ErrDatabase) {
 				common.SysLog("TokenAuth ValidateUserToken database error: " + err.Error())
-				abortWithOpenAiMessage(c, http.StatusInternalServerError,
-					common.TranslateMessage(c, i18n.MsgDatabaseError))
+				abortWithOpenAIMessageKey(c, http.StatusInternalServerError, i18n.MsgDatabaseError, nil)
 			} else {
-				abortWithOpenAiMessage(c, http.StatusUnauthorized,
-					common.TranslateMessage(c, i18n.MsgTokenInvalid))
+				abortWithOpenAIMessageKey(c, http.StatusUnauthorized, i18n.MsgTokenInvalid, nil)
 			}
+			return
+		}
+
+		userCache, err := model.GetUserCache(token.UserId)
+		if err != nil {
+			common.SysLog(fmt.Sprintf("TokenAuth GetUserCache error for user %d: %v", token.UserId, err))
+			abortWithOpenAIMessageKey(c, http.StatusInternalServerError, i18n.MsgDatabaseError, nil)
+			return
+		}
+		userCache.WriteContext(c)
+		if userCache.Status != common.UserStatusEnabled {
+			abortWithOpenAIMessageKey(c, http.StatusForbidden, i18n.MsgAuthUserBanned, nil)
 			return
 		}
 
@@ -403,46 +444,31 @@ func TokenAuth() func(c *gin.Context) {
 			logger.LogDebug(c, "Token has IP restrictions, checking client IP %s", clientIp)
 			ip := net.ParseIP(clientIp)
 			if ip == nil {
-				abortWithOpenAiMessage(c, http.StatusForbidden, "无法解析客户端 IP 地址")
+				abortWithOpenAIMessageKey(c, http.StatusForbidden, i18n.MsgAuthClientIPInvalid, nil)
 				return
 			}
 			if common.IsIpInCIDRList(ip, allowIps) == false {
-				abortWithOpenAiMessage(c, http.StatusForbidden, "您的 IP 不在令牌允许访问的列表中", types.ErrorCodeAccessDenied)
+				abortWithOpenAIMessageKey(c, http.StatusForbidden, i18n.MsgAuthIPNotAllowed, nil, types.ErrorCodeAccessDenied)
 				return
 			}
 			logger.LogDebug(c, "Client IP %s passed the token IP restrictions check", clientIp)
 		}
 
-		userCache, err := model.GetUserCache(token.UserId)
-		if err != nil {
-			common.SysLog(fmt.Sprintf("TokenAuth GetUserCache error for user %d: %v", token.UserId, err))
-			abortWithOpenAiMessage(c, http.StatusInternalServerError,
-				common.TranslateMessage(c, i18n.MsgDatabaseError))
-			return
-		}
-		userEnabled := userCache.Status == common.UserStatusEnabled
-		if !userEnabled {
-			abortWithOpenAiMessage(c, http.StatusForbidden, common.TranslateMessage(c, i18n.MsgAuthUserBanned))
-			return
-		}
-
-		userCache.WriteContext(c)
-
 		userGroup := userCache.UserLevel
 		routingPriority := constant.NormalizeRoutingPriority(token.RoutingPriority)
 		if !constant.IsValidRoutingPriority(routingPriority, true) {
-			abortWithOpenAiMessage(c, http.StatusForbidden, "API Key 智能路由模式无效，请重新保存")
+			abortWithOpenAIMessageKey(c, http.StatusForbidden, i18n.MsgAuthRoutingModeInvalid, nil)
 			return
 		}
 		tokenGroup := token.Group
 		if tokenGroup == "auto" {
-			abortWithOpenAiMessage(c, http.StatusForbidden, "auto 分组令牌已失效，请重新创建 API Key")
+			abortWithOpenAIMessageKey(c, http.StatusForbidden, i18n.MsgAuthLegacyAutoToken, nil)
 			return
 		}
 		if routingPriority != constant.RoutingPriorityManual {
 			groups := service.GetSmartRoutingAccessibleGroups(userGroup)
 			if len(groups) == 0 {
-				abortWithOpenAiMessage(c, http.StatusServiceUnavailable, "智能路由暂无可用分组")
+				abortWithOpenAIMessageKey(c, http.StatusServiceUnavailable, i18n.MsgAuthNoSmartRoutingGroup, nil)
 				return
 			}
 			common.SetContextKey(c, constant.ContextKeyUsingGroup, groups[0])
@@ -456,32 +482,32 @@ func TokenAuth() func(c *gin.Context) {
 		}
 		groupChain := token.GetGroupChain()
 		if len(groupChain) == 0 {
-			abortWithOpenAiMessage(c, http.StatusForbidden, "API Key 未配置分组链，请重新创建")
+			abortWithOpenAIMessageKey(c, http.StatusForbidden, i18n.MsgAuthGroupChainMissing, nil)
 			return
 		}
 		if tokenGroup != groupChain[0] {
-			abortWithOpenAiMessage(c, http.StatusForbidden, "API Key 首组与分组链不一致，请重新保存")
+			abortWithOpenAIMessageKey(c, http.StatusForbidden, i18n.MsgAuthGroupChainMismatch, nil)
 			return
 		}
 		usableGroups := service.GetUserUsableGroups(userGroup)
 		seenGroups := make(map[string]struct{}, len(groupChain))
 		for _, group := range groupChain {
 			if group == "auto" {
-				abortWithOpenAiMessage(c, http.StatusForbidden, "分组链不能包含 auto")
+				abortWithOpenAIMessageKey(c, http.StatusForbidden, i18n.MsgAuthGroupChainContainsAuto, nil)
 				return
 			}
 			if _, seen := seenGroups[group]; seen {
-				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("分组链不能重复包含 %s 分组", group))
+				abortWithOpenAIMessageKey(c, http.StatusForbidden, i18n.MsgAuthGroupChainDuplicate, map[string]any{"Group": group})
 				return
 			}
 			seenGroups[group] = struct{}{}
 			if _, ok := usableGroups[group]; !ok {
-				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", group))
+				abortWithOpenAIMessageKey(c, http.StatusForbidden, i18n.MsgAuthGroupNamedAccessDenied, map[string]any{"Group": group})
 				return
 			}
 			routeGroup, exists := model.GetRouteGroupFromSnapshot(group)
 			if !exists || !routeGroup.Enabled {
-				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("分组 %s 已被弃用", group))
+				abortWithOpenAIMessageKey(c, http.StatusForbidden, i18n.MsgAuthGroupRetired, map[string]any{"Group": group})
 				return
 			}
 		}
@@ -521,7 +547,7 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 			c.Set("specific_channel_id", parts[1])
 		} else {
 			c.Header("specific_channel_version", "701e3ae1dc3f7975556d354e0675168d004891c8")
-			abortWithOpenAiMessage(c, http.StatusForbidden, "普通用户不支持指定渠道")
+			abortWithOpenAIMessageKey(c, http.StatusForbidden, i18n.MsgAuthSpecificChannelDenied, nil)
 			return fmt.Errorf("普通用户不支持指定渠道")
 		}
 	}

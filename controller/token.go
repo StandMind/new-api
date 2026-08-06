@@ -255,19 +255,13 @@ func GetTokenStatus(c *gin.Context) {
 func GetTokenUsage(c *gin.Context) {
 	authHeader := c.GetHeader("Authorization")
 	if authHeader == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "No Authorization header",
-		})
+		common.ApiErrorI18nStatus(c, http.StatusUnauthorized, i18n.MsgTokenNotProvided)
 		return
 	}
 
 	parts := strings.Split(authHeader, " ")
 	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "Invalid Bearer token",
-		})
+		common.ApiErrorI18nStatus(c, http.StatusUnauthorized, i18n.MsgTokenInvalid)
 		return
 	}
 	tokenKey := parts[1]
@@ -337,10 +331,7 @@ func AddToken(c *gin.Context) {
 		return
 	}
 	if int(count) >= maxTokens {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": fmt.Sprintf("已达到最大令牌数量限制 (%d)", maxTokens),
-		})
+		common.ApiErrorI18n(c, i18n.MsgTokenCountLimitReached, map[string]any{"Max": maxTokens})
 		return
 	}
 	key, err := common.GenerateKey()

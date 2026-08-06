@@ -60,6 +60,16 @@ func main() {
 	}
 }
 
+func handleHTTPPanic(c *gin.Context, recovered any) {
+	common.SysLog("panic detected: " + common.MaskSensitiveInfo(fmt.Sprint(recovered)))
+	c.JSON(http.StatusInternalServerError, gin.H{
+		"error": gin.H{
+			"message": common.TranslateMessage(c, i18n.MsgRelayInternalPanic),
+			"type":    "new_api_panic",
+		},
+	})
+}
+
 func run() error {
 	startTime := time.Now()
 	if migrationOnlyRequested() {
@@ -192,15 +202,7 @@ func run() error {
 
 	// Initialize HTTP server
 	server := gin.New()
-	server.Use(gin.CustomRecovery(func(c *gin.Context, err any) {
-		common.SysLog(fmt.Sprintf("panic detected: %v", err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": gin.H{
-				"message": fmt.Sprintf("Panic detected, error: %v. Please submit a issue here: https://github.com/Calcium-Ion/new-api", err),
-				"type":    "new_api_panic",
-			},
-		})
-	}))
+	server.Use(gin.CustomRecovery(handleHTTPPanic))
 	// This will cause SSE not to work!!!
 	//server.Use(gzip.Gzip(gzip.DefaultCompression))
 	server.Use(middleware.RequestId())
@@ -449,11 +451,9 @@ func InitResources() error {
 	// Initialize i18n
 	err = i18n.Init()
 	if err != nil {
-		common.SysError("failed to initialize i18n: " + err.Error())
-		// Don't return error, i18n is not critical
-	} else {
-		common.SysLog("i18n initialized with languages: " + strings.Join(i18n.SupportedLanguages(), ", "))
+		return fmt.Errorf("initialize i18n: %w", err)
 	}
+	common.SysLog("i18n initialized with languages: " + strings.Join(i18n.SupportedLanguages(), ", "))
 	// Register user language loader for lazy loading
 	i18n.SetUserLangLoader(model.GetUserLanguage)
 

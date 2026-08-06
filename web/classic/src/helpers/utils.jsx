@@ -31,6 +31,7 @@ import {
 } from '../constants/playground.constants';
 import { TABLE_COMPACT_MODES_KEY } from '../constants';
 import { MOBILE_BREAKPOINT } from '../hooks/common/useIsMobile';
+import { extractApiErrorMessage } from './api-error';
 
 const HTMLToastContent = ({ htmlContent }) => {
   return <div dangerouslySetInnerHTML={{ __html: htmlContent }} />;
@@ -125,33 +126,13 @@ if (isMobileScreen) {
 
 export function showError(error) {
   console.error(error);
-  if (error.message) {
-    if (error.name === 'AxiosError') {
-      switch (error.response?.status) {
-        case 401:
-          // 清除用户状态
-          localStorage.removeItem('user');
-          // toast.error('错误：未登录或登录已过期，请重新登录！', showErrorOptions);
-          window.location.href = '/login?expired=true';
-          break;
-        case 429:
-          Toast.error('错误：请求次数过多，请稍后再试！');
-          break;
-        case 500:
-          Toast.error('错误：服务器内部错误，请联系管理员！');
-          break;
-        case 405:
-          Toast.info('本站仅作演示之用，无服务端！');
-          break;
-        default:
-          Toast.error('错误：' + error.message);
-      }
-      return;
-    }
-    Toast.error('错误：' + error.message);
-  } else {
-    Toast.error('错误：' + error);
+  if (error?.name === 'AxiosError' && error.response?.status === 401) {
+    Toast.error(extractApiErrorMessage(error), showErrorOptions);
+    localStorage.removeItem('user');
+    window.location.href = '/login?expired=true';
+    return;
   }
+  Toast.error(extractApiErrorMessage(error), showErrorOptions);
 }
 
 export function showWarning(message) {

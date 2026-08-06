@@ -372,7 +372,8 @@ func handleOAuthError(c *gin.Context, err error) {
 			common.ApiErrorI18n(c, e.MsgKey)
 		}
 	case *oauth.AccessDeniedError:
-		common.ApiErrorMsg(c, e.Message)
+		common.SysLog("OAuth access denied: " + common.MaskSensitiveInfo(e.Message))
+		common.ApiErrorI18n(c, i18n.MsgForbidden)
 	case *oauth.TrustLevelError:
 		common.ApiErrorI18n(c, i18n.MsgOAuthTrustLevelLow)
 	default:

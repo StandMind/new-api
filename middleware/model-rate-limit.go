@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/common/limiter"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 
@@ -87,11 +88,14 @@ func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) g
 		allowed, err := checkRedisRateLimit(ctx, rdb, successKey, successMaxCount, duration)
 		if err != nil {
 			fmt.Println("检查成功请求数限制失败:", err.Error())
-			abortWithOpenAiMessage(c, http.StatusInternalServerError, "rate_limit_check_failed")
+			abortWithOpenAIMessageKey(c, http.StatusInternalServerError, i18n.MsgOperationFailed, nil)
 			return
 		}
 		if !allowed {
-			abortWithOpenAiMessage(c, http.StatusTooManyRequests, fmt.Sprintf("您已达到请求数限制：%d分钟内最多请求%d次", setting.ModelRequestRateLimitDurationMinutes, successMaxCount))
+			abortWithOpenAIMessageKey(c, http.StatusTooManyRequests, i18n.MsgRateLimitReached, map[string]any{
+				"Minutes": setting.ModelRequestRateLimitDurationMinutes,
+				"Max":     successMaxCount,
+			})
 			return
 		}
 
@@ -110,12 +114,15 @@ func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) g
 
 			if err != nil {
 				fmt.Println("检查总请求数限制失败:", err.Error())
-				abortWithOpenAiMessage(c, http.StatusInternalServerError, "rate_limit_check_failed")
+				abortWithOpenAIMessageKey(c, http.StatusInternalServerError, i18n.MsgOperationFailed, nil)
 				return
 			}
 
 			if !allowed {
-				abortWithOpenAiMessage(c, http.StatusTooManyRequests, fmt.Sprintf("您已达到总请求数限制：%d分钟内最多请求%d次，包括失败次数，请检查您的请求是否正确", setting.ModelRequestRateLimitDurationMinutes, totalMaxCount))
+				abortWithOpenAIMessageKey(c, http.StatusTooManyRequests, i18n.MsgRateLimitTotalReached, map[string]any{
+					"Minutes": setting.ModelRequestRateLimitDurationMinutes,
+					"Max":     totalMaxCount,
+				})
 			}
 		}
 

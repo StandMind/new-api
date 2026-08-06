@@ -28,6 +28,8 @@ import {
 import {
   getUserIdFromLocalStorage,
   handleApiError,
+  extractApiErrorDetails,
+  getLanguageHeaders,
   processThinkTags,
   processIncompleteThinkTags,
 } from '../../helpers';
@@ -190,31 +192,27 @@ export const useApiRequest = (
           headers: {
             'Content-Type': 'application/json',
             'New-Api-User': getUserIdFromLocalStorage(),
+            ...getLanguageHeaders(),
           },
           body: JSON.stringify(payload),
         });
 
         if (!response.ok) {
-          let errorBody = '';
-          let parsedError = null;
+          let errorPayload;
           try {
-            errorBody = await response.text();
-            const errorJson = JSON.parse(errorBody);
-            if (errorJson?.error) {
-              parsedError = errorJson.error;
+            const errorBody = await response.text();
+            try {
+              errorPayload = JSON.parse(errorBody);
+            } catch (_) {
+              errorPayload = errorBody;
             }
-          } catch (e) {
-            if (!errorBody) {
-              errorBody = '无法读取错误响应体';
-            }
+          } catch (_) {
+            errorPayload = undefined;
           }
 
-          const errorInfo = handleApiError(
-            new Error(
-              `HTTP error! status: ${response.status}, body: ${errorBody}`,
-            ),
-            response,
-          );
+          const { errorCode, errorMessage } =
+            extractApiErrorDetails(errorPayload);
+          const errorInfo = handleApiError(errorPayload, response);
 
           setDebugData((prev) => ({
             ...prev,
@@ -222,12 +220,8 @@ export const useApiRequest = (
           }));
           setActiveDebugTab(DEBUG_TABS.RESPONSE);
 
-          const err = new Error(
-            parsedError?.message ||
-              `HTTP error! status: ${response.status}, body: ${errorBody}`,
-          );
-          err.errorCode = parsedError?.code || null;
-          err.errorType = parsedError?.type || null;
+          const err = new Error(errorMessage);
+          err.errorCode = errorCode;
           throw err;
         }
 
@@ -272,6 +266,7 @@ export const useApiRequest = (
       } catch (error) {
         console.error('Non-stream request error:', error);
 
+        const { errorCode, errorMessage } = extractApiErrorDetails(error);
         const errorInfo = handleApiError(error);
         setDebugData((prev) => ({
           ...prev,
@@ -287,8 +282,8 @@ export const useApiRequest = (
 
             newMessages[newMessages.length - 1] = {
               ...lastMessage,
-              content: t('请求发生错误: ') + error.message,
-              errorCode: error.errorCode || null,
+              content: errorMessage,
+              errorCode: error?.errorCode || errorCode || null,
               status: MESSAGE_STATUS.ERROR,
               ...autoCollapseState,
             };
@@ -317,6 +312,7 @@ export const useApiRequest = (
         headers: {
           'Content-Type': 'application/json',
           'New-Api-User': getUserIdFromLocalStorage(),
+          ...getLanguageHeaders(),
         },
         method: 'POST',
         payload: JSON.stringify(payload),
@@ -372,17 +368,19 @@ export const useApiRequest = (
           }
         } catch (error) {
           console.error('Failed to parse SSE message:', error);
-          const errorInfo = `解析错误: ${error.message}`;
+          const errorMessage = t('解析响应数据时发生错误');
+          const errorInfo = handleApiError(errorMessage);
 
           setDebugData((prev) => ({
             ...prev,
-            response: responseData + `\n\nError: ${errorInfo}`,
+            response:
+              responseData + `\n\n${JSON.stringify(errorInfo, null, 2)}`,
             sseMessages: [...(prev.sseMessages || []), e.data], // 即使解析失败也保存原始数据
             isStreaming: false,
           }));
           setActiveDebugTab(DEBUG_TABS.RESPONSE);
 
-          streamMessageUpdate(t('解析响应数据时发生错误'), 'content');
+          streamMessageUpdate(errorMessage, 'content');
           completeMessage(MESSAGE_STATUS.ERROR);
         }
       });
@@ -391,22 +389,19 @@ export const useApiRequest = (
         // 只有在流没有正常完成且连接状态异常时才处理错误
         if (!isStreamComplete && source.readyState !== 2) {
           console.error('SSE Error:', e);
-          let errorMessage = e.data || t('请求发生错误');
-          let errorCode = null;
+          let errorPayload = e.data;
 
           if (e.data) {
             try {
-              const errorJson = JSON.parse(e.data);
-              if (errorJson?.error) {
-                errorMessage = errorJson.error.message || errorMessage;
-                errorCode = errorJson.error.code || null;
-              }
+              errorPayload = JSON.parse(e.data);
             } catch (_) {
               // not JSON, use raw data as error message
             }
           }
 
-          const errorInfo = handleApiError(new Error(errorMessage));
+          const { errorCode, errorMessage } =
+            extractApiErrorDetails(errorPayload);
+          const errorInfo = handleApiError(errorPayload);
           errorInfo.readyState = source.readyState;
 
           setDebugData((prev) => ({
@@ -421,7 +416,11 @@ export const useApiRequest = (
           setMessage((prevMessage) => {
             const newMessages = [...prevMessage];
             const lastMessage = newMessages[newMessages.length - 1];
-            if (lastMessage && lastMessage.status !== MESSAGE_STATUS.COMPLETE && lastMessage.status !== MESSAGE_STATUS.ERROR) {
+            if (
+              lastMessage &&
+              lastMessage.status !== MESSAGE_STATUS.COMPLETE &&
+              lastMessage.status !== MESSAGE_STATUS.ERROR
+            ) {
               newMessages[newMessages.length - 1] = {
                 ...lastMessage,
                 content: (lastMessage.content || '') + errorMessage,
@@ -444,7 +443,8 @@ export const useApiRequest = (
           source.status !== 200 &&
           !isStreamComplete
         ) {
-          const errorInfo = handleApiError(new Error('HTTP状态错误'));
+          const errorMessage = `${t('连接已断开')} (HTTP ${source.status})`;
+          const errorInfo = handleApiError(errorMessage);
           errorInfo.status = source.status;
           errorInfo.readyState = source.readyState;
 
@@ -458,7 +458,7 @@ export const useApiRequest = (
           setActiveDebugTab(DEBUG_TABS.RESPONSE);
 
           source.close();
-          streamMessageUpdate(t('连接已断开'), 'content');
+          streamMessageUpdate(errorMessage, 'content');
           completeMessage(MESSAGE_STATUS.ERROR);
         }
       });
@@ -467,15 +467,16 @@ export const useApiRequest = (
         source.stream();
       } catch (error) {
         console.error('Failed to start SSE stream:', error);
-        const errorInfo = handleApiError(error);
+        const errorMessage = t('建立连接时发生错误');
+        const errorInfo = handleApiError(errorMessage);
 
         setDebugData((prev) => ({
           ...prev,
-          response: 'Stream启动失败:\n' + JSON.stringify(errorInfo, null, 2),
+          response: JSON.stringify(errorInfo, null, 2),
         }));
         setActiveDebugTab(DEBUG_TABS.RESPONSE);
 
-        streamMessageUpdate(t('建立连接时发生错误'), 'content');
+        streamMessageUpdate(errorMessage, 'content');
         completeMessage(MESSAGE_STATUS.ERROR);
       }
     },

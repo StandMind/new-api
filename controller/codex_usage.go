@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel/codex"
 	"github.com/QuantumNous/new-api/service"
@@ -22,7 +22,7 @@ func GetCodexChannelUsage(c *gin.Context) {
 		c,
 		service.FetchCodexWhamUsage,
 		"failed to fetch codex usage",
-		"获取用量信息失败，请稍后重试",
+		i18n.MsgOperationFailed,
 	)
 }
 
@@ -31,7 +31,7 @@ func GetCodexChannelRateLimitResetCredits(c *gin.Context) {
 		c,
 		service.FetchCodexWhamRateLimitResetCredits,
 		"failed to fetch codex reset credits",
-		"获取重置次数详情失败，请稍后重试",
+		i18n.MsgOperationFailed,
 	)
 }
 
@@ -40,7 +40,7 @@ func ResetCodexChannelUsage(c *gin.Context) {
 		c,
 		service.ConsumeCodexWhamRateLimitResetCredit,
 		"failed to reset codex usage",
-		"重置用量失败，请稍后重试",
+		i18n.MsgUpdateFailed,
 	)
 }
 
@@ -56,11 +56,11 @@ func fetchCodexChannelWhamData(
 	c *gin.Context,
 	fetch codexWhamFetchFunc,
 	logPrefix string,
-	userMessage string,
+	messageKey string,
 ) {
 	channelId, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		common.ApiError(c, fmt.Errorf("invalid channel id: %w", err))
+		common.ApiErrorI18n(c, i18n.MsgChannelIdFormatError)
 		return
 	}
 
@@ -70,32 +70,32 @@ func fetchCodexChannelWhamData(
 		return
 	}
 	if ch == nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "channel not found"})
+		common.ApiErrorI18n(c, i18n.MsgChannelNotExists)
 		return
 	}
 	if ch.Type != constant.ChannelTypeCodex {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "channel type is not Codex"})
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	if ch.ChannelInfo.IsMultiKey {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "multi-key channel is not supported"})
+		common.ApiErrorI18n(c, i18n.MsgChannelNotMultiKey)
 		return
 	}
 
 	oauthKey, err := codex.ParseOAuthKey(strings.TrimSpace(ch.Key))
 	if err != nil {
 		common.SysError("failed to parse oauth key: " + err.Error())
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "解析凭证失败，请检查渠道配置"})
+		common.ApiErrorI18n(c, i18n.MsgRelayChannelConfigurationError)
 		return
 	}
 	accessToken := strings.TrimSpace(oauthKey.AccessToken)
 	accountID := strings.TrimSpace(oauthKey.AccountID)
 	if accessToken == "" {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "codex channel: access_token is required"})
+		common.ApiErrorI18n(c, i18n.MsgRelayChannelKeyInvalid)
 		return
 	}
 	if accountID == "" {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "codex channel: account_id is required"})
+		common.ApiErrorI18n(c, i18n.MsgRelayChannelConfigurationError)
 		return
 	}
 
@@ -111,7 +111,7 @@ func fetchCodexChannelWhamData(
 	statusCode, body, err := fetch(ctx, client, ch.GetBaseURL(), accessToken, accountID)
 	if err != nil {
 		common.SysError(logPrefix + ": " + err.Error())
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": userMessage})
+		common.ApiErrorI18n(c, messageKey)
 		return
 	}
 
@@ -141,7 +141,7 @@ func fetchCodexChannelWhamData(
 			statusCode, body, err = fetch(ctx2, client, ch.GetBaseURL(), oauthKey.AccessToken, accountID)
 			if err != nil {
 				common.SysError(logPrefix + " after refresh: " + err.Error())
-				c.JSON(http.StatusOK, gin.H{"success": false, "message": userMessage})
+				common.ApiErrorI18n(c, messageKey)
 				return
 			}
 		}
@@ -160,7 +160,7 @@ func fetchCodexChannelWhamData(
 		"data":            payload,
 	}
 	if !ok {
-		resp["message"] = fmt.Sprintf("upstream status: %d", statusCode)
+		resp["message"] = i18n.T(c, i18n.MsgRelayInvalidUpstreamResponse)
 	}
 	c.JSON(http.StatusOK, resp)
 }

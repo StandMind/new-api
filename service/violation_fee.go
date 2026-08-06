@@ -45,7 +45,19 @@ func WrapAsViolationFeeGrokCSAM(err *types.NewAPIError) *types.NewAPIError {
 	oai := err.ToOpenAIError()
 	oai.Type = string(types.ErrorCodeViolationFeeGrokCSAM)
 	oai.Code = string(types.ErrorCodeViolationFeeGrokCSAM)
-	return types.WithOpenAIError(oai, err.StatusCode, types.ErrOptionWithSkipRetry())
+	opts := violationFeeWrapOptions(err)
+	return types.WithOpenAIError(oai, err.StatusCode, opts...)
+}
+
+func violationFeeWrapOptions(err *types.NewAPIError) []types.NewAPIErrorOptions {
+	opts := []types.NewAPIErrorOptions{
+		types.ErrOptionWithSkipRetry(),
+		types.ErrOptionWithErrorSource(err.GetSource()),
+	}
+	if key := err.PublicMessageKey(); key != "" {
+		opts = append(opts, types.ErrOptionWithPublicMessage(key, err.PublicMessageArgs()))
+	}
+	return opts
 }
 
 // NormalizeViolationFeeError ensures:
@@ -64,7 +76,7 @@ func NormalizeViolationFeeError(err *types.NewAPIError) *types.NewAPIError {
 
 	if IsViolationFeeCode(err.GetErrorCode()) {
 		oai := err.ToOpenAIError()
-		return types.WithOpenAIError(oai, err.StatusCode, types.ErrOptionWithSkipRetry())
+		return types.WithOpenAIError(oai, err.StatusCode, violationFeeWrapOptions(err)...)
 	}
 
 	return err

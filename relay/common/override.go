@@ -123,10 +123,14 @@ func NewAPIErrorFromParamOverride(err *ParamOverrideReturnError) *types.NewAPIEr
 		message = "request blocked by param override"
 	}
 
-	opts := make([]types.NewAPIErrorOptions, 0, 1)
+	opts := make([]types.NewAPIErrorOptions, 0, 3)
 	if err.SkipRetry {
 		opts = append(opts, types.ErrOptionWithSkipRetry())
 	}
+	opts = append(opts,
+		types.ErrOptionWithErrorSource(types.ErrorSourceLocal),
+		types.ErrOptionWithPublicMessage("relay.invalid_request"),
+	)
 
 	return types.WithOpenAIError(types.OpenAIError{
 		Message: message,

@@ -2,6 +2,7 @@ package common
 
 import (
 	"bytes"
+	stderrors "errors"
 	"fmt"
 	"io"
 	"mime"
@@ -9,7 +10,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/pkg/errors"
@@ -21,6 +24,161 @@ const KeyRequestBody = "key_request_body"
 const KeyBodyStorage = "key_body_storage"
 
 var ErrRequestBodyTooLarge = errors.New("request body too large")
+
+const (
+	defaultPublicErrorKey    = "common.operation_failed"
+	maxPublicMessageArgs     = 8
+	maxPublicMessageArgKey   = 64
+	maxPublicMessageArgValue = 256
+)
+
+type PublicError struct {
+	key   string
+	args  map[string]any
+	cause error
+}
+
+type UpstreamError struct {
+	message string
+	cause   error
+}
+
+func NewUpstreamError(message string, cause error) *UpstreamError {
+	return &UpstreamError{message: message, cause: cause}
+}
+
+func (e *UpstreamError) Error() string {
+	if e == nil {
+		return ""
+	}
+	if e.message != "" {
+		return e.message
+	}
+	if e.cause != nil {
+		return e.cause.Error()
+	}
+	return ""
+}
+
+func (e *UpstreamError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.cause
+}
+
+func UpstreamErrorMessage(err error) (string, bool) {
+	var upstreamError *UpstreamError
+	if !stderrors.As(err, &upstreamError) {
+		return "", false
+	}
+	return upstreamError.Error(), true
+}
+
+func NewPublicError(key string, cause error, args ...map[string]any) *PublicError {
+	return &PublicError{
+		key:   key,
+		args:  CopyPublicMessageArgs(args...),
+		cause: cause,
+	}
+}
+
+func (e *PublicError) Error() string {
+	if e == nil {
+		return ""
+	}
+	if e.cause != nil {
+		return e.cause.Error()
+	}
+	return e.key
+}
+
+func (e *PublicError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.cause
+}
+
+func (e *PublicError) PublicMessageKey() string {
+	if e == nil {
+		return ""
+	}
+	return e.key
+}
+
+func (e *PublicError) PublicMessageArgs() map[string]any {
+	if e == nil {
+		return nil
+	}
+	return CopyPublicMessageArgs(e.args)
+}
+
+// CopyPublicMessageArgs keeps public error metadata small and detached from
+// caller-owned maps. Unsupported values are omitted rather than retaining
+// request bodies or mutable objects through an error's lifetime.
+func CopyPublicMessageArgs(args ...map[string]any) map[string]any {
+	if len(args) == 0 || len(args[0]) == 0 {
+		return nil
+	}
+	capacity := len(args[0])
+	if capacity > maxPublicMessageArgs {
+		capacity = maxPublicMessageArgs
+	}
+	result := make(map[string]any, capacity)
+	for key, value := range args[0] {
+		if len(result) >= maxPublicMessageArgs || key == "" || len(key) > maxPublicMessageArgKey {
+			continue
+		}
+		switch typedValue := value.(type) {
+		case string:
+			if len(typedValue) > maxPublicMessageArgValue {
+				limit := maxPublicMessageArgValue
+				for limit > 0 && !utf8.RuneStart(typedValue[limit]) {
+					limit--
+				}
+				typedValue = typedValue[:limit]
+			}
+			result[key] = typedValue
+		case int, int8, int16, int32, int64,
+			uint, uint8, uint16, uint32, uint64,
+			float32, float64:
+			result[key] = value
+		}
+	}
+	return result
+}
+
+type publicMessageCarrier interface {
+	PublicMessageKey() string
+	PublicMessageArgs() map[string]any
+}
+
+var (
+	unclassifiedPublicErrorCount atomic.Uint64
+	unclassifiedPublicErrorLogAt atomic.Int64
+)
+
+func logUnclassifiedPublicError(c *gin.Context, err error) {
+	if err == nil {
+		return
+	}
+	unclassifiedPublicErrorCount.Add(1)
+	route := c.FullPath()
+	if route == "" {
+		route = "unknown_route"
+	}
+	now := time.Now().Unix()
+	previous := unclassifiedPublicErrorLogAt.Load()
+	if now-previous < 60 || !unclassifiedPublicErrorLogAt.CompareAndSwap(previous, now) {
+		return
+	}
+	SysError(fmt.Sprintf("unclassified public error route=%s error=%s", route, MaskSensitiveInfo(err.Error())))
+}
+
+func UnclassifiedPublicErrorCount() uint64 {
+	return unclassifiedPublicErrorCount.Load()
+}
 
 func IsRequestBodyTooLargeError(err error) bool {
 	if err == nil {
@@ -219,17 +377,27 @@ func GetContextKeyType[T any](c *gin.Context, key constant.ContextKey) (T, bool)
 }
 
 func ApiError(c *gin.Context, err error) {
-	c.JSON(http.StatusOK, gin.H{
+	ApiErrorStatus(c, http.StatusOK, err)
+}
+
+func ApiErrorStatus(c *gin.Context, statusCode int, err error) {
+	key := defaultPublicErrorKey
+	var args map[string]any
+	var carrier publicMessageCarrier
+	if stderrors.As(err, &carrier) && carrier.PublicMessageKey() != "" {
+		key = carrier.PublicMessageKey()
+		args = carrier.PublicMessageArgs()
+	} else {
+		logUnclassifiedPublicError(c, err)
+	}
+	c.JSON(statusCode, gin.H{
 		"success": false,
-		"message": err.Error(),
+		"message": TranslateMessage(c, key, args),
 	})
 }
 
 func ApiErrorMsg(c *gin.Context, msg string) {
-	c.JSON(http.StatusOK, gin.H{
-		"success": false,
-		"message": msg,
-	})
+	ApiError(c, stderrors.New(msg))
 }
 
 func ApiSuccess(c *gin.Context, data any) {
@@ -243,10 +411,36 @@ func ApiSuccess(c *gin.Context, data any) {
 // ApiErrorI18n returns a translated error message based on the user's language preference
 // key is the i18n message key, args is optional template data
 func ApiErrorI18n(c *gin.Context, key string, args ...map[string]any) {
+	ApiErrorI18nStatus(c, http.StatusOK, key, args...)
+}
+
+func ApiErrorI18nStatus(c *gin.Context, statusCode int, key string, args ...map[string]any) {
 	msg := TranslateMessage(c, key, args...)
-	c.JSON(http.StatusOK, gin.H{
+	c.JSON(statusCode, gin.H{
 		"success": false,
 		"message": msg,
+	})
+}
+
+// ApiErrorDataI18nStatus preserves the legacy payment API error envelope while
+// localizing only its user-facing data field.
+func ApiErrorDataI18nStatus(c *gin.Context, statusCode int, key string, args ...map[string]any) {
+	c.JSON(statusCode, gin.H{
+		"message": "error",
+		"data":    TranslateMessage(c, key, args...),
+	})
+}
+
+func ApiErrorDataI18n(c *gin.Context, key string, args ...map[string]any) {
+	ApiErrorDataI18nStatus(c, http.StatusOK, key, args...)
+}
+
+// ApiUpstreamError preserves a provider-owned error message while keeping the
+// dashboard API response shape distinct from site-generated localized errors.
+func ApiUpstreamError(c *gin.Context, statusCode int, message string) {
+	c.JSON(statusCode, gin.H{
+		"success": false,
+		"message": MaskSensitiveInfo(message),
 	})
 }
 
@@ -266,11 +460,10 @@ func ApiSuccessI18n(c *gin.Context, key string, data any, args ...map[string]any
 var TranslateMessage func(c *gin.Context, key string, args ...map[string]any) string
 
 func init() {
-	// Default implementation that returns the key as-is
-	// This will be replaced by i18n.T during i18n initialization
+	// This is only used if the embedded i18n bundle cannot initialize.
 	TranslateMessage = func(c *gin.Context, key string, args ...map[string]any) string {
 		c.Header("X-Translate-id", "d5e7afdfc7f03414b941f9c1e7096be9966510e7")
-		return key
+		return "Operation failed"
 	}
 }
 

@@ -38,7 +38,7 @@ func TestUpdateOptionRejectsInvalidOfficialPrice(t *testing.T) {
 	)
 
 	assert.Equal(t, false, response["success"])
-	assert.Contains(t, response["message"], "positive finite number")
+	assert.Equal(t, "Invalid setting value", response["message"])
 }
 
 func TestUpdateOptionRejectsDeprecatedAutomaticGroupSettings(t *testing.T) {
@@ -51,7 +51,7 @@ func TestUpdateOptionRejectsDeprecatedAutomaticGroupSettings(t *testing.T) {
 		t.Run(key, func(t *testing.T) {
 			response := callUpdateOption(t, key, "true")
 			assert.Equal(t, false, response["success"])
-			assert.Contains(t, response["message"], "已废弃")
+			assert.Equal(t, "This setting has been deprecated", response["message"])
 		})
 	}
 }

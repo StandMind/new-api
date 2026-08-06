@@ -104,7 +104,6 @@
   "Model mapping must be a JSON object with string values": "Model mapping must be a JSON object with string values",
   "Move fallback to end": "Move fallback to end",
   "Name, provider type, and availability.": "Name, provider type, and availability.",
-  "Network connection failed or server not responding": "Network connection failed or server not responding",
   "No content to copy": "No content to copy",
   "No matching token and channel usage was found.": "No matching token and channel usage was found.",
   "No model price changes to save": "No model price changes to save",

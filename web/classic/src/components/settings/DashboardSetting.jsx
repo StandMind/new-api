@@ -25,6 +25,7 @@ import SettingsAnnouncements from '../../pages/Setting/Dashboard/SettingsAnnounc
 import SettingsFAQ from '../../pages/Setting/Dashboard/SettingsFAQ';
 import SettingsUptimeKuma from '../../pages/Setting/Dashboard/SettingsUptimeKuma';
 import SettingsDataDashboard from '../../pages/Setting/Dashboard/SettingsDataDashboard';
+import i18n from '../../i18n/i18n';
 
 const DashboardSetting = () => {
   let [inputs, setInputs] = useState({
@@ -77,7 +78,7 @@ const DashboardSetting = () => {
       setLoading(true);
       await getOptions();
     } catch (error) {
-      showError('刷新失败');
+      showError(i18n.t('刷新失败'));
       console.error(error);
     } finally {
       setLoading(false);
@@ -115,7 +116,7 @@ const DashboardSetting = () => {
       setShowMigrateModal(false);
     } catch (err) {
       console.error(err);
-      showError('迁移失败: ' + (err.message || '未知错误'));
+      showError(i18n.t('迁移失败: ') + (err.message || i18n.t('未知错误')));
     } finally {
       setLoading(false);
     }

@@ -16,6 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import i18next from 'i18next'
+
+import { extractApiErrorDetails } from '@/lib/api-error'
+
 import { ERROR_MESSAGES } from '../../constants'
 import type { ChatCompletionChunk } from '../../types'
 
@@ -29,38 +33,23 @@ export type StreamMessageUpdate = {
   chunk: string
 }
 
-type StreamErrorPayload = {
-  error?: {
-    code?: string
-    message?: string
-  }
-}
-
 export type StreamErrorDetails = {
   errorCode?: string
   errorMessage: string
 }
 
 export function parseStreamErrorDetails(data?: string): StreamErrorDetails {
-  const fallbackMessage = data || ERROR_MESSAGES.API_REQUEST_ERROR
-
   if (!data) {
-    return { errorMessage: fallbackMessage }
+    return extractApiErrorDetails(undefined, ERROR_MESSAGES.API_REQUEST_ERROR)
   }
 
   try {
-    const parsed = JSON.parse(data) as StreamErrorPayload
-
-    if (!parsed?.error) {
-      return { errorMessage: fallbackMessage }
-    }
-
-    return {
-      errorCode: parsed.error.code || undefined,
-      errorMessage: parsed.error.message || fallbackMessage,
-    }
+    return extractApiErrorDetails(
+      JSON.parse(data) as unknown,
+      ERROR_MESSAGES.API_REQUEST_ERROR
+    )
   } catch {
-    return { errorMessage: fallbackMessage }
+    return extractApiErrorDetails(data, ERROR_MESSAGES.API_REQUEST_ERROR)
   }
 }
 
@@ -105,7 +94,7 @@ export function getStreamReadyStateError(
     status !== undefined &&
     status !== 200
   ) {
-    return `HTTP ${status}: ${ERROR_MESSAGES.CONNECTION_CLOSED}`
+    return `HTTP ${status}: ${i18next.t(ERROR_MESSAGES.CONNECTION_CLOSED)}`
   }
 
   return null

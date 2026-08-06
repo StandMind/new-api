@@ -16,19 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ERROR_MESSAGES } from '../../constants'
+import { extractApiErrorDetails } from '@/lib/api-error'
 
-type RequestErrorLike = {
-  message?: string
-  response?: {
-    data?: {
-      error?: {
-        code?: string
-      }
-      message?: string
-    }
-  }
-}
+import { ERROR_MESSAGES } from '../../constants'
 
 export type RequestErrorDetails = {
   errorCode?: string
@@ -36,13 +26,5 @@ export type RequestErrorDetails = {
 }
 
 export function parseRequestErrorDetails(error: unknown): RequestErrorDetails {
-  const requestError = error as RequestErrorLike
-
-  return {
-    errorCode: requestError?.response?.data?.error?.code || undefined,
-    errorMessage:
-      requestError?.response?.data?.message ||
-      requestError?.message ||
-      ERROR_MESSAGES.API_REQUEST_ERROR,
-  }
+  return extractApiErrorDetails(error, ERROR_MESSAGES.API_REQUEST_ERROR)
 }

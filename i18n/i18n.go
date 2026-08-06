@@ -2,11 +2,14 @@ package i18n
 
 import (
 	"embed"
+	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nicksnyder/go-i18n/v2/i18n"
+	goi18n "github.com/nicksnyder/go-i18n/v2/i18n"
 	"golang.org/x/text/language"
 	"gopkg.in/yaml.v3"
 
@@ -16,216 +19,246 @@ import (
 )
 
 const (
+	LangEn      = "en"
+	LangEs      = "es"
+	LangFr      = "fr"
+	LangJa      = "ja"
+	LangRu      = "ru"
+	LangVi      = "vi"
 	LangZhCN    = "zh-CN"
 	LangZhTW    = "zh-TW"
-	LangEn      = "en"
-	DefaultLang = LangEn // Fallback to English if language not supported
+	DefaultLang = LangEn
+
+	maxAcceptLanguageBytes = 512
+	maxAcceptLanguageTags  = 16
+	fallbackMessage        = "Request failed"
 )
+
+var supportedLanguages = [...]string{
+	LangEn,
+	LangEs,
+	LangFr,
+	LangJa,
+	LangRu,
+	LangVi,
+	LangZhCN,
+	LangZhTW,
+}
 
 //go:embed locales/*.yaml
 var localeFS embed.FS
 
 var (
-	bundle     *i18n.Bundle
-	localizers = make(map[string]*i18n.Localizer)
-	mu         sync.RWMutex
+	bundle     *goi18n.Bundle
+	localizers map[string]*goi18n.Localizer
 	initOnce   sync.Once
+	initErr    error
+
+	missingTranslationCount atomic.Uint64
+	missingTranslationLogAt atomic.Int64
 )
 
-// Init initializes the i18n bundle and loads all translation files
+func init() {
+	_ = Init()
+}
+
+// Init loads every supported locale before the HTTP server starts. The bundle
+// and localizer map are immutable after this function returns.
 func Init() error {
-	var initErr error
 	initOnce.Do(func() {
-		bundle = i18n.NewBundle(language.Chinese)
+		bundle = goi18n.NewBundle(language.English)
 		bundle.RegisterUnmarshalFunc("yaml", yaml.Unmarshal)
 
-		// Load embedded translation files
-		files := []string{"locales/zh-CN.yaml", "locales/zh-TW.yaml", "locales/en.yaml"}
-		for _, file := range files {
-			_, err := bundle.LoadMessageFileFS(localeFS, file)
-			if err != nil {
+		for _, lang := range supportedLanguages {
+			if _, err := bundle.LoadMessageFileFS(localeFS, "locales/"+lang+".yaml"); err != nil {
 				initErr = err
 				return
 			}
 		}
 
-		// Pre-create localizers for supported languages
-		localizers[LangZhCN] = i18n.NewLocalizer(bundle, LangZhCN)
-		localizers[LangZhTW] = i18n.NewLocalizer(bundle, LangZhTW)
-		localizers[LangEn] = i18n.NewLocalizer(bundle, LangEn)
-
-		// Set the TranslateMessage function in common package
+		localizers = make(map[string]*goi18n.Localizer, len(supportedLanguages))
+		for _, lang := range supportedLanguages {
+			localizers[lang] = goi18n.NewLocalizer(bundle, lang, DefaultLang)
+		}
 		common.TranslateMessage = T
 	})
 	return initErr
 }
 
-// GetLocalizer returns a localizer for the specified language
-func GetLocalizer(lang string) *i18n.Localizer {
-	lang = normalizeLang(lang)
-
-	mu.RLock()
-	loc, ok := localizers[lang]
-	mu.RUnlock()
-
-	if ok {
-		return loc
+// NormalizeLanguage converts supported aliases and BCP-47 variants to the
+// canonical language codes used by the application.
+func NormalizeLanguage(raw string) (string, bool) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", false
 	}
-
-	// Create new localizer for unknown language (fallback to default)
-	mu.Lock()
-	defer mu.Unlock()
-
-	// Double-check after acquiring write lock
-	if loc, ok = localizers[lang]; ok {
-		return loc
+	if idx := strings.IndexByte(value, ';'); idx >= 0 {
+		value = value[:idx]
 	}
+	value = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(value), "_", "-"))
 
-	loc = i18n.NewLocalizer(bundle, lang, DefaultLang)
-	localizers[lang] = loc
-	return loc
+	switch {
+	case value == "zh-tw", value == "zhtw", value == "zh-hk", value == "zh-mo", strings.HasPrefix(value, "zh-hant"):
+		return LangZhTW, true
+	case value == "zh", value == "zh-cn", value == "zhcn", value == "zh-sg", strings.HasPrefix(value, "zh-hans"):
+		return LangZhCN, true
+	case value == LangEn || strings.HasPrefix(value, LangEn+"-"):
+		return LangEn, true
+	case value == LangEs || strings.HasPrefix(value, LangEs+"-"):
+		return LangEs, true
+	case value == LangFr || strings.HasPrefix(value, LangFr+"-"):
+		return LangFr, true
+	case value == LangJa || strings.HasPrefix(value, LangJa+"-"):
+		return LangJa, true
+	case value == LangRu || strings.HasPrefix(value, LangRu+"-"):
+		return LangRu, true
+	case value == LangVi || strings.HasPrefix(value, LangVi+"-"):
+		return LangVi, true
+	default:
+		return "", false
+	}
 }
 
-// T translates a message key using the language from gin context
+// ParseAcceptLanguage returns the highest-priority supported language. The
+// standard parser handles q-values; unsupported preferences are skipped.
+func ParseAcceptLanguage(header string) string {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return DefaultLang
+	}
+	if len(header) > maxAcceptLanguageBytes {
+		header = header[:maxAcceptLanguageBytes]
+	}
+
+	if !strings.ContainsAny(header, ",;") {
+		if lang, ok := NormalizeLanguage(header); ok {
+			return lang
+		}
+		return DefaultLang
+	}
+
+	parts := strings.Split(header, ",")
+	if len(parts) > maxAcceptLanguageTags {
+		parts = parts[:maxAcceptLanguageTags]
+	}
+	tags, _, err := language.ParseAcceptLanguage(strings.Join(parts, ","))
+	if err != nil {
+		return DefaultLang
+	}
+	for _, tag := range tags {
+		if lang, ok := NormalizeLanguage(tag.String()); ok {
+			return lang
+		}
+	}
+	return DefaultLang
+}
+
+// T translates a message key using the language resolved for this request.
 func T(c *gin.Context, key string, args ...map[string]any) string {
-	lang := GetLangFromContext(c)
-	return Translate(lang, key, args...)
+	return Translate(GetLangFromContext(c), key, args...)
 }
 
-// Translate translates a message key for the specified language
+// Translate translates a message key for a canonical or aliased language.
 func Translate(lang, key string, args ...map[string]any) string {
-	loc := GetLocalizer(lang)
-
-	config := &i18n.LocalizeConfig{
-		MessageID: key,
+	if err := Init(); err != nil {
+		return fallbackMessage
+	}
+	canonical, ok := NormalizeLanguage(lang)
+	if !ok {
+		canonical = DefaultLang
+	}
+	loc := localizers[canonical]
+	if loc == nil {
+		loc = localizers[DefaultLang]
 	}
 
+	config := &goi18n.LocalizeConfig{MessageID: key}
 	if len(args) > 0 && args[0] != nil {
 		config.TemplateData = args[0]
 	}
-
-	msg, err := loc.Localize(config)
-	if err != nil {
-		// Return key as fallback if translation not found
-		return key
+	message, err := loc.Localize(config)
+	if err != nil || message == "" {
+		missingTranslationCount.Add(1)
+		now := time.Now().Unix()
+		previous := missingTranslationLogAt.Load()
+		if now-previous >= 60 && missingTranslationLogAt.CompareAndSwap(previous, now) {
+			common.SysError(fmt.Sprintf("missing public translation language=%s key=%s", canonical, common.LocalLogPreview(key)))
+		}
+		return fallbackMessage
 	}
-	return msg
+	return message
 }
 
-// userLangLoaderFunc is a function that loads user language from database/cache
-// It's set by the model package to avoid circular imports
-var userLangLoaderFunc func(userId int) string
+// userLangLoaderFunc loads the persisted preference for legacy sessions that
+// do not yet contain a language. It is registered once during startup.
+var userLangLoaderFunc func(userID int) string
 
-// SetUserLangLoader sets the function to load user language (called from model package)
-func SetUserLangLoader(loader func(userId int) string) {
+func SetUserLangLoader(loader func(userID int) string) {
 	userLangLoaderFunc = loader
 }
 
-// GetLangFromContext extracts the language setting from gin context
-// It checks multiple sources in priority order:
-// 1. User settings (ContextKeyUserSetting) - if already loaded (e.g., by TokenAuth)
-// 2. Lazy load user language from cache/DB using user ID
-// 3. Language set by middleware (ContextKeyLanguage) - from Accept-Language header
-// 4. Default language (English)
+// GetLangFromContext resolves language without performing more than one user
+// cache lookup per request. A user setting always wins over the request header.
 func GetLangFromContext(c *gin.Context) string {
 	if c == nil {
 		return DefaultLang
 	}
+	if common.GetContextKeyBool(c, constant.ContextKeyLanguageResolved) {
+		if lang := common.GetContextKeyString(c, constant.ContextKeyLanguage); lang != "" {
+			return lang
+		}
+		return DefaultLang
+	}
 
-	// 1. Try to get language from user settings (if already loaded by TokenAuth or other middleware)
 	if userSetting, ok := common.GetContextKeyType[dto.UserSetting](c, constant.ContextKeyUserSetting); ok {
-		if userSetting.Language != "" {
-			normalized := normalizeLang(userSetting.Language)
-			if IsSupported(normalized) {
-				return normalized
-			}
+		if lang, valid := NormalizeLanguage(userSetting.Language); valid {
+			return cacheResolvedLanguage(c, lang)
+		}
+	}
+	if lang := common.GetContextKeyString(c, constant.ContextKeyUserLanguage); lang != "" {
+		if canonical, valid := NormalizeLanguage(lang); valid {
+			return cacheResolvedLanguage(c, canonical)
 		}
 	}
 
-	// 2. Lazy load user language using user ID (for session-based auth where full settings aren't loaded)
-	if userLangLoaderFunc != nil {
-		if userId, exists := c.Get("id"); exists {
-			if uid, ok := userId.(int); ok && uid > 0 {
-				lang := userLangLoaderFunc(uid)
-				if lang != "" {
-					normalized := normalizeLang(lang)
-					if IsSupported(normalized) {
-						return normalized
-					}
+	if !common.GetContextKeyBool(c, constant.ContextKeyUserLanguageLookupDone) {
+		common.SetContextKey(c, constant.ContextKeyUserLanguageLookupDone, true)
+		if userLangLoaderFunc != nil {
+			if userID := c.GetInt("id"); userID > 0 {
+				if lang, valid := NormalizeLanguage(userLangLoaderFunc(userID)); valid {
+					common.SetContextKey(c, constant.ContextKeyUserLanguage, lang)
+					return cacheResolvedLanguage(c, lang)
 				}
 			}
 		}
 	}
 
-	// 3. Try to get language from context (set by I18n middleware from Accept-Language)
-	if lang := c.GetString(string(constant.ContextKeyLanguage)); lang != "" {
-		normalized := normalizeLang(lang)
-		if IsSupported(normalized) {
-			return normalized
+	if lang := common.GetContextKeyString(c, constant.ContextKeyLanguage); lang != "" {
+		if canonical, valid := NormalizeLanguage(lang); valid {
+			return cacheResolvedLanguage(c, canonical)
 		}
 	}
-
-	// 4. Try Accept-Language header directly (fallback if middleware didn't run)
-	if acceptLang := c.GetHeader("Accept-Language"); acceptLang != "" {
-		lang := ParseAcceptLanguage(acceptLang)
-		if IsSupported(lang) {
-			return lang
-		}
-	}
-
-	return DefaultLang
+	lang := ParseAcceptLanguage(c.GetHeader("Accept-Language"))
+	return cacheResolvedLanguage(c, lang)
 }
 
-// ParseAcceptLanguage parses the Accept-Language header and returns the preferred language
-func ParseAcceptLanguage(header string) string {
-	if header == "" {
-		return DefaultLang
-	}
-
-	// Simple parsing: take the first language tag
-	parts := strings.Split(header, ",")
-	if len(parts) == 0 {
-		return DefaultLang
-	}
-
-	// Get the first language and remove quality value
-	firstLang := strings.TrimSpace(parts[0])
-	if idx := strings.Index(firstLang, ";"); idx > 0 {
-		firstLang = firstLang[:idx]
-	}
-
-	return normalizeLang(firstLang)
+func cacheResolvedLanguage(c *gin.Context, lang string) string {
+	common.SetContextKey(c, constant.ContextKeyLanguage, lang)
+	common.SetContextKey(c, constant.ContextKeyLanguageResolved, true)
+	return lang
 }
 
-// normalizeLang normalizes language code to supported format
-func normalizeLang(lang string) string {
-	lang = strings.ToLower(strings.TrimSpace(lang))
-
-	// Handle common variations
-	switch {
-	case strings.HasPrefix(lang, "zh-tw"):
-		return LangZhTW
-	case strings.HasPrefix(lang, "zh"):
-		return LangZhCN
-	case strings.HasPrefix(lang, "en"):
-		return LangEn
-	default:
-		return DefaultLang
-	}
-}
-
-// SupportedLanguages returns a list of supported language codes
 func SupportedLanguages() []string {
-	return []string{LangZhCN, LangZhTW, LangEn}
+	result := make([]string, len(supportedLanguages))
+	copy(result, supportedLanguages[:])
+	return result
 }
 
-// IsSupported checks if a language code is supported
 func IsSupported(lang string) bool {
-	lang = normalizeLang(lang)
-	for _, supported := range SupportedLanguages() {
-		if lang == supported {
-			return true
-		}
-	}
-	return false
+	_, ok := NormalizeLanguage(lang)
+	return ok
+}
+
+func MissingTranslationCount() uint64 {
+	return missingTranslationCount.Load()
 }

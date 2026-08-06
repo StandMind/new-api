@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -61,8 +62,9 @@ func RelayMidjourneyImage(c *gin.Context) {
 		validateErr = common.ValidateURLWithFetchSetting(midjourneyTask.ImageUrl, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain)
 	}
 	if validateErr != nil {
+		logger.LogWarn(c.Request.Context(), "midjourney image fetch blocked: "+common.MaskSensitiveInfo(validateErr.Error()))
 		c.JSON(http.StatusForbidden, gin.H{
-			"error": fmt.Sprintf("request blocked: %v", validateErr),
+			"error": i18n.T(c, i18n.MsgForbidden),
 		})
 		return
 	}
@@ -205,25 +207,16 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 
 	priceData, err := helper.ModelPriceHelperPerCall(c, info)
 	if err != nil {
-		return &dto.MidjourneyResponse{
-			Code:        4,
-			Description: err.Error(),
-		}
+		return service.MidjourneyErrorWithPublicMessage(4, err.Error(), i18n.MsgRelayModelPriceError)
 	}
 
 	userQuota, err := model.GetUserQuota(info.UserId, false)
 	if err != nil {
-		return &dto.MidjourneyResponse{
-			Code:        4,
-			Description: err.Error(),
-		}
+		return service.MidjourneyErrorWithPublicMessage(4, err.Error(), i18n.MsgDatabaseError)
 	}
 
 	if userQuota-priceData.Quota < 0 {
-		return &dto.MidjourneyResponse{
-			Code:        4,
-			Description: "quota_not_enough",
-		}
+		return service.MidjourneyErrorWrapper(4, "quota_not_enough")
 	}
 	requestURL := getMjRequestPath(c.Request.URL.String())
 	baseURL := c.GetString("base_url")
@@ -334,18 +327,12 @@ func RelayMidjourneyTask(c *gin.Context, relayMode int) *dto.MidjourneyResponse 
 		taskId := c.Param("id")
 		originTask := model.GetByMJId(userId, taskId)
 		if originTask == nil {
-			return &dto.MidjourneyResponse{
-				Code:        4,
-				Description: "task_no_found",
-			}
+			return service.MidjourneyErrorWrapper(4, "task_no_found")
 		}
 		midjourneyTask := coverMidjourneyTaskDto(c, originTask)
 		respBody, err = json.Marshal(midjourneyTask)
 		if err != nil {
-			return &dto.MidjourneyResponse{
-				Code:        4,
-				Description: "unmarshal_response_body_failed",
-			}
+			return service.MidjourneyErrorWrapper(4, "unmarshal_response_body_failed")
 		}
 	case relayconstant.RelayModeMidjourneyTaskFetchByCondition:
 		var condition = struct {
@@ -353,10 +340,7 @@ func RelayMidjourneyTask(c *gin.Context, relayMode int) *dto.MidjourneyResponse 
 		}{}
 		err = c.BindJSON(&condition)
 		if err != nil {
-			return &dto.MidjourneyResponse{
-				Code:        4,
-				Description: "do_request_failed",
-			}
+			return service.MidjourneyErrorWithPublicMessage(4, err.Error(), i18n.MsgRelayInvalidRequest)
 		}
 		var tasks []dto.MidjourneyDto
 		if len(condition.IDs) != 0 {
@@ -371,10 +355,7 @@ func RelayMidjourneyTask(c *gin.Context, relayMode int) *dto.MidjourneyResponse 
 		}
 		respBody, err = json.Marshal(tasks)
 		if err != nil {
-			return &dto.MidjourneyResponse{
-				Code:        4,
-				Description: "unmarshal_response_body_failed",
-			}
+			return service.MidjourneyErrorWrapper(4, "unmarshal_response_body_failed")
 		}
 	}
 
@@ -382,10 +363,7 @@ func RelayMidjourneyTask(c *gin.Context, relayMode int) *dto.MidjourneyResponse 
 
 	_, err = io.Copy(c.Writer, bytes.NewBuffer(respBody))
 	if err != nil {
-		return &dto.MidjourneyResponse{
-			Code:        4,
-			Description: "copy_response_body_failed",
-		}
+		return service.MidjourneyErrorWrapper(4, "copy_response_body_failed")
 	}
 	return nil
 }
@@ -512,25 +490,16 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 
 	priceData, err := helper.ModelPriceHelperPerCall(c, relayInfo)
 	if err != nil {
-		return &dto.MidjourneyResponse{
-			Code:        4,
-			Description: err.Error(),
-		}
+		return service.MidjourneyErrorWithPublicMessage(4, err.Error(), i18n.MsgRelayModelPriceError)
 	}
 
 	userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
 	if err != nil {
-		return &dto.MidjourneyResponse{
-			Code:        4,
-			Description: err.Error(),
-		}
+		return service.MidjourneyErrorWithPublicMessage(4, err.Error(), i18n.MsgDatabaseError)
 	}
 
 	if consumeQuota && userQuota-priceData.Quota < 0 {
-		return &dto.MidjourneyResponse{
-			Code:        4,
-			Description: "quota_not_enough",
-		}
+		return service.MidjourneyErrorWrapper(4, "quota_not_enough")
 	}
 
 	midjResponseWithStatus, responseBody, err := service.DoMidjourneyHttpRequest(c, time.Second*60, fullRequestURL)
@@ -634,10 +603,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 	}
 	err = midjourneyTask.Insert()
 	if err != nil {
-		return &dto.MidjourneyResponse{
-			Code:        4,
-			Description: "insert_midjourney_task_failed",
-		}
+		return service.MidjourneyErrorWrapper(4, "insert_midjourney_task_failed")
 	}
 
 	if midjResponse.Code == 22 { //22-排队中，说明任务已存在
@@ -655,17 +621,11 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 
 	_, err = io.Copy(c.Writer, bodyReader)
 	if err != nil {
-		return &dto.MidjourneyResponse{
-			Code:        4,
-			Description: "copy_response_body_failed",
-		}
+		return service.MidjourneyErrorWrapper(4, "copy_response_body_failed")
 	}
 	err = bodyReader.Close()
 	if err != nil {
-		return &dto.MidjourneyResponse{
-			Code:        4,
-			Description: "close_response_body_failed",
-		}
+		return service.MidjourneyErrorWrapper(4, "close_response_body_failed")
 	}
 	return nil
 }

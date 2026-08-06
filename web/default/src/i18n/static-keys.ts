@@ -563,4 +563,19 @@ export const STATIC_I18N_KEYS = [
   'Failed to load',
   'Expired at',
   'Cancelled at',
+
+  // Client-side secure verification errors
+  'Unsupported verification method: {{method}}',
+  'Please enter the verification code or backup code',
+  'Passkey verification is not supported in this environment',
+  'Failed to start verification',
+  'Passkey verification was cancelled',
+  'Unable to build Passkey assertion',
+  'Passkey verification failed',
+  'Failed to complete verification',
+  'Passkey verification was cancelled or timed out',
+  'Passkey verification is not available in the current state',
+  'Unable to parse Passkey login options from response',
+  'Secure verification is required',
+  'No verification methods available. Enable 2FA or Passkey to continue.',
 ] as const

@@ -13,14 +13,22 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/types"
 )
 
 func MidjourneyErrorWrapper(code int, desc string) *dto.MidjourneyResponse {
+	return MidjourneyErrorWithPublicMessage(code, desc, midjourneyPublicMessageKey(desc))
+}
+
+func MidjourneyErrorWithPublicMessage(code int, desc string, key string, args ...map[string]any) *dto.MidjourneyResponse {
 	return &dto.MidjourneyResponse{
 		Code:        code,
 		Description: desc,
+		LocalError:  true,
+		MessageKey:  key,
+		MessageArgs: common.CopyPublicMessageArgs(args...),
 	}
 }
 
@@ -28,6 +36,27 @@ func MidjourneyErrorWithStatusCodeWrapper(code int, desc string, statusCode int)
 	return &dto.MidjourneyResponseWithStatusCode{
 		StatusCode: statusCode,
 		Response:   *MidjourneyErrorWrapper(code, desc),
+	}
+}
+
+func midjourneyPublicMessageKey(desc string) string {
+	switch desc {
+	case "invalid_request", "unknown_relay_action", "custom_id_is_required", "unknown_action",
+		"index_parse_failed", "bind_request_body_failed", "sour_base64_and_target_base64_is_required",
+		"prompt_is_required", "task_id_is_required", "action_is_required", "index_is_required",
+		"content_is_required", "content_parse_failed", "task_not_found", "task_no_found",
+		"task_status_not_success":
+		return i18n.MsgRelayInvalidRequest
+	case "quota_not_enough":
+		return i18n.MsgQuotaInsufficient
+	case "get_channel_info_failed", "该任务所属渠道已被禁用":
+		return i18n.MsgRelayGetChannelFailed
+	case "do_request_failed", "create_request_failed":
+		return i18n.MsgRelayUpstreamRequestFailed
+	case "read_response_body_failed", "empty_response_body", "unmarshal_response_body_failed":
+		return i18n.MsgRelayInvalidUpstreamResponse
+	default:
+		return i18n.MsgOperationFailed
 	}
 }
 
@@ -123,7 +152,12 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 			return
 		}
 	}
-	newApiErr = types.NewOpenAIError(errors.New(errResponse.ToMessage()), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
+	newApiErr = types.NewOpenAIError(
+		errors.New(errResponse.ToMessage()),
+		types.ErrorCodeBadResponseStatusCode,
+		resp.StatusCode,
+		types.ErrOptionWithErrorSource(types.ErrorSourceUpstream),
+	)
 	if showBodyWhenFail {
 		newApiErr.Err = buildErrWithBody(newApiErr.Error())
 	}
@@ -214,10 +248,14 @@ func TaskErrorFromAPIError(apiErr *types.NewAPIError) *dto.TaskError {
 	if apiErr == nil {
 		return nil
 	}
+	message := apiErr.Error()
 	return &dto.TaskError{
-		Code:       string(apiErr.GetErrorCode()),
-		Message:    apiErr.Err.Error(),
-		StatusCode: apiErr.StatusCode,
-		Error:      apiErr.Err,
+		Code:        string(apiErr.GetErrorCode()),
+		Message:     message,
+		StatusCode:  apiErr.StatusCode,
+		LocalError:  apiErr.GetSource() != types.ErrorSourceUpstream,
+		Error:       apiErr.Err,
+		MessageKey:  apiErr.PublicMessageKey(),
+		MessageArgs: apiErr.PublicMessageArgs(),
 	}
 }

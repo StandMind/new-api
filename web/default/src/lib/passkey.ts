@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import i18next from 'i18next'
 /**
  * Passkey helper utilities for WebAuthn credential handling.
  *
@@ -36,7 +37,7 @@ export function base64UrlToArrayBuffer(value?: string | null): ArrayBuffer {
   if (!value) return new ArrayBuffer(0)
 
   const padding = '='.repeat((4 - (value.length % 4)) % 4)
-  const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const base64 = (value + padding).replaceAll('-', '+').replaceAll('_', '/')
 
   const globalRef = globalThis as typeof globalThis & {
     Buffer?: NodeBufferCtor
@@ -96,9 +97,9 @@ export function arrayBufferToBase64Url(
         }
 
   return encode(binary)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/g, '')
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replaceAll(/=+$/g, '')
 }
 
 /**
@@ -160,7 +161,9 @@ export function prepareCredentialRequestOptions(
     payload?.Response
 
   if (!options) {
-    throw new Error('Unable to parse Passkey login options from response')
+    throw new Error(
+      i18next.t('Unable to parse Passkey login options from response')
+    )
   }
 
   const publicKey: PublicKeyCredentialRequestOptions & Record<string, any> = {

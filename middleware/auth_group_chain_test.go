@@ -180,19 +180,23 @@ func TestTokenAuthRequiresValidExplicitGroupChain(t *testing.T) {
 		message    string
 		routing    string
 		groups     string
+		language   string
 	}{
 		{name: "auto group", key: "deprecatedautotoken", statusCode: http.StatusForbidden, message: "auto"},
-		{name: "empty chain", key: "emptygroupchaintoken", statusCode: http.StatusForbidden, message: "未配置分组链"},
-		{name: "mismatched first group", key: "mismatchedgroupchain", statusCode: http.StatusForbidden, message: "首组与分组链不一致"},
+		{name: "empty chain", key: "emptygroupchaintoken", statusCode: http.StatusForbidden, message: "The API key has no group chain"},
+		{name: "mismatched first group", key: "mismatchedgroupchain", statusCode: http.StatusForbidden, message: "primary group does not match its group chain"},
 		{name: "valid explicit chain", key: "explicitgroupchain", statusCode: http.StatusNoContent, groups: "group-a"},
 		{name: "smart routing ignores compatibility chain", key: "smartroutingtoken", statusCode: http.StatusNoContent, routing: "price", groups: "group-a,group-b"},
-		{name: "invalid routing priority", key: "invalidroutingtoken", statusCode: http.StatusForbidden, message: "智能路由模式无效"},
+		{name: "invalid routing priority in Chinese", key: "invalidroutingtoken", statusCode: http.StatusForbidden, message: "智能路由模式无效", language: "zh-CN"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 			request.Header.Set("Authorization", "Bearer sk-"+test.key)
+			if test.language != "" {
+				request.Header.Set("Accept-Language", test.language)
+			}
 			router.ServeHTTP(recorder, request)
 
 			assert.Equal(t, test.statusCode, recorder.Code)

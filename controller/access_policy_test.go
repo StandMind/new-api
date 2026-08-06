@@ -112,7 +112,7 @@ func TestAccessPolicyRejectsReservedLevelAndReferencedDeletes(t *testing.T) {
 		"enabled": true, "topup_ratio": 1, "request_limit": 0, "success_request_limit": 0,
 	}, CreateUserLevel)
 	assert.False(t, response.Success)
-	assert.Contains(t, response.Message, "保留值")
+	assert.Contains(t, response.Message, "reserved for migration compatibility")
 
 	require.NoError(t, model.DB.Create(&model.UserLevel{
 		Code: "referenced", Name: "Referenced", Enabled: true, TopupRatio: 1,

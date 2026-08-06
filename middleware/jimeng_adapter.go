@@ -2,12 +2,12 @@ package middleware
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"net/http"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/gin-gonic/gin"
 )
@@ -16,14 +16,14 @@ func JimengRequestConvert() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		action := c.Query("Action")
 		if action == "" {
-			abortWithOpenAiMessage(c, http.StatusBadRequest, "Action query parameter is required")
+			abortWithOpenAIMessageKey(c, http.StatusBadRequest, i18n.MsgJimengActionRequired, nil)
 			return
 		}
 
 		// Handle Jimeng official API request
 		var originalReq map[string]interface{}
 		if err := common.UnmarshalBodyReusable(c, &originalReq); err != nil {
-			abortWithOpenAiMessage(c, http.StatusBadRequest, "Invalid request body")
+			abortWithOpenAIMessageKey(c, http.StatusBadRequest, i18n.MsgJimengInvalidBody, nil)
 			return
 		}
 		model, _ := originalReq["req_key"].(string)
@@ -35,9 +35,9 @@ func JimengRequestConvert() func(c *gin.Context) {
 			"metadata": originalReq,
 		}
 
-		jsonData, err := json.Marshal(unifiedReq)
+		jsonData, err := common.Marshal(unifiedReq)
 		if err != nil {
-			abortWithOpenAiMessage(c, http.StatusInternalServerError, "Failed to marshal request body")
+			abortWithOpenAIMessageKey(c, http.StatusInternalServerError, i18n.MsgJimengMarshalFailed, nil)
 			return
 		}
 
@@ -54,7 +54,7 @@ func JimengRequestConvert() func(c *gin.Context) {
 		if action == "CVSync2AsyncGetResult" {
 			taskId, ok := originalReq["task_id"].(string)
 			if !ok || taskId == "" {
-				abortWithOpenAiMessage(c, http.StatusBadRequest, "task_id is required for CVSync2AsyncGetResult")
+				abortWithOpenAIMessageKey(c, http.StatusBadRequest, i18n.MsgJimengTaskIDRequired, nil)
 				return
 			}
 			c.Request.URL.Path = "/v1/video/generations/" + taskId

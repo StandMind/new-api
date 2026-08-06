@@ -2,7 +2,6 @@ package controller
 
 import (
 	"fmt"
-	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -10,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relay/channel/ai360"
@@ -227,10 +227,7 @@ func ListModels(c *gin.Context, modelType int) {
 	userModelNames := make([]string, 0)
 	groups, err := getModelListGroups(c)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "get user group failed",
-		})
+		common.ApiErrorI18n(c, i18n.MsgOperationFailed)
 		return
 	}
 	ownerGroups := groups.ownerGroups
@@ -378,7 +375,7 @@ func RetrieveModel(c *gin.Context, modelType int) {
 		}
 	} else {
 		openAIError := types.OpenAIError{
-			Message: fmt.Sprintf("The model '%s' does not exist", modelId),
+			Message: i18n.T(c, i18n.MsgRelayModelNotFound),
 			Type:    "invalid_request_error",
 			Param:   "model",
 			Code:    "model_not_found",

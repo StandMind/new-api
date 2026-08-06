@@ -167,6 +167,7 @@ func handleTTSResponse(c *gin.Context, resp *http.Response, info *relaycommon.Re
 			errors.New(volcResp.Message),
 			types.ErrorCodeBadResponse,
 			http.StatusBadRequest,
+			types.ErrOptionWithErrorSource(types.ErrorSourceUpstream),
 		)
 	}
 
@@ -266,6 +267,7 @@ func handleTTSWebSocketResponse(c *gin.Context, requestURL string, volcRequest V
 				fmt.Errorf("received error from server: code=%d, %s", msg.ErrorCode, string(msg.Payload)),
 				types.ErrorCodeBadResponse,
 				http.StatusBadRequest,
+				types.ErrOptionWithErrorSource(types.ErrorSourceUpstream),
 			)
 		case MsgTypeFrontEndResultServer:
 			continue

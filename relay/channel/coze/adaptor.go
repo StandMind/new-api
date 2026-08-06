@@ -81,7 +81,11 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *common.RelayInfo, requestBody 
 	}
 	err = json.Unmarshal(respBody, &cozeResponse)
 	if cozeResponse.Code != 0 {
-		return nil, errors.New(cozeResponse.Msg)
+		return nil, types.NewError(
+			errors.New(cozeResponse.Msg),
+			types.ErrorCodeBadResponse,
+			types.ErrOptionWithErrorSource(types.ErrorSourceUpstream),
+		)
 	}
 	c.Set("coze_conversation_id", cozeResponse.Data.ConversationId)
 	c.Set("coze_chat_id", cozeResponse.Data.Id)

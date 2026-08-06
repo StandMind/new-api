@@ -21,6 +21,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, Spin } from '@douyinfe/semi-ui';
 import SettingsPerformance from '../../pages/Setting/Performance/SettingsPerformance';
 import { API, showError, toBoolean } from '../../helpers';
+import i18n from '../../i18n/i18n';
 
 const PerformanceSetting = () => {
   let [inputs, setInputs] = useState({
@@ -55,7 +56,7 @@ const PerformanceSetting = () => {
       setLoading(true);
       await getOptions();
     } catch (error) {
-      showError('刷新失败');
+      showError(i18n.t('刷新失败'));
     } finally {
       setLoading(false);
     }

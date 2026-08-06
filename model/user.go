@@ -19,6 +19,11 @@ import (
 
 const UserNameMaxLength = 20
 
+var (
+	ErrAffQuotaTransferMinimum = errors.New("affiliate quota transfer is below the minimum")
+	ErrAffQuotaInsufficient    = errors.New("insufficient affiliate quota")
+)
+
 var userSortColumns = map[string]string{
 	"id":            "id",
 	"username":      "username",
@@ -521,7 +526,7 @@ func inviteUser(inviterId int) (err error) {
 func (user *User) TransferAffQuotaToQuota(quota int) error {
 	// 检查quota是否小于最小额度
 	if float64(quota) < common.QuotaPerUnit {
-		return fmt.Errorf("转移额度最小为%s！", logger.LogQuota(int(common.QuotaPerUnit)))
+		return ErrAffQuotaTransferMinimum
 	}
 
 	// 开始数据库事务
@@ -539,7 +544,7 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 
 	// 再次检查用户的AffQuota是否足够
 	if user.AffQuota < quota {
-		return errors.New("邀请额度不足！")
+		return ErrAffQuotaInsufficient
 	}
 
 	// 更新用户额度

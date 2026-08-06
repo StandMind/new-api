@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/openluxsync"
@@ -23,7 +24,7 @@ func GetOpenLuxPriceSyncBindings(c *gin.Context) {
 func PutOpenLuxPriceSyncBindings(c *gin.Context) {
 	var request openluxsync.SaveBindingsRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		respondOpenLuxSyncRequestError(c, "绑定请求格式无效")
+		respondOpenLuxSyncRequestError(c)
 		return
 	}
 	response, err := openluxsync.SaveBindings(c.Request.Context(), request)
@@ -55,7 +56,7 @@ func PreviewOpenLuxPriceSync(c *gin.Context) {
 func ApplyOpenLuxPriceSync(c *gin.Context) {
 	var request openluxsync.ApplyRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		respondOpenLuxSyncRequestError(c, "同步请求格式无效")
+		respondOpenLuxSyncRequestError(c)
 		return
 	}
 	response, err := openluxsync.Apply(c.Request.Context(), request)
@@ -75,21 +76,32 @@ func ApplyOpenLuxPriceSync(c *gin.Context) {
 	common.ApiSuccess(c, response)
 }
 
-func respondOpenLuxSyncRequestError(c *gin.Context, message string) {
+func respondOpenLuxSyncRequestError(c *gin.Context) {
 	c.JSON(http.StatusBadRequest, gin.H{
 		"success": false,
 		"code":    "invalid_request",
-		"message": message,
+		"message": i18n.T(c, i18n.MsgInvalidParams),
 	})
 }
 
 func respondOpenLuxSyncError(c *gin.Context, err error) {
 	var serviceErr *openluxsync.ServiceError
 	if errors.As(err, &serviceErr) {
+		message := i18n.T(c, i18n.MsgOperationFailed)
+		switch serviceErr.Code {
+		case "invalid_request":
+			message = i18n.T(c, i18n.MsgInvalidParams)
+		case "stale_preview":
+			message = i18n.T(c, i18n.MsgRetryLater)
+		case "upstream_failure":
+			message = common.MaskSensitiveInfo(serviceErr.Message)
+		case "upstream_request", "upstream_unavailable", "upstream_read", "upstream_too_large", "upstream_json", "upstream_schema", "unsupported_upstream_schema", "upstream_hash":
+			message = i18n.T(c, i18n.MsgRelayInvalidUpstreamResponse)
+		}
 		c.JSON(serviceErr.Status, gin.H{
 			"success": false,
 			"code":    serviceErr.Code,
-			"message": serviceErr.Message,
+			"message": message,
 		})
 		return
 	}
@@ -97,6 +109,6 @@ func respondOpenLuxSyncError(c *gin.Context, err error) {
 	c.JSON(http.StatusInternalServerError, gin.H{
 		"success": false,
 		"code":    "internal_error",
-		"message": "OpenLux 价格同步失败",
+		"message": i18n.T(c, i18n.MsgOperationFailed),
 	})
 }

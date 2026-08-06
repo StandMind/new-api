@@ -106,7 +106,7 @@ const SettingsAPIInfo = ({ options, refresh }) => {
       setHasChanges(false);
     } catch (error) {
       console.error('API信息更新失败', error);
-      showError('API信息更新失败');
+      showError(t('API信息更新失败'));
     } finally {
       setLoading(false);
     }
@@ -152,7 +152,7 @@ const SettingsAPIInfo = ({ options, refresh }) => {
 
   const handleSaveApi = async () => {
     if (!apiForm.url || !apiForm.route || !apiForm.description) {
-      showError('请填写完整的API信息');
+      showError(t('请填写完整的API信息'));
       return;
     }
 
@@ -182,7 +182,7 @@ const SettingsAPIInfo = ({ options, refresh }) => {
           : 'API信息已添加，请及时点击“保存设置”进行保存',
       );
     } catch (error) {
-      showError('操作失败: ' + error.message);
+      showError(t('操作失败: ') + error.message);
     } finally {
       setModalLoading(false);
     }
@@ -299,7 +299,7 @@ const SettingsAPIInfo = ({ options, refresh }) => {
 
   const handleBatchDelete = () => {
     if (selectedRowKeys.length === 0) {
-      showError('请先选择要删除的API信息');
+      showError(t('请先选择要删除的API信息'));
       return;
     }
 

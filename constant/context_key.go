@@ -66,8 +66,11 @@ const (
 	ContextKeyAdminRejectReason ContextKey = "admin_reject_reason"
 
 	// ContextKeyLanguage stores the user's language preference for i18n
-	ContextKeyLanguage ContextKey = "language"
-	ContextKeyIsStream ContextKey = "is_stream"
+	ContextKeyLanguage               ContextKey = "language"
+	ContextKeyLanguageResolved       ContextKey = "language_resolved"
+	ContextKeyUserLanguage           ContextKey = "user_language"
+	ContextKeyUserLanguageLookupDone ContextKey = "user_language_lookup_done"
+	ContextKeyIsStream               ContextKey = "is_stream"
 
 	// ContextKeyAuditLogged marks that the current request has already recorded
 	// a manage/operation audit log inside the handler. When set, the admin-audit

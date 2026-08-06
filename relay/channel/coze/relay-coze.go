@@ -61,7 +61,8 @@ func cozeChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Res
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
 	if cozeResponse.Code != 0 {
-		return nil, types.NewError(errors.New(cozeResponse.Msg), types.ErrorCodeBadResponseBody)
+		return nil, types.NewError(errors.New(cozeResponse.Msg), types.ErrorCodeBadResponseBody,
+			types.ErrOptionWithErrorSource(types.ErrorSourceUpstream))
 	}
 	// 从上下文获取 usage
 	var usage dto.Usage
@@ -253,7 +254,11 @@ func checkIfChatComplete(a *Adaptor, c *gin.Context, info *relaycommon.RelayInfo
 		c.Set("coze_input_count", cozeResponse.Data.Usage.InputCount)
 		return nil, true
 	} else if cozeResponse.Data.Status == "failed" || cozeResponse.Data.Status == "canceled" || cozeResponse.Data.Status == "requires_action" {
-		return fmt.Errorf("chat status: %s", cozeResponse.Data.Status), false
+		return types.NewError(
+			fmt.Errorf("chat status: %s", cozeResponse.Data.Status),
+			types.ErrorCodeBadResponse,
+			types.ErrOptionWithErrorSource(types.ErrorSourceUpstream),
+		), false
 	} else {
 		return nil, false
 	}

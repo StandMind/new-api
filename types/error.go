@@ -37,6 +37,13 @@ const (
 
 type ErrorCode string
 
+type ErrorSource string
+
+const (
+	ErrorSourceLocal    ErrorSource = "local"
+	ErrorSourceUpstream ErrorSource = "upstream"
+)
+
 const (
 	ErrorCodeInvalidRequest         ErrorCode = "invalid_request"
 	ErrorCodeSensitiveWordsDetected ErrorCode = "sensitive_words_detected"
@@ -96,6 +103,9 @@ type NewAPIError struct {
 	errorCode      ErrorCode
 	StatusCode     int
 	Metadata       json.RawMessage
+	source         ErrorSource
+	messageKey     string
+	messageArgs    map[string]any
 }
 
 // Unwrap enables errors.Is / errors.As to work with NewAPIError by exposing the underlying error.
@@ -118,6 +128,27 @@ func (e *NewAPIError) GetErrorType() ErrorType {
 		return ""
 	}
 	return e.errorType
+}
+
+func (e *NewAPIError) GetSource() ErrorSource {
+	if e == nil || e.source == "" {
+		return ErrorSourceLocal
+	}
+	return e.source
+}
+
+func (e *NewAPIError) PublicMessageKey() string {
+	if e == nil {
+		return ""
+	}
+	return e.messageKey
+}
+
+func (e *NewAPIError) PublicMessageArgs() map[string]any {
+	if e == nil {
+		return nil
+	}
+	return common.CopyPublicMessageArgs(e.messageArgs)
 }
 
 func (e *NewAPIError) Error() string {
@@ -210,6 +241,12 @@ func (e *NewAPIError) ToOpenAIError() OpenAIError {
 	return result
 }
 
+func (e *NewAPIError) ToOpenAIErrorWithMessage(message string) OpenAIError {
+	result := e.ToOpenAIError()
+	result.Message = message
+	return result
+}
+
 func (e *NewAPIError) ToClaudeError() ClaudeError {
 	var result ClaudeError
 	switch e.errorType {
@@ -239,6 +276,12 @@ func (e *NewAPIError) ToClaudeError() ClaudeError {
 	return result
 }
 
+func (e *NewAPIError) ToClaudeErrorWithMessage(message string) ClaudeError {
+	result := e.ToClaudeError()
+	result.Message = message
+	return result
+}
+
 type NewAPIErrorOptions func(*NewAPIError)
 
 func NewError(err error, errorCode ErrorCode, ops ...NewAPIErrorOptions) *NewAPIError {
@@ -256,6 +299,8 @@ func NewError(err error, errorCode ErrorCode, ops ...NewAPIErrorOptions) *NewAPI
 		errorType:  ErrorTypeNewAPIError,
 		StatusCode: http.StatusInternalServerError,
 		errorCode:  errorCode,
+		source:     ErrorSourceLocal,
+		messageKey: defaultPublicMessageKey(errorCode),
 	}
 	for _, op := range ops {
 		op(e)
@@ -280,20 +325,35 @@ func NewOpenAIError(err error, errorCode ErrorCode, statusCode int, ops ...NewAP
 		}
 		return newErr
 	}
+	message := string(errorCode)
+	if err != nil {
+		message = err.Error()
+	}
 	openaiError := OpenAIError{
-		Message: err.Error(),
+		Message: message,
 		Type:    string(errorCode),
 		Code:    errorCode,
 	}
-	return WithOpenAIError(openaiError, statusCode, ops...)
+	e := &NewAPIError{
+		Err:        err,
+		RelayError: openaiError,
+		errorType:  ErrorTypeOpenAIError,
+		StatusCode: statusCode,
+		errorCode:  errorCode,
+		source:     ErrorSourceLocal,
+		messageKey: defaultPublicMessageKey(errorCode),
+	}
+	if e.Err == nil {
+		e.Err = errors.New(message)
+	}
+	for _, op := range ops {
+		op(e)
+	}
+	return e
 }
 
 func InitOpenAIError(errorCode ErrorCode, statusCode int, ops ...NewAPIErrorOptions) *NewAPIError {
-	openaiError := OpenAIError{
-		Type: string(errorCode),
-		Code: errorCode,
-	}
-	return WithOpenAIError(openaiError, statusCode, ops...)
+	return NewOpenAIError(nil, errorCode, statusCode, ops...)
 }
 
 func NewErrorWithStatusCode(err error, errorCode ErrorCode, statusCode int, ops ...NewAPIErrorOptions) *NewAPIError {
@@ -306,6 +366,8 @@ func NewErrorWithStatusCode(err error, errorCode ErrorCode, statusCode int, ops 
 		errorType:  ErrorTypeNewAPIError,
 		StatusCode: statusCode,
 		errorCode:  errorCode,
+		source:     ErrorSourceLocal,
+		messageKey: defaultPublicMessageKey(errorCode),
 	}
 	for _, op := range ops {
 		op(e)
@@ -332,6 +394,7 @@ func WithOpenAIError(openAIError OpenAIError, statusCode int, ops ...NewAPIError
 		StatusCode: statusCode,
 		Err:        errors.New(openAIError.Message),
 		errorCode:  ErrorCode(code),
+		source:     ErrorSourceUpstream,
 	}
 	// OpenRouter
 	if len(openAIError.Metadata) > 0 {
@@ -356,6 +419,7 @@ func WithClaudeError(claudeError ClaudeError, statusCode int, ops ...NewAPIError
 		StatusCode: statusCode,
 		Err:        errors.New(claudeError.Message),
 		errorCode:  ErrorCode(claudeError.Type),
+		source:     ErrorSourceUpstream,
 	}
 	for _, op := range ops {
 		op(e)
@@ -396,6 +460,25 @@ func ErrOptionWithStatusCode(statusCode int) NewAPIErrorOptions {
 	}
 }
 
+func ErrOptionWithPublicMessage(key string, args ...map[string]any) NewAPIErrorOptions {
+	return func(e *NewAPIError) {
+		e.messageKey = key
+		e.messageArgs = common.CopyPublicMessageArgs(args...)
+	}
+}
+
+func ErrOptionWithErrorSource(source ErrorSource) NewAPIErrorOptions {
+	return func(e *NewAPIError) {
+		e.source = source
+		if source == ErrorSourceUpstream {
+			e.messageKey = ""
+			e.messageArgs = nil
+		} else if e.messageKey == "" {
+			e.messageKey = defaultPublicMessageKey(e.errorCode)
+		}
+	}
+}
+
 func ErrOptionWithHideErrMsg(replaceStr string) NewAPIErrorOptions {
 	return func(e *NewAPIError) {
 		if common.DebugEnabled {
@@ -414,4 +497,46 @@ func IsRecordErrorLog(e *NewAPIError) bool {
 		return true
 	}
 	return *e.recordErrorLog
+}
+
+func defaultPublicMessageKey(errorCode ErrorCode) string {
+	switch errorCode {
+	case ErrorCodeInvalidRequest, ErrorCodeBadRequestBody, ErrorCodeReadRequestBodyFailed:
+		return "relay.invalid_request"
+	case ErrorCodeSensitiveWordsDetected:
+		return "relay.sensitive_words_detected"
+	case ErrorCodeCountTokenFailed:
+		return "relay.count_token_failed"
+	case ErrorCodeModelPriceError:
+		return "relay.model_price_error"
+	case ErrorCodeInvalidApiType:
+		return "relay.invalid_api_type"
+	case ErrorCodeDoRequestFailed:
+		return "relay.upstream_request_failed"
+	case ErrorCodeGetChannelFailed, ErrorCodeChannelNoAvailableKey:
+		return "relay.get_channel_failed"
+	case ErrorCodeChannelParamOverrideInvalid, ErrorCodeChannelHeaderOverrideInvalid, ErrorCodeChannelModelMappedError:
+		return "relay.channel_configuration_error"
+	case ErrorCodeChannelInvalidKey:
+		return "relay.channel_key_invalid"
+	case ErrorCodeChannelResponseTimeExceeded:
+		return "relay.upstream_timeout"
+	case ErrorCodeConvertRequestFailed:
+		return "relay.request_conversion_failed"
+	case ErrorCodeAccessDenied:
+		return "common.forbidden"
+	case ErrorCodeBadResponseStatusCode, ErrorCodeReadResponseBodyFailed, ErrorCodeBadResponse,
+		ErrorCodeBadResponseBody, ErrorCodeEmptyResponse, ErrorCodeAwsInvokeError:
+		return "relay.invalid_upstream_response"
+	case ErrorCodeModelNotFound:
+		return "relay.model_not_found"
+	case ErrorCodePromptBlocked:
+		return "relay.prompt_blocked"
+	case ErrorCodeQueryDataError, ErrorCodeUpdateDataError:
+		return "common.database_error"
+	case ErrorCodeInsufficientUserQuota, ErrorCodePreConsumeTokenQuotaFailed:
+		return "quota.insufficient"
+	default:
+		return "common.operation_failed"
+	}
 }
