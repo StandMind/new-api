@@ -340,7 +340,7 @@ func TestCacheWriteTokensTotal(t *testing.T) {
 	})
 }
 
-func TestCalculateTextQuotaSummaryHandlesLegacyClaudeDerivedOpenAIUsage(t *testing.T) {
+func TestCalculateTextQuotaSummarySeparatesOpenLuxClaudeCacheFromOpenAITotal(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(w)
@@ -361,18 +361,50 @@ func TestCalculateTextQuotaSummaryHandlesLegacyClaudeDerivedOpenAIUsage(t *testi
 	}
 
 	usage := &dto.Usage{
-		PromptTokens:     62,
-		CompletionTokens: 95,
+		PromptTokens:     15660,
+		CompletionTokens: 523,
 		PromptTokensDetails: dto.InputTokenDetails{
-			CachedTokens: 3544,
+			CachedTokens:         12683,
+			CachedCreationTokens: 2976,
 		},
-		ClaudeCacheCreation5mTokens: 586,
+		ClaudeCacheCreation5mTokens: 2976,
 	}
 
 	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 
-	// 62 + 3544*0.1 + 586*1.25 + 95*5 = 1624.9 => 1624
-	require.Equal(t, 1624, summary.Quota)
+	// (15660-12683-2976) + 12683*0.1 + 2976*1.25 + 523*5 = 7604.3 => 7604
+	require.Equal(t, 7604, summary.Quota)
+}
+
+func TestCalculateTextQuotaSummaryUsesSplitCacheCreationRatiosForOpenAITotal(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	relayInfo := &relaycommon.RelayInfo{
+		RelayFormat:     types.RelayFormatOpenAI,
+		OriginModelName: "claude-3-7-sonnet",
+		PriceData: types.PriceData{
+			ModelRatio:           1,
+			CompletionRatio:      1,
+			CacheCreationRatio:   1,
+			CacheCreation5mRatio: 2,
+			CacheCreation1hRatio: 3,
+			GroupRatioInfo:       types.GroupRatioInfo{GroupRatio: 1},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:                1000,
+		ClaudeCacheCreation5mTokens: 100,
+		ClaudeCacheCreation1hTokens: 200,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	// (1000-300) + 100*2 + 200*3 = 1500
+	require.Equal(t, 1500, summary.Quota)
 }
 
 func TestCalculateTextQuotaSummaryBillsOpenAICacheWriteTokens(t *testing.T) {
