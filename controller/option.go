@@ -360,3 +360,39 @@ func UpdateOption(c *gin.Context) {
 		"message": "",
 	})
 }
+
+func GetInvitationSetting(c *gin.Context) {
+	setting, err := model.GetInvitationSetting()
+	if err != nil {
+		common.SysLog("failed to load invitation setting: " + err.Error())
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		return
+	}
+	common.ApiSuccess(c, setting)
+}
+
+func UpdateInvitationSetting(c *gin.Context) {
+	var setting model.InvitationSetting
+	if err := c.ShouldBindJSON(&setting); err != nil {
+		common.ApiErrorI18nStatus(c, http.StatusBadRequest, i18n.MsgInvalidParams)
+		return
+	}
+	rewardEnabled := setting.Mode == model.InvitationModeRebate ||
+		(setting.Mode == model.InvitationModeFixed && (setting.FixedInviterQuota > 0 || setting.FixedInviteeQuota > 0))
+	if rewardEnabled && !operation_setting.IsPaymentComplianceConfirmed() {
+		common.ApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
+		return
+	}
+	if err := model.SaveInvitationSetting(setting); err != nil {
+		common.SysLog("failed to save invitation setting: " + err.Error())
+		common.ApiErrorI18nStatus(c, http.StatusBadRequest, i18n.MsgInvalidParams)
+		return
+	}
+	saved, err := model.GetInvitationSetting()
+	if err != nil {
+		common.SysLog("failed to reload invitation setting: " + err.Error())
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		return
+	}
+	common.ApiSuccess(c, saved)
+}

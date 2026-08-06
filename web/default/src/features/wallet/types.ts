@@ -41,6 +41,40 @@ export type PaymentResponse = ApiResponse<Record<string, unknown>> & {
 export type StripePaymentResponse = ApiResponse<{ pay_link: string }>
 export type AffiliateCodeResponse = ApiResponse<string>
 export type AffiliateTransferResponse = ApiResponse
+export type InvitationMode = 'disabled' | 'fixed' | 'rebate'
+
+export interface InvitationInfo {
+  code: string
+  mode: InvitationMode
+  fixed_inviter_quota: number
+  fixed_invitee_quota: number
+  rebate_bps: number
+  rebate_topup_count: number
+  invite_count: number
+  total_reward_quota: number
+  pending_reward_quota: number
+  reward_direct_to_balance: boolean
+}
+
+export interface InvitationReward {
+  id: number
+  invitee: string
+  topup_ordinal: number
+  credited_quota: number
+  rebate_bps: number
+  reward_quota: number
+  created_at: number
+}
+
+export interface InvitationRewardsPage {
+  page: number
+  page_size: number
+  total: number
+  items: InvitationReward[]
+}
+
+export type InvitationInfoResponse = ApiResponse<InvitationInfo>
+export type InvitationRewardsResponse = ApiResponse<InvitationRewardsPage>
 export type CreemPaymentResponse = ApiResponse<{ checkout_url: string }>
 export type WaffoPaymentResponse = ApiResponse<
   { payment_url?: string } | string

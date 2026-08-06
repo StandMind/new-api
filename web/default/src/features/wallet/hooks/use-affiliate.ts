@@ -23,38 +23,66 @@ import { toast } from 'sonner'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { getSelf } from '@/lib/api'
 
-import { getAffiliateCode, transferAffiliateQuota } from '../api'
+import {
+  getInvitationInfo,
+  getInvitationRewards,
+  transferAffiliateQuota,
+} from '../api'
 import { generateAffiliateLink } from '../lib'
+import type { InvitationInfo, InvitationReward } from '../types'
 
 // ============================================================================
 // Affiliate Hook
 // ============================================================================
 
 export function useAffiliate() {
-  const [affiliateCode, setAffiliateCode] = useState<string>('')
+  const [info, setInfo] = useState<InvitationInfo | null>(null)
+  const [rewards, setRewards] = useState<InvitationReward[]>([])
+  const [rewardPage, setRewardPage] = useState(1)
+  const [rewardTotal, setRewardTotal] = useState(0)
   const [affiliateLink, setAffiliateLink] = useState<string>('')
   const [loading, setLoading] = useState(true)
+  const [rewardsLoading, setRewardsLoading] = useState(true)
   const [transferring, setTransferring] = useState(false)
   const { copyToClipboard } = useCopyToClipboard()
+  const rewardPageSize = 5
 
-  // Fetch affiliate code
-  const fetchAffiliateCode = useCallback(async () => {
+  const fetchInvitationInfo = useCallback(async () => {
+    const response = await getInvitationInfo()
+    if (response.success && response.data) {
+      setInfo(response.data)
+      setAffiliateLink(generateAffiliateLink(response.data.code))
+    }
+  }, [])
+
+  const fetchRewards = useCallback(async (page: number) => {
     try {
-      setLoading(true)
-      const response = await getAffiliateCode()
-
+      setRewardsLoading(true)
+      const response = await getInvitationRewards(page, rewardPageSize)
       if (response.success && response.data) {
-        setAffiliateCode(response.data)
-        const link = generateAffiliateLink(response.data)
-        setAffiliateLink(link)
+        setRewards(response.data.items ?? [])
+        setRewardTotal(response.data.total ?? 0)
+        setRewardPage(response.data.page ?? page)
       }
     } catch (error) {
       // eslint-disable-next-line no-console
-      console.error('Failed to fetch affiliate code:', error)
+      console.error('Failed to fetch referral rewards:', error)
+    } finally {
+      setRewardsLoading(false)
+    }
+  }, [])
+
+  const fetchAffiliateData = useCallback(async () => {
+    try {
+      setLoading(true)
+      await Promise.all([fetchInvitationInfo(), fetchRewards(1)])
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to fetch referral program:', error)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [fetchInvitationInfo, fetchRewards])
 
   // Copy affiliate link
   const copyAffiliateLink = useCallback(() => {
@@ -62,38 +90,48 @@ export function useAffiliate() {
   }, [affiliateLink, copyToClipboard])
 
   // Transfer affiliate quota to balance
-  const transferQuota = useCallback(async (quota: number): Promise<boolean> => {
-    try {
-      setTransferring(true)
-      const response = await transferAffiliateQuota({ quota })
+  const transferQuota = useCallback(
+    async (quota: number): Promise<boolean> => {
+      try {
+        setTransferring(true)
+        const response = await transferAffiliateQuota({ quota })
 
-      if (response.success) {
-        toast.success(response.message || i18next.t('Transfer successful'))
-        await getSelf()
-        return true
+        if (response.success) {
+          toast.success(response.message || i18next.t('Transfer successful'))
+          await Promise.all([getSelf(), fetchInvitationInfo()])
+          return true
+        }
+
+        toast.error(response.message || i18next.t('Transfer failed'))
+        return false
+      } catch {
+        toast.error(i18next.t('Transfer failed'))
+        return false
+      } finally {
+        setTransferring(false)
       }
-
-      toast.error(response.message || i18next.t('Transfer failed'))
-      return false
-    } catch (_error) {
-      toast.error(i18next.t('Transfer failed'))
-      return false
-    } finally {
-      setTransferring(false)
-    }
-  }, [])
+    },
+    [fetchInvitationInfo]
+  )
 
   useEffect(() => {
-    fetchAffiliateCode()
-  }, [fetchAffiliateCode])
+    fetchAffiliateData()
+  }, [fetchAffiliateData])
 
   return {
-    affiliateCode,
+    affiliateCode: info?.code ?? '',
     affiliateLink,
+    info,
+    rewards,
+    rewardPage,
+    rewardPageSize,
+    rewardTotal,
     loading,
+    rewardsLoading,
     transferring,
     copyAffiliateLink,
     transferQuota,
-    refetch: fetchAffiliateCode,
+    setRewardPage: fetchRewards,
+    refetch: fetchAffiliateData,
   }
 }

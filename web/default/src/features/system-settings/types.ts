@@ -39,6 +39,22 @@ export type UpdateOptionResponse = {
   message: string
 }
 
+export type InvitationMode = 'disabled' | 'fixed' | 'rebate'
+
+export type InvitationSetting = {
+  mode: InvitationMode
+  fixed_inviter_quota: number
+  fixed_invitee_quota: number
+  rebate_bps: number
+  rebate_topup_count: number
+}
+
+export type InvitationSettingResponse = {
+  success: boolean
+  message: string
+  data?: InvitationSetting
+}
+
 export type ConfirmPaymentComplianceResponse = {
   success: boolean
   message: string

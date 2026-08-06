@@ -105,6 +105,12 @@ const TopUp = () => {
 
   // 邀请相关状态
   const [affLink, setAffLink] = useState('');
+  const [invitationInfo, setInvitationInfo] = useState(null);
+  const [invitationRewards, setInvitationRewards] = useState([]);
+  const [invitationLoading, setInvitationLoading] = useState(true);
+  const [rewardPage, setRewardPage] = useState(1);
+  const [rewardTotal, setRewardTotal] = useState(0);
+  const rewardPageSize = 5;
   const [openTransfer, setOpenTransfer] = useState(false);
   const [transferAmount, setTransferAmount] = useState(0);
 
@@ -724,15 +730,39 @@ const TopUp = () => {
     }
   };
 
-  // 获取邀请链接
-  const getAffLink = async () => {
-    const res = await API.get('/api/user/aff');
+  const getInvitationInfo = async () => {
+    const res = await API.get('/api/user/aff/info');
     const { success, message, data } = res.data;
     if (success) {
-      let link = `${window.location.origin}/register?aff=${data}`;
-      setAffLink(link);
+      setInvitationInfo(data);
+      setAffLink(`${window.location.origin}/register?aff=${data.code}`);
     } else {
       showError(message);
+    }
+  };
+
+  const getInvitationRewards = async (page = 1) => {
+    const res = await API.get('/api/user/aff/rewards', {
+      params: { p: page, page_size: rewardPageSize },
+    });
+    const { success, message, data } = res.data;
+    if (success) {
+      setInvitationRewards(data?.items || []);
+      setRewardTotal(data?.total || 0);
+      setRewardPage(data?.page || page);
+    } else {
+      showError(message);
+    }
+  };
+
+  const getInvitationData = async () => {
+    setInvitationLoading(true);
+    try {
+      await Promise.all([getInvitationInfo(), getInvitationRewards(1)]);
+    } catch (_error) {
+      showError(t('请求失败'));
+    } finally {
+      setInvitationLoading(false);
     }
   };
 
@@ -749,7 +779,7 @@ const TopUp = () => {
     if (success) {
       showSuccess(message);
       setOpenTransfer(false);
-      getUserQuota().then();
+      Promise.all([getUserQuota(), getInvitationInfo()]).then();
     } else {
       showError(message);
     }
@@ -779,7 +809,7 @@ const TopUp = () => {
   useEffect(() => {
     if (affFetchedRef.current) return;
     affFetchedRef.current = true;
-    getAffLink().then();
+    getInvitationData().then();
   }, []);
 
   // 在 statusState 可用时获取充值信息
@@ -1022,6 +1052,13 @@ const TopUp = () => {
           setOpenTransfer={setOpenTransfer}
           affLink={affLink}
           handleAffLinkClick={handleAffLinkClick}
+          invitationInfo={invitationInfo}
+          rewards={invitationRewards}
+          rewardPage={rewardPage}
+          rewardPageSize={rewardPageSize}
+          rewardTotal={rewardTotal}
+          onRewardPageChange={getInvitationRewards}
+          loading={invitationLoading}
           complianceConfirmed={topupInfo.payment_compliance_confirmed !== false}
         />
       </div>

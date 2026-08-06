@@ -31,6 +31,8 @@ import type {
   StripePaymentResponse,
   AffiliateCodeResponse,
   AffiliateTransferResponse,
+  InvitationInfoResponse,
+  InvitationRewardsResponse,
   BillingHistoryResponse,
   CompleteOrderRequest,
   CreemPaymentRequest,
@@ -174,6 +176,27 @@ export async function requestWaffoPancakePayment(
  */
 export async function getAffiliateCode(): Promise<AffiliateCodeResponse> {
   const res = await api.get('/api/user/aff')
+  return res.data
+}
+
+/**
+ * Get the active referral program and the current user's summary.
+ */
+export async function getInvitationInfo(): Promise<InvitationInfoResponse> {
+  const res = await api.get('/api/user/aff/info')
+  return res.data
+}
+
+/**
+ * Get top-up rebate rewards for the current user.
+ */
+export async function getInvitationRewards(
+  page: number,
+  pageSize: number
+): Promise<InvitationRewardsResponse> {
+  const res = await api.get('/api/user/aff/rewards', {
+    params: { p: page, page_size: pageSize },
+  })
   return res.data
 }
 

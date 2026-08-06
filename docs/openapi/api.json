@@ -1377,6 +1377,198 @@
         ]
       }
     },
+    "/api/user/aff/info": {
+      "get": {
+        "summary": "获取当前邀请方案与邀请统计",
+        "deprecated": false,
+        "description": "🔐 需要登录（User权限）。关闭模式仍返回历史统计与待划转额度，但客户端应隐藏新邀请链接。",
+        "tags": [
+          "用户管理"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "description": "当前用户邀请码"
+                        },
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "disabled",
+                            "fixed",
+                            "rebate"
+                          ]
+                        },
+                        "fixed_inviter_quota": {
+                          "type": "integer"
+                        },
+                        "fixed_invitee_quota": {
+                          "type": "integer"
+                        },
+                        "rebate_bps": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 10000,
+                          "description": "充值返利比例，整数基点"
+                        },
+                        "rebate_topup_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "invite_count": {
+                          "type": "integer"
+                        },
+                        "total_reward_quota": {
+                          "type": "integer"
+                        },
+                        "pending_reward_quota": {
+                          "type": "integer",
+                          "description": "历史固定注册奖励的待划转额度"
+                        },
+                        "reward_direct_to_balance": {
+                          "type": "boolean",
+                          "description": "充值比例返利是否直接进入主余额"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
+    "/api/user/aff/rewards": {
+      "get": {
+        "summary": "分页获取充值邀请返利流水",
+        "deprecated": false,
+        "description": "🔐 需要登录（User权限）。只返回脱敏用户名，不返回邮箱、订单号或支付渠道信息。",
+        "tags": [
+          "用户管理"
+        ],
+        "parameters": [
+          {
+            "name": "p",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "page_size": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "integer"
+                              },
+                              "invitee": {
+                                "type": "string",
+                                "description": "脱敏用户名"
+                              },
+                              "topup_ordinal": {
+                                "type": "integer"
+                              },
+                              "credited_quota": {
+                                "type": "integer"
+                              },
+                              "rebate_bps": {
+                                "type": "integer"
+                              },
+                              "reward_quota": {
+                                "type": "integer"
+                              },
+                              "created_at": {
+                                "type": "integer",
+                                "format": "int64"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
     "/api/user/aff_transfer": {
       "post": {
         "summary": "转换邀请额度",
@@ -5028,6 +5220,83 @@
         ]
       }
     },
+    "/api/option/invitation": {
+      "get": {
+        "summary": "获取全局邀请配置",
+        "deprecated": false,
+        "description": "👑 需要超级管理员权限（Root）",
+        "tags": [
+          "系统设置"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationSettingResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "原子保存全局邀请配置",
+        "deprecated": false,
+        "description": "👑 需要超级管理员权限（Root）。切换模式不会清空另一种模式的参数。",
+        "tags": [
+          "系统设置"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationSetting"
+              },
+              "example": {
+                "mode": "rebate",
+                "fixed_inviter_quota": 0,
+                "fixed_invitee_quota": 0,
+                "rebate_bps": 500,
+                "rebate_topup_count": 3
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationSettingResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Combination343": []
+          },
+          {
+            "Combination1243": []
+          }
+        ]
+      }
+    },
     "/api/option/rest_model_ratio": {
       "post": {
         "summary": "重置模型倍率",
@@ -5160,6 +5429,66 @@
             "items": {}
           }
         }
+      },
+      "InvitationSetting": {
+        "type": "object",
+        "required": [
+          "mode",
+          "fixed_inviter_quota",
+          "fixed_invitee_quota",
+          "rebate_bps",
+          "rebate_topup_count"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "fixed",
+              "rebate"
+            ],
+            "description": "当前全局邀请模式"
+          },
+          "fixed_inviter_quota": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "固定模式下邀请人获得的 quota"
+          },
+          "fixed_invitee_quota": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "固定模式下被邀请人获得的 quota"
+          },
+          "rebate_bps": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000,
+            "default": 500,
+            "description": "充值返利比例，整数基点；启用 rebate 模式时必须大于 0"
+          },
+          "rebate_topup_count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "default": 3,
+            "description": "参与返利的前 N 次钱包充值；启用 rebate 模式时必须大于 0"
+          }
+        }
+      },
+      "InvitationSettingResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ApiResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/InvitationSetting"
+              }
+            }
+          }
+        ]
       },
       "UserQuotaData": {
         "type": "object",

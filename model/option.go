@@ -151,6 +151,10 @@ func InitOptionMap() {
 	common.OptionMap["QuotaForNewUser"] = strconv.Itoa(common.QuotaForNewUser)
 	common.OptionMap["QuotaForInviter"] = strconv.Itoa(common.QuotaForInviter)
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
+	invitationSetting := defaultInvitationSetting()
+	common.OptionMap[InvitationModeOptionKey] = invitationSetting.Mode
+	common.OptionMap[InvitationRebateBpsOptionKey] = strconv.Itoa(invitationSetting.RebateBps)
+	common.OptionMap[InvitationRebateTopupsOptionKey] = strconv.Itoa(invitationSetting.RebateTopupCount)
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(setting.ModelRequestRateLimitCount)

@@ -26,6 +26,8 @@ import type {
   GroupModelRoute,
   GroupModelRouteListResponse,
   GroupModelRouteResponse,
+  InvitationSetting,
+  InvitationSettingResponse,
   LogCleanupTask,
   SystemOptionsResponse,
   SystemTaskListResponse,
@@ -44,6 +46,19 @@ export async function getSystemOptions() {
 
 export async function updateSystemOption(request: UpdateOptionRequest) {
   const res = await api.put<UpdateOptionResponse>('/api/option/', request)
+  return res.data
+}
+
+export async function getInvitationSetting() {
+  const res = await api.get<InvitationSettingResponse>('/api/option/invitation')
+  return res.data
+}
+
+export async function updateInvitationSetting(request: InvitationSetting) {
+  const res = await api.put<InvitationSettingResponse>(
+    '/api/option/invitation',
+    request
+  )
   return res.data
 }
 

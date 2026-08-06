@@ -516,6 +516,59 @@ func GetAffCode(c *gin.Context) {
 	return
 }
 
+func GetInvitationInfo(c *gin.Context) {
+	id := c.GetInt("id")
+	user, err := model.GetUserById(id, true)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if user.AffCode == "" {
+		user.AffCode = common.GetRandomString(4)
+		if err := user.Update(false); err != nil {
+			common.SysLog(fmt.Sprintf("failed to save affiliate code for user %d: %v", id, err))
+			common.ApiErrorI18n(c, i18n.MsgUpdateFailed)
+			return
+		}
+	}
+	setting, err := model.GetInvitationSetting()
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to load invitation setting for user %d: %v", id, err))
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"code":                     user.AffCode,
+		"mode":                     setting.Mode,
+		"fixed_inviter_quota":      setting.FixedInviterQuota,
+		"fixed_invitee_quota":      setting.FixedInviteeQuota,
+		"rebate_bps":               setting.RebateBps,
+		"rebate_topup_count":       setting.RebateTopupCount,
+		"invite_count":             user.AffCount,
+		"total_reward_quota":       user.AffHistoryQuota,
+		"pending_reward_quota":     user.AffQuota,
+		"reward_direct_to_balance": true,
+	})
+}
+
+func GetInvitationRewards(c *gin.Context) {
+	id := c.GetInt("id")
+	pageInfo := common.GetPageQuery(c)
+	if pageInfo.GetPageSize() < 1 {
+		common.ApiErrorI18nStatus(c, http.StatusBadRequest, i18n.MsgInvalidParams)
+		return
+	}
+	rewards, total, err := model.GetUserInvitationRewards(id, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to load invitation rewards for user %d: %v", id, err))
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(rewards)
+	common.ApiSuccess(c, pageInfo)
+}
+
 func GetSelf(c *gin.Context) {
 	id := c.GetInt("id")
 	userRole := c.GetInt("role")
