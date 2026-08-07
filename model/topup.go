@@ -22,7 +22,7 @@ type TopUp struct {
 	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:'';index:idx_topups_affiliate_eligible,priority:3"`
 	CreateTime      int64   `json:"create_time"`
 	CompleteTime    int64   `json:"complete_time"`
-	Status          string  `json:"status" gorm:"type:varchar(32);index:idx_topups_affiliate_eligible,priority:2"`
+	Status          string  `json:"status" gorm:"index:idx_topups_affiliate_eligible,priority:2"`
 }
 
 const (
