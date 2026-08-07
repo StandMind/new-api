@@ -136,6 +136,9 @@ const TopUp = () => {
     enable_redemption: true,
     payment_compliance_confirmed: true,
   });
+  const showInvitation = Boolean(
+    !invitationLoading && invitationInfo && invitationInfo.mode !== 'disabled',
+  );
 
   const confirmPayMethods = [
     ...payMethods,
@@ -998,7 +1001,9 @@ const TopUp = () => {
       </Modal>
 
       {/* 主布局区域 */}
-      <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
+      <div
+        className={`grid grid-cols-1 gap-6 ${showInvitation ? 'lg:grid-cols-2' : ''}`}
+      >
         <RechargeCard
           t={t}
           enableOnlineTopUp={enableOnlineTopUp}
@@ -1045,22 +1050,25 @@ const TopUp = () => {
           reloadSubscriptionSelf={getSubscriptionSelf}
           enableRedemption={topupInfo.enable_redemption !== false}
         />
-        <InvitationCard
-          t={t}
-          userState={userState}
-          renderQuota={renderQuota}
-          setOpenTransfer={setOpenTransfer}
-          affLink={affLink}
-          handleAffLinkClick={handleAffLinkClick}
-          invitationInfo={invitationInfo}
-          rewards={invitationRewards}
-          rewardPage={rewardPage}
-          rewardPageSize={rewardPageSize}
-          rewardTotal={rewardTotal}
-          onRewardPageChange={getInvitationRewards}
-          loading={invitationLoading}
-          complianceConfirmed={topupInfo.payment_compliance_confirmed !== false}
-        />
+        {showInvitation && (
+          <InvitationCard
+            t={t}
+            userState={userState}
+            renderQuota={renderQuota}
+            setOpenTransfer={setOpenTransfer}
+            affLink={affLink}
+            handleAffLinkClick={handleAffLinkClick}
+            invitationInfo={invitationInfo}
+            rewards={invitationRewards}
+            rewardPage={rewardPage}
+            rewardPageSize={rewardPageSize}
+            rewardTotal={rewardTotal}
+            onRewardPageChange={getInvitationRewards}
+            complianceConfirmed={
+              topupInfo.payment_compliance_confirmed !== false
+            }
+          />
+        )}
       </div>
     </div>
   );

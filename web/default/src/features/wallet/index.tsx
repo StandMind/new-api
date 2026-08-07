@@ -106,6 +106,9 @@ export function Wallet(props: WalletProps) {
     transferring,
     setRewardPage,
   } = useAffiliate()
+  const showAffiliate = Boolean(
+    !affiliateLoading && affiliateInfo && affiliateInfo.mode !== 'disabled'
+  )
   const { redeeming, redeemCode } = useRedemption()
   const { processing: creemProcessing, processCreemPayment } = useCreemPayment()
   const { processWaffoPayment } = useWaffoPayment()
@@ -274,7 +277,13 @@ export function Wallet(props: WalletProps) {
           <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5'>
             <WalletStatsCard user={user} loading={userLoading} />
 
-            <div className='grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(380px,0.92fr)] xl:items-start'>
+            <div
+              className={
+                showAffiliate
+                  ? 'grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(380px,0.92fr)] xl:items-start'
+                  : 'grid gap-4'
+              }
+            >
               <div className='flex min-w-0 flex-col gap-4'>
                 <div id='wallet-add-funds' className='scroll-mt-4'>
                   <RechargeFormCard
@@ -321,22 +330,23 @@ export function Wallet(props: WalletProps) {
                 </div>
               </div>
 
-              <AffiliateRewardsCard
-                user={user}
-                info={affiliateInfo}
-                rewards={affiliateRewards}
-                rewardPage={rewardPage}
-                rewardPageSize={rewardPageSize}
-                rewardTotal={rewardTotal}
-                affiliateLink={affiliateLink}
-                onRewardPageChange={setRewardPage}
-                onTransfer={() => setTransferDialogOpen(true)}
-                complianceConfirmed={
-                  topupInfo?.payment_compliance_confirmed !== false
-                }
-                loading={affiliateLoading}
-                rewardsLoading={rewardsLoading}
-              />
+              {showAffiliate ? (
+                <AffiliateRewardsCard
+                  user={user}
+                  info={affiliateInfo}
+                  rewards={affiliateRewards}
+                  rewardPage={rewardPage}
+                  rewardPageSize={rewardPageSize}
+                  rewardTotal={rewardTotal}
+                  affiliateLink={affiliateLink}
+                  onRewardPageChange={setRewardPage}
+                  onTransfer={() => setTransferDialogOpen(true)}
+                  complianceConfirmed={
+                    topupInfo?.payment_compliance_confirmed !== false
+                  }
+                  rewardsLoading={rewardsLoading}
+                />
+              ) : null}
             </div>
           </div>
         </SectionPageLayout.Content>

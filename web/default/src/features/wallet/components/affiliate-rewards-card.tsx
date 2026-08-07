@@ -91,16 +91,36 @@ export function AffiliateRewardsCard({
   const hasPendingRewards = pendingQuota > 0
   const totalPages = Math.max(1, Math.ceil(rewardTotal / rewardPageSize))
   const rebateRate = (info?.rebate_bps ?? 0) / 100
+  const rebateTopupCount = info?.rebate_topup_count ?? 0
+  const rebateDetails = [
+    {
+      markerClassName: 'bg-sky-500',
+      text: t(
+        'Invite friends to register. You will receive rewards after they top up.'
+      ),
+    },
+    {
+      markerClassName: 'bg-emerald-500',
+      text: t('Rewards are added to your balance automatically.'),
+    },
+    {
+      markerClassName: 'bg-muted-foreground/40',
+      text: t('The more friends you invite, the more rewards you can earn.'),
+    },
+  ]
 
   let modeSummary = t('New referral rewards are currently disabled.')
   let modeLabel = t('Disabled')
   let modeDescription = t('Existing rewards and history remain available.')
   let ModeIcon = PauseCircle
   if (mode === 'rebate') {
-    modeSummary = t('{{rate}}% back on the first {{count}} wallet top-ups', {
-      rate: rebateRate,
-      count: info?.rebate_topup_count ?? 0,
-    })
+    modeSummary = t(
+      'Invite friends to register and earn {{rate}}% cashback on each of their first {{count}} top-ups.',
+      {
+        rate: rebateRate,
+        count: rebateTopupCount,
+      }
+    )
     modeLabel = t('Top-up rebate')
     modeDescription = t('Rewards are added to your balance automatically.')
     ModeIcon = BadgePercent
@@ -245,6 +265,31 @@ export function AffiliateRewardsCard({
               />
             </div>
           </div>
+        ) : null}
+
+        {mode === 'rebate' ? (
+          <>
+            <Separator />
+            <div className='space-y-3'>
+              <div className='flex items-center gap-2 text-sm font-medium'>
+                <BadgePercent className='text-primary size-4' />
+                {t('Reward details')}
+              </div>
+              <ul className='space-y-3'>
+                {rebateDetails.map((detail) => (
+                  <li key={detail.text} className='flex items-start gap-3'>
+                    <span
+                      aria-hidden='true'
+                      className={`${detail.markerClassName} mt-1.5 size-2 shrink-0 rounded-full`}
+                    />
+                    <p className='text-muted-foreground text-xs leading-5'>
+                      {detail.text}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </>
         ) : null}
 
         {hasPendingRewards ? (

@@ -338,12 +338,7 @@ export default function SettingsCreditLimit(props) {
           </Row>
         </Form.Section>
 
-        <Button
-          size='default'
-          icon={<Save size={15} />}
-          disabled={blockedByCompliance}
-          onClick={onSubmit}
-        >
+        <Button size='default' icon={<Save size={15} />} onClick={onSubmit}>
           {t('保存额度与邀请设置')}
         </Button>
       </Form>

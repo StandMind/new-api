@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Save } from 'lucide-react'
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import type { Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -25,7 +24,6 @@ import { toast } from 'sonner'
 import * as z from 'zod'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
 import {
   Form,
   FormControl,
@@ -82,78 +80,23 @@ type QuotaSettingsSectionProps = {
 }
 
 function InvitationSettingsEditor({
-  complianceConfirmed,
+  draft,
+  loading,
+  blockedByCompliance,
+  onChange,
 }: {
-  complianceConfirmed: boolean
+  draft: InvitationSetting | null
+  loading: boolean
+  blockedByCompliance: boolean
+  onChange: (setting: InvitationSetting) => void
 }) {
   const { t } = useTranslation()
-  const [saved, setSaved] = useState<InvitationSetting | null>(null)
-  const [draft, setDraft] = useState<InvitationSetting | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    let active = true
-    void getInvitationSetting()
-      .then((response) => {
-        if (!active) return
-        if (!response.success || !response.data) {
-          throw new Error(response.message || 'Missing invitation setting')
-        }
-        setSaved(response.data)
-        setDraft(response.data)
-      })
-      .catch(() => {
-        if (active) toast.error(t('Failed to load invitation settings'))
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
-    return () => {
-      active = false
-    }
-  }, [t])
-
-  const isDirty = useMemo(
-    () =>
-      Boolean(
-        saved && draft && JSON.stringify(saved) !== JSON.stringify(draft)
-      ),
-    [draft, saved]
-  )
-  const rewardsEnabled = Boolean(
-    draft &&
-    (draft.mode === 'rebate' ||
-      (draft.mode === 'fixed' &&
-        (draft.fixed_inviter_quota > 0 || draft.fixed_invitee_quota > 0)))
-  )
-  const blockedByCompliance = rewardsEnabled && !complianceConfirmed
 
   const updateDraft = <K extends keyof InvitationSetting>(
     key: K,
     value: InvitationSetting[K]
   ) => {
-    setDraft((current) => (current ? { ...current, [key]: value } : current))
-  }
-
-  const save = async () => {
-    if (!draft || !isDirty || blockedByCompliance) return
-    setSaving(true)
-    try {
-      const response = await updateInvitationSetting(draft)
-      if (!response.success || !response.data) {
-        throw new Error(
-          response.message || 'Failed to update invitation setting'
-        )
-      }
-      setSaved(response.data)
-      setDraft(response.data)
-      toast.success(t('Invitation settings updated'))
-    } catch {
-      toast.error(t('Failed to update invitation settings'))
-    } finally {
-      setSaving(false)
-    }
+    if (draft) onChange({ ...draft, [key]: value })
   }
 
   if (loading || !draft) {
@@ -167,7 +110,6 @@ function InvitationSettingsEditor({
 
   return (
     <div className='space-y-5'>
-      <FormNavigationGuard when={isDirty} />
       <div>
         <p className='text-muted-foreground text-sm'>
           {t(
@@ -331,18 +273,6 @@ function InvitationSettingsEditor({
           </AlertDescription>
         </Alert>
       ) : null}
-
-      <div className='flex justify-end'>
-        <Button
-          type='button'
-          size='sm'
-          disabled={!isDirty || saving || blockedByCompliance}
-          onClick={save}
-        >
-          <Save data-icon='inline-start' />
-          {t(saving ? 'Saving...' : 'Save invitation settings')}
-        </Button>
-      </div>
     </div>
   )
 }
@@ -353,6 +283,58 @@ export function QuotaSettingsSection({
 }: QuotaSettingsSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
+  const [savedInvitation, setSavedInvitation] =
+    useState<InvitationSetting | null>(null)
+  const [invitationDraft, setInvitationDraft] =
+    useState<InvitationSetting | null>(null)
+  const [invitationLoading, setInvitationLoading] = useState(true)
+  const [invitationSaving, setInvitationSaving] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    void getInvitationSetting()
+      .then((response) => {
+        if (!active) return
+        if (!response.success || !response.data) {
+          throw new Error(response.message || 'Missing invitation setting')
+        }
+        setSavedInvitation(response.data)
+        setInvitationDraft(response.data)
+      })
+      .catch((error: unknown) => {
+        if (!active) return
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : t('Failed to load invitation settings')
+        )
+      })
+      .finally(() => {
+        if (active) setInvitationLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [t])
+
+  const invitationDirty = useMemo(
+    () =>
+      Boolean(
+        savedInvitation &&
+        invitationDraft &&
+        JSON.stringify(savedInvitation) !== JSON.stringify(invitationDraft)
+      ),
+    [invitationDraft, savedInvitation]
+  )
+  const invitationRewardsEnabled = Boolean(
+    invitationDraft &&
+    (invitationDraft.mode === 'rebate' ||
+      (invitationDraft.mode === 'fixed' &&
+        (invitationDraft.fixed_inviter_quota > 0 ||
+          invitationDraft.fixed_invitee_quota > 0)))
+  )
+  const invitationBlockedByCompliance =
+    invitationRewardsEnabled && !complianceConfirmed
   const handleNumberChange =
     (onChange: (value: QuotaInputValue) => void) =>
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -378,32 +360,78 @@ export function QuotaSettingsSection({
       },
     })
 
+  const handleSave = async () => {
+    if (invitationLoading || invitationSaving) return
+    if (!isDirty && !invitationDirty) {
+      toast.info(t('No changes to save'))
+      return
+    }
+    if (invitationBlockedByCompliance) {
+      toast.error(
+        t(
+          'Non-zero invitation rewards require compliance confirmation in Payment Gateway settings.'
+        )
+      )
+      return
+    }
+
+    setInvitationSaving(true)
+    try {
+      if (invitationDirty && invitationDraft) {
+        const response = await updateInvitationSetting(invitationDraft)
+        if (!response.success || !response.data) {
+          throw new Error(
+            response.message || t('Failed to update invitation settings')
+          )
+        }
+        setSavedInvitation(response.data)
+        setInvitationDraft(response.data)
+      }
+      if (isDirty) {
+        await handleSubmit()
+      }
+      if (invitationDirty) {
+        toast.success(t('Invitation settings updated'))
+      }
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t('Failed to update invitation settings')
+      )
+    } finally {
+      setInvitationSaving(false)
+    }
+  }
+
   return (
     <>
+      <FormNavigationGuard when={isDirty || invitationDirty} />
       <SettingsSection title={t('Invitation Program')}>
-        <InvitationSettingsEditor complianceConfirmed={complianceConfirmed} />
+        <InvitationSettingsEditor
+          draft={invitationDraft}
+          loading={invitationLoading}
+          blockedByCompliance={invitationBlockedByCompliance}
+          onChange={setInvitationDraft}
+        />
       </SettingsSection>
 
       <SettingsSection title={t('Quota Settings')}>
-        <FormNavigationGuard when={isDirty} />
-
-        {!complianceConfirmed ? (
-          <Alert variant='destructive'>
-            <AlertDescription>
-              {t(
-                'Non-zero invitation rewards require compliance confirmation in Payment Gateway settings.'
-              )}
-            </AlertDescription>
-          </Alert>
-        ) : null}
-
         <Form {...form}>
-          <SettingsForm onSubmit={handleSubmit}>
+          <SettingsForm
+            onSubmit={(event) => {
+              event.preventDefault()
+              void handleSave()
+            }}
+          >
             <SettingsPageFormActions
-              onSave={handleSubmit}
-              isSaving={updateOption.isPending || isSubmitting}
+              onSave={handleSave}
+              isSaving={
+                updateOption.isPending || isSubmitting || invitationSaving
+              }
+              isSaveDisabled={invitationLoading || !invitationDraft}
             />
-            <FormDirtyIndicator isDirty={isDirty} />
+            <FormDirtyIndicator isDirty={isDirty || invitationDirty} />
             <SettingsFormGrid>
               <FormField
                 control={form.control}

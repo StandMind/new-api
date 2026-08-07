@@ -76,13 +76,31 @@ const InvitationCard = ({
     0;
   const inviteCount =
     invitationInfo?.invite_count ?? userState?.user?.aff_count ?? 0;
-  const rate = (invitationInfo?.rebate_bps || 0) / 100;
+  const rebateRate = (invitationInfo?.rebate_bps || 0) / 100;
+  const rebateTopupCount = invitationInfo?.rebate_topup_count || 0;
+  const rebateDetails = [
+    {
+      markerClassName: 'bg-blue-500',
+      text: t('邀请好友注册，好友充值后您可获得相应奖励'),
+    },
+    {
+      markerClassName: 'bg-green-500',
+      text: t('返利会自动进入余额，无需划转。'),
+    },
+    {
+      markerClassName: 'bg-gray-300',
+      text: t('邀请的好友越多，获得的奖励越多'),
+    },
+  ];
   const modeTitle =
     mode === 'rebate'
-      ? t('前 {{count}} 次充值返利 {{rate}}%', {
-          count: invitationInfo?.rebate_topup_count || 0,
-          rate,
-        })
+      ? t(
+          '邀请好友注册，好友前 {{count}} 次充值每次均可为您带来 {{rate}}% 返利。',
+          {
+            count: rebateTopupCount,
+            rate: rebateRate,
+          },
+        )
       : mode === 'fixed'
         ? t('固定注册奖励')
         : t('邀请奖励已关闭');
@@ -167,6 +185,31 @@ const InvitationCard = ({
             />
           </div>
         </div>
+      )}
+
+      {mode === 'rebate' && (
+        <>
+          <Divider margin='16px' />
+          <div className='space-y-3'>
+            <div className='flex items-center gap-2 font-medium'>
+              <BadgePercent size={16} className='text-semi-color-primary' />
+              {t('奖励说明')}
+            </div>
+            <ul className='space-y-3'>
+              {rebateDetails.map((detail) => (
+                <li key={detail.text} className='flex items-start gap-3'>
+                  <span
+                    aria-hidden='true'
+                    className={`${detail.markerClassName} mt-1.5 h-2 w-2 shrink-0 rounded-full`}
+                  />
+                  <Text type='tertiary' size='small' className='leading-5'>
+                    {detail.text}
+                  </Text>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
       )}
 
       {pendingQuota > 0 && (
