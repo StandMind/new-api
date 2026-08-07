@@ -351,6 +351,8 @@ func TestInvitationRebateManualCompletionOnlyCountsEligibleExternalTopups(t *tes
 	inviter := loadInvitationUserForTest(t, 1601)
 	assert.Equal(t, 50, inviter.Quota)
 	assert.Equal(t, 50, inviter.AffHistoryQuota)
+	invitee := loadInvitationUserForTest(t, 1602)
+	assert.Equal(t, 2000, invitee.Quota)
 
 	var rewards []InvitationTopupReward
 	require.NoError(t, DB.Find(&rewards).Error)
