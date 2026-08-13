@@ -24,9 +24,16 @@ import (
 
 func GetTopUpInfo(c *gin.Context) {
 	complianceConfirmed := operation_setting.IsPaymentComplianceConfirmed()
+	amountOptions := normalizeTopUpAmountOptions(operation_setting.GetPaymentSetting().AmountOptions)
+	creemProducts := "[]"
+	if products, err := creemProductsForTopUpInfo(); err != nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("Creem 充值商品信息构建失败 error=%q", err.Error()))
+	} else {
+		creemProducts = products
+	}
 
 	// 获取支付方式
-	payMethods := operation_setting.PayMethods
+	payMethods := append([]map[string]string(nil), operation_setting.PayMethods...)
 	if !complianceConfirmed {
 		payMethods = []map[string]string{}
 	}
@@ -111,18 +118,34 @@ func GetTopUpInfo(c *gin.Context) {
 			}
 			return nil
 		}(),
-		"creem_products":          setting.GetActiveCreemProducts(),
+		"creem_products":          creemProducts,
 		"creem_test_mode":         setting.CreemTestMode,
 		"pay_methods":             payMethods,
 		"min_topup":               operation_setting.MinTopUp,
 		"stripe_min_topup":        setting.StripeMinTopUp,
 		"waffo_min_topup":         setting.WaffoMinTopUp,
 		"waffo_pancake_min_topup": setting.WaffoPancakeMinTopUp,
-		"amount_options":          operation_setting.GetPaymentSetting().AmountOptions,
+		"amount_options":          amountOptions,
 		"discount":                operation_setting.GetPaymentSetting().AmountDiscount,
 		"topup_link":              common.TopUpLink,
 	}
 	common.ApiSuccess(c, data)
+}
+
+func normalizeTopUpAmountOptions(options []int) []int {
+	normalized := make([]int, 0, len(options))
+	seen := make(map[int]struct{}, len(options))
+	for _, amount := range options {
+		if amount <= 0 {
+			continue
+		}
+		if _, exists := seen[amount]; exists {
+			continue
+		}
+		seen[amount] = struct{}{}
+		normalized = append(normalized, amount)
+	}
+	return normalized
 }
 
 type EpayRequest struct {

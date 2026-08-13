@@ -66,6 +66,7 @@ import { useUpdateOption } from '../hooks/use-update-option'
 import { safeNumberFieldProps } from '../utils/numeric-field'
 import { AmountDiscountVisualEditor } from './amount-discount-visual-editor'
 import { AmountOptionsVisualEditor } from './amount-options-visual-editor'
+import { hasDuplicateCreemQuota } from './creem-products-validation'
 import { CreemProductsVisualEditor } from './creem-products-visual-editor'
 import { PaymentMethodsVisualEditor } from './payment-methods-visual-editor'
 import {
@@ -165,6 +166,13 @@ const paymentSchema = z.object({
         code: z.ZodIssueCode.custom,
         message: error,
       })
+      return
+    }
+    if (value.trim() && hasDuplicateCreemQuota(JSON.parse(value))) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Creem product quota values must be unique',
+      })
     }
   }),
   CreemTestProducts: z.string().superRefine((value, ctx) => {
@@ -173,6 +181,13 @@ const paymentSchema = z.object({
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: error,
+      })
+      return
+    }
+    if (value.trim() && hasDuplicateCreemQuota(JSON.parse(value))) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Creem product quota values must be unique',
       })
     }
   }),

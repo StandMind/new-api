@@ -1,12 +1,16 @@
 package controller
 
 import (
+	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,6 +30,32 @@ func TestFormatWaffoPancakeAmount_UsesDisplayPriceString(t *testing.T) {
 			require.Equal(t, tc.expected, formatWaffoPancakeAmount(tc.amount))
 		})
 	}
+}
+
+func TestListWaffoPancakeCatalogDoesNotReadCredentialsFromQuery(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	originalMerchantID := setting.WaffoPancakeMerchantID
+	originalPrivateKey := setting.WaffoPancakePrivateKey
+	setting.WaffoPancakeMerchantID = ""
+	setting.WaffoPancakePrivateKey = ""
+	t.Cleanup(func() {
+		setting.WaffoPancakeMerchantID = originalMerchantID
+		setting.WaffoPancakePrivateKey = originalPrivateKey
+	})
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/api/option/waffo-pancake/catalog?merchant_id=MER_query_value_must_be_ignored&private_key=secret",
+		bytes.NewReader(nil),
+	)
+
+	ListWaffoPancakeCatalog(context)
+
+	var response map[string]any
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Equal(t, "error", response["message"])
 }
 
 func TestGetWaffoPancakePayMoney(t *testing.T) {

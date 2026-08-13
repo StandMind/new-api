@@ -218,10 +218,17 @@ func CreateWaffoPancakePair(c *gin.Context) {
 // Doubles as a credential probe (a successful 200 proves the resolved creds
 // authenticate). See resolveWaffoPancakeAdminCreds for credential resolution.
 func ListWaffoPancakeCatalog(c *gin.Context) {
-	// Missing query creds mean "use persisted creds".
+	var req createWaffoPancakePairRequest
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			common.ApiErrorDataI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+	}
+	// Missing body creds mean "use persisted creds".
 	merchantID, privateKey := resolveWaffoPancakeAdminCreds(
-		strings.TrimSpace(c.Query("merchant_id")),
-		strings.TrimSpace(c.Query("private_key")),
+		req.MerchantID,
+		req.PrivateKey,
 	)
 	if merchantID == "" || privateKey == "" {
 		common.ApiErrorDataI18n(c, i18n.MsgPaymentWaffoNotConfigured)

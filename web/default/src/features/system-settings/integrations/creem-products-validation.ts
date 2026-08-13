@@ -16,12 +16,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-// ============================================================================
-// Wallet Library Exports
-// ============================================================================
-
-export * from './affiliate'
-export * from './format'
-export * from './payment'
-export * from './payment-options'
-export * from './ui'
+export function hasDuplicateCreemQuota(products: unknown[]): boolean {
+  const quotas = new Set<number>()
+  for (const product of products) {
+    if (!product || typeof product !== 'object' || !('quota' in product)) {
+      continue
+    }
+    const quota = Number(product.quota)
+    if (!Number.isFinite(quota)) {
+      continue
+    }
+    if (quotas.has(quota)) {
+      return true
+    }
+    quotas.add(quota)
+  }
+  return false
+}

@@ -49,21 +49,20 @@ export function AmountOptionsVisualEditor({
     })
 
     return parsed
-      .filter((item) => typeof item === 'number' || !isNaN(Number(item)))
+      .filter((item) => typeof item === 'number' || !Number.isNaN(Number(item)))
       .map(Number)
-      .sort((a, b) => a - b)
   }, [value, t])
 
   const handleAdd = () => {
-    const amount = parseFloat(newAmount)
-    if (isNaN(amount) || amount <= 0) {
+    const amount = Number.parseFloat(newAmount)
+    if (Number.isNaN(amount) || amount <= 0) {
       return
     }
 
     try {
-      const updatedAmounts = [...amounts, amount]
-        .filter((v, i, a) => a.indexOf(v) === i) // Remove duplicates
-        .sort((a, b) => a - b)
+      const updatedAmounts = [...amounts, amount].filter(
+        (value, index, values) => values.indexOf(value) === index
+      )
 
       onChange(JSON.stringify(updatedAmounts, null, 2))
       setNewAmount('')
@@ -156,7 +155,7 @@ export function AmountOptionsVisualEditor({
             e.stopPropagation()
             handleAdd()
           }}
-          disabled={!newAmount || parseFloat(newAmount) <= 0}
+          disabled={!newAmount || Number.parseFloat(newAmount) <= 0}
           className='w-full sm:w-auto'
         >
           <Plus className='h-4 w-4 sm:mr-2' />

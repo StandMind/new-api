@@ -16,12 +16,26 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-// ============================================================================
-// Wallet Library Exports
-// ============================================================================
+import assert from 'node:assert/strict'
+import { describe, test } from 'node:test'
 
-export * from './affiliate'
-export * from './format'
-export * from './payment'
-export * from './payment-options'
-export * from './ui'
+import { hasDuplicateCreemQuota } from './creem-products-validation'
+
+describe('Creem product validation', () => {
+  test('rejects duplicate quota mappings while allowing distinct products', () => {
+    assert.equal(
+      hasDuplicateCreemQuota([
+        { productId: 'a', quota: 500000 },
+        { productId: 'b', quota: 500000 },
+      ]),
+      true
+    )
+    assert.equal(
+      hasDuplicateCreemQuota([
+        { productId: 'a', quota: 500000 },
+        { productId: 'b', quota: 1000000 },
+      ]),
+      false
+    )
+  })
+})

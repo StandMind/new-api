@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { StaticDataTable } from '@/components/data-table/static/static-data-table'
 import { StaticRowActions } from '@/components/data-table/static/static-row-actions'
@@ -35,6 +36,7 @@ import {
   CreemProductDialog,
   type CreemProductData,
 } from './creem-product-dialog'
+import { hasDuplicateCreemQuota } from './creem-products-validation'
 
 type CreemProductsVisualEditorProps = {
   value: string
@@ -109,6 +111,11 @@ export function CreemProductsVisualEditor({
       }
     } else {
       updatedArray.push(data)
+    }
+
+    if (hasDuplicateCreemQuota(updatedArray)) {
+      toast.error(t('Creem product quota values must be unique'))
+      return
     }
 
     onChange(JSON.stringify(updatedArray, null, 2))

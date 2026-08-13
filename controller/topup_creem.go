@@ -18,6 +18,9 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
+
+	"github.com/shopspring/decimal"
 
 	"github.com/gin-gonic/gin"
 	"github.com/thanhpk/randstr"
@@ -51,15 +54,145 @@ func verifyCreemSignature(payload string, signature string, secret string) bool 
 
 type CreemPayRequest struct {
 	ProductId     string `json:"product_id"`
+	Amount        *int64 `json:"amount,omitempty"`
 	PaymentMethod string `json:"payment_method"`
 }
 
 type CreemProduct struct {
-	ProductId string  `json:"productId"`
-	Name      string  `json:"name"`
-	Price     float64 `json:"price"`
-	Currency  string  `json:"currency"`
-	Quota     int64   `json:"quota"`
+	ProductId   string  `json:"productId"`
+	Name        string  `json:"name"`
+	Price       float64 `json:"price"`
+	Currency    string  `json:"currency"`
+	Quota       int64   `json:"quota"`
+	TopUpAmount int64   `json:"topupAmount,omitempty"`
+}
+
+var (
+	errCreemAmountNotConfigured = errors.New("creem topup amount is not configured")
+	errCreemProductNotFound     = errors.New("creem product is not configured")
+	errCreemProductAmbiguous    = errors.New("multiple creem products match the topup amount")
+	errCreemRequestConflict     = errors.New("creem product does not match the topup amount")
+)
+
+func parseActiveCreemProducts() ([]CreemProduct, error) {
+	var products []CreemProduct
+	if err := common.Unmarshal([]byte(setting.GetActiveCreemProducts()), &products); err != nil {
+		return nil, err
+	}
+	for i := range products {
+		// topupAmount is derived server-side and must never be trusted from config.
+		products[i].TopUpAmount = 0
+	}
+	return products, nil
+}
+
+func creemQuotaForTopUpAmount(amount int64) (int64, error) {
+	if amount <= 0 {
+		return 0, errCreemAmountNotConfigured
+	}
+	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+		if amount > int64(common.MaxQuota) {
+			return 0, errCreemAmountNotConfigured
+		}
+		return amount, nil
+	}
+
+	quota := decimal.NewFromInt(amount).
+		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
+		Truncate(0)
+	if !quota.IsPositive() {
+		return 0, errCreemAmountNotConfigured
+	}
+	quotaValue, err := common.QuotaFromFloatStrict(quota.InexactFloat64())
+	if err != nil {
+		return 0, errCreemAmountNotConfigured
+	}
+	return int64(quotaValue), nil
+}
+
+func isConfiguredTopUpAmount(amount int64) bool {
+	for _, option := range normalizeTopUpAmountOptions(operation_setting.GetPaymentSetting().AmountOptions) {
+		if int64(option) == amount {
+			return true
+		}
+	}
+	return false
+}
+
+func resolveCreemProduct(req *CreemPayRequest, products []CreemProduct) (*CreemProduct, error) {
+	if req.Amount != nil {
+		if !isConfiguredTopUpAmount(*req.Amount) {
+			return nil, errCreemAmountNotConfigured
+		}
+		quota, err := creemQuotaForTopUpAmount(*req.Amount)
+		if err != nil {
+			return nil, err
+		}
+
+		matches := make([]CreemProduct, 0, 1)
+		for _, product := range products {
+			if product.Quota == quota {
+				matches = append(matches, product)
+			}
+		}
+		switch len(matches) {
+		case 0:
+			return nil, errCreemProductNotFound
+		case 1:
+			if req.ProductId != "" && req.ProductId != matches[0].ProductId {
+				return nil, errCreemRequestConflict
+			}
+			return &matches[0], nil
+		default:
+			return nil, errCreemProductAmbiguous
+		}
+	}
+
+	if req.ProductId == "" {
+		return nil, errCreemProductNotFound
+	}
+	var selectedProduct *CreemProduct
+	for i := range products {
+		if products[i].ProductId != req.ProductId {
+			continue
+		}
+		if selectedProduct != nil {
+			return nil, errCreemProductAmbiguous
+		}
+		selectedProduct = &products[i]
+	}
+	if selectedProduct == nil {
+		return nil, errCreemProductNotFound
+	}
+	return selectedProduct, nil
+}
+
+func creemProductsForTopUpInfo() (string, error) {
+	products, err := parseActiveCreemProducts()
+	if err != nil {
+		return "[]", err
+	}
+	amountOptions := normalizeTopUpAmountOptions(operation_setting.GetPaymentSetting().AmountOptions)
+	for i := range products {
+		matchedAmount := int64(0)
+		matchCount := 0
+		for _, option := range amountOptions {
+			quota, quotaErr := creemQuotaForTopUpAmount(int64(option))
+			if quotaErr == nil && quota == products[i].Quota {
+				matchedAmount = int64(option)
+				matchCount++
+			}
+		}
+		if matchCount == 1 {
+			products[i].TopUpAmount = matchedAmount
+		}
+	}
+
+	data, err := common.Marshal(products)
+	if err != nil {
+		return "[]", err
+	}
+	return string(data), nil
 }
 
 type CreemAdaptor struct {
@@ -71,30 +204,16 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 		return
 	}
 
-	if req.ProductId == "" {
-		common.ApiErrorDataI18n(c, i18n.MsgPaymentProductNotConfig)
-		return
-	}
-
-	// 解析产品列表
-	var products []CreemProduct
-	err := common.Unmarshal([]byte(setting.GetActiveCreemProducts()), &products)
+	products, err := parseActiveCreemProducts()
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Creem 产品配置解析失败 user_id=%d error=%q", c.GetInt("id"), err.Error()))
 		common.ApiErrorDataI18n(c, i18n.MsgPaymentProductNotConfig)
 		return
 	}
 
-	// 查找对应的产品
-	var selectedProduct *CreemProduct
-	for _, product := range products {
-		if product.ProductId == req.ProductId {
-			selectedProduct = &product
-			break
-		}
-	}
-
-	if selectedProduct == nil {
+	selectedProduct, err := resolveCreemProduct(req, products)
+	if err != nil {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("Creem 充值商品解析失败 user_id=%d product_id=%q amount=%v error=%q", c.GetInt("id"), req.ProductId, req.Amount, err.Error()))
 		common.ApiErrorDataI18n(c, i18n.MsgPaymentProductNotConfig)
 		return
 	}

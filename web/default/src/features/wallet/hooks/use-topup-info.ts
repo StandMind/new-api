@@ -19,11 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState, useEffect, useCallback } from 'react'
 
 import { getTopupInfo } from '../api'
-import {
-  generatePresetAmounts,
-  mergePresetAmounts,
-  getMinTopupAmount,
-} from '../lib'
+import { mergePresetAmounts, normalizeTopupAmounts } from '../lib'
 import type {
   TopupInfo,
   PresetAmount,
@@ -78,7 +74,7 @@ function parsePaymentMethods(
             : normalizedMinTopup,
       }
     })
-    .filter((item) => item.name && item.type && item.type !== 'waffo')
+    .filter((item) => item.name && item.type)
 }
 
 function parseWaffoPayMethods(data: unknown): WaffoPayMethod[] {
@@ -114,15 +110,18 @@ function parseCreemProducts(data: unknown): CreemProduct[] {
         price: Number(item.price) || 0,
         quota: Number(item.quota) || 0,
         currency,
+        topupAmount:
+          Number.isFinite(Number(item.topupAmount)) &&
+          Number(item.topupAmount) > 0
+            ? Number(item.topupAmount)
+            : undefined,
       }
     })
     .filter((item) => item.name && item.productId)
 }
 
 function parseAmountOptions(data: unknown): number[] {
-  return parseJsonArray(data)
-    .map((item) => Number(item))
-    .filter((item) => Number.isFinite(item) && item > 0)
+  return normalizeTopupAmounts(parseJsonArray(data))
 }
 
 function parseDiscountMap(data: unknown): Record<number, number> {
@@ -196,17 +195,12 @@ export function useTopupInfo() {
 
       setTopupInfo(processedData)
 
-      if (processedData.amount_options.length > 0) {
-        const customPresets = mergePresetAmounts(
+      setPresetAmounts(
+        mergePresetAmounts(
           processedData.amount_options,
           processedData.discount || {}
         )
-        setPresetAmounts(customPresets)
-      } else {
-        const minTopup = getMinTopupAmount(processedData)
-        const defaultPresets = generatePresetAmounts(minTopup)
-        setPresetAmounts(defaultPresets)
-      }
+      )
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('Failed to fetch topup info:', err)

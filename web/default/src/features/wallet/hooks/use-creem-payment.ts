@@ -28,11 +28,11 @@ import { requestCreemPayment, isApiSuccess } from '../api'
 export function useCreemPayment() {
   const [processing, setProcessing] = useState(false)
 
-  const processCreemPayment = useCallback(async (productId: string) => {
+  const processCreemPayment = useCallback(async (topupAmount: number) => {
     setProcessing(true)
     try {
       const response = await requestCreemPayment({
-        product_id: productId,
+        amount: Math.floor(topupAmount),
         payment_method: 'creem',
       })
 
@@ -44,7 +44,7 @@ export function useCreemPayment() {
 
       toast.error(response.message || i18next.t('Payment request failed'))
       return false
-    } catch (_error) {
+    } catch {
       toast.error(i18next.t('Payment request failed'))
       return false
     } finally {

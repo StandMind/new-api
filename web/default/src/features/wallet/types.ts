@@ -108,14 +108,18 @@ export interface CreemProduct {
   quota: number
   /** Currency (USD or EUR) */
   currency: 'USD' | 'EUR'
+  /** User-facing fixed topup amount resolved by the backend */
+  topupAmount?: number
 }
 
 /**
  * Creem payment request
  */
 export interface CreemPaymentRequest {
-  /** Creem product ID */
-  product_id: string
+  /** Fixed topup amount selected by the user */
+  amount?: number
+  /** Legacy Creem product ID */
+  product_id?: string
   /** Payment method identifier */
   payment_method: 'creem'
 }
@@ -149,6 +153,35 @@ export interface WaffoPayMethod {
   /** Waffo pay method name */
   payMethodName?: string
 }
+
+export type UnifiedPaymentOption =
+  | {
+      id: string
+      kind: 'standard'
+      name: string
+      type: string
+      icon?: string
+      minTopup: number
+    }
+  | {
+      id: string
+      kind: 'waffo'
+      name: string
+      type: 'waffo'
+      icon?: string
+      minTopup: number
+      payMethodIndex: number
+    }
+  | {
+      id: string
+      kind: 'creem'
+      name: string
+      type: 'creem'
+      icon?: string
+      minTopup: number
+      product?: CreemProduct
+      testMode: boolean
+    }
 
 /**
  * Topup configuration information
