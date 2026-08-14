@@ -85,6 +85,49 @@ export function isWaffoPayment(paymentType: string): boolean {
   return paymentType === PAYMENT_TYPES.WAFFO
 }
 
+export function getTopupSavingsPercent(
+  discountRate: number | undefined
+): number | null {
+  if (
+    discountRate == null ||
+    !Number.isFinite(discountRate) ||
+    discountRate <= 0 ||
+    discountRate >= 1
+  ) {
+    return null
+  }
+
+  return Math.round((1 - discountRate) * 10000) / 100
+}
+
+export interface TopupDiscountBreakdown {
+  savingsPercent: number
+  originalAmount: number
+  savingsAmount: number
+}
+
+export function getTopupDiscountBreakdown(
+  paymentAmount: number,
+  discountRate: number | undefined
+): TopupDiscountBreakdown | null {
+  const savingsPercent = getTopupSavingsPercent(discountRate)
+  if (
+    savingsPercent === null ||
+    discountRate == null ||
+    !Number.isFinite(paymentAmount) ||
+    paymentAmount <= 0
+  ) {
+    return null
+  }
+
+  const originalAmount = paymentAmount / discountRate
+  return {
+    savingsPercent,
+    originalAmount,
+    savingsAmount: originalAmount - paymentAmount,
+  }
+}
+
 /**
  * Merge custom preset amounts with discounts
  */

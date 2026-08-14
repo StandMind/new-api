@@ -20,6 +20,7 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
 import type { TopupInfo } from '../types'
+import { getTopupDiscountBreakdown, getTopupSavingsPercent } from './payment'
 import {
   buildUnifiedPaymentOptions,
   getPaymentDispatch,
@@ -70,6 +71,21 @@ function topupInfoFixture(): TopupInfo {
 }
 
 describe('wallet payment options', () => {
+  test('calculates exact savings labels and confirmation amounts', () => {
+    assert.equal(getTopupSavingsPercent(0.99), 1)
+    assert.equal(getTopupSavingsPercent(0.985), 1.5)
+    assert.equal(getTopupSavingsPercent(0.965), 3.5)
+    assert.equal(getTopupSavingsPercent(1), null)
+    assert.equal(getTopupSavingsPercent(0), null)
+
+    assert.deepEqual(getTopupDiscountBreakdown(193, 0.965), {
+      savingsPercent: 3.5,
+      originalAmount: 200,
+      savingsAmount: 7,
+    })
+    assert.equal(getTopupDiscountBreakdown(200, 1), null)
+  })
+
   test('normalizes fixed amounts without changing their order', () => {
     assert.deepEqual(
       normalizeTopupAmounts([0, 20, '10', 20, -1, 'bad', 50]),

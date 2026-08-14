@@ -34,12 +34,14 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useSystemConfig } from '@/hooks/use-system-config'
+import { formatPercent } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import {
   formatTopupCreditAmount,
   getPaymentIcon,
   getPaymentOptionUnavailableReason,
+  getTopupSavingsPercent,
 } from '../lib'
 import type { PresetAmount, TopupInfo, UnifiedPaymentOption } from '../types'
 
@@ -74,7 +76,7 @@ function LoadingCard() {
           <div className='grid grid-cols-2 gap-3 sm:grid-cols-4'>
             {Array.from({ length: 8 }, (_, index) => `preset-${index}`).map(
               (key) => (
-                <Skeleton key={key} className='h-16 rounded-lg' />
+                <Skeleton key={key} className='h-16 rounded-lg sm:h-[4.5rem]' />
               )
             )}
           </div>
@@ -146,22 +148,42 @@ export function RechargeFormCard(props: RechargeFormCardProps) {
             </Label>
             {hasConfiguredAmounts ? (
               <div className='grid grid-cols-2 gap-1.5 sm:gap-3 md:grid-cols-4'>
-                {props.presetAmounts.map((preset) => (
-                  <Button
-                    key={preset.value}
-                    variant='outline'
-                    disabled={Boolean(props.paymentLoading)}
-                    className={cn(
-                      'min-h-14 rounded-lg px-3 py-2.5 text-base font-semibold sm:min-h-16 sm:px-4 sm:text-lg',
-                      props.selectedPreset === preset.value
-                        ? 'border-foreground bg-foreground/5 dark:border-foreground dark:bg-foreground/10'
-                        : 'border-muted'
-                    )}
-                    onClick={() => props.onSelectPreset(preset)}
-                  >
-                    {formatTopupCreditAmount(preset.value, currency)}
-                  </Button>
-                ))}
+                {props.presetAmounts.map((preset) => {
+                  const savingsPercent = getTopupSavingsPercent(preset.discount)
+                  const savingsLabel =
+                    savingsPercent === null
+                      ? null
+                      : t('Save {{percent}}', {
+                          percent: formatPercent(savingsPercent),
+                        })
+
+                  return (
+                    <Button
+                      key={preset.value}
+                      type='button'
+                      variant='outline'
+                      disabled={Boolean(props.paymentLoading)}
+                      className={cn(
+                        'h-16 min-h-16 flex-col gap-0.5 rounded-lg px-3 py-2 sm:h-[4.5rem] sm:min-h-[4.5rem] sm:px-4',
+                        props.selectedPreset === preset.value
+                          ? 'border-foreground bg-foreground/5 dark:border-foreground dark:bg-foreground/10'
+                          : 'border-muted'
+                      )}
+                      onClick={() => props.onSelectPreset(preset)}
+                    >
+                      <span className='text-base leading-5 font-semibold sm:text-lg'>
+                        {formatTopupCreditAmount(preset.value, currency)}
+                      </span>
+                      {savingsLabel ? (
+                        <span className='text-[11px] leading-4 font-semibold text-emerald-600 dark:text-emerald-400'>
+                          {savingsLabel}
+                        </span>
+                      ) : (
+                        <span aria-hidden='true' className='h-4' />
+                      )}
+                    </Button>
+                  )
+                })}
               </div>
             ) : (
               <Alert>

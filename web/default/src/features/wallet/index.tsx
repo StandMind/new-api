@@ -339,11 +339,7 @@ export function Wallet(props: WalletProps) {
         processing={
           processing || creemProcessing || waffoProcessing || pancakeProcessing
         }
-        discountRate={
-          selectedPaymentOption?.kind === 'creem'
-            ? DEFAULT_DISCOUNT_RATE
-            : getDiscountRate()
-        }
+        discountRate={getDiscountRate()}
       />
 
       <TransferDialog

@@ -32,12 +32,14 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { formatLocalCurrencyAmount } from '@/lib/currency'
+import { formatPercent } from '@/lib/format'
 
 import { DEFAULT_DISCOUNT_RATE } from '../../constants'
 import {
   formatCreemPrice,
   formatTopupCreditAmount,
   getPaymentIcon,
+  getTopupDiscountBreakdown,
 } from '../../lib'
 import type { UnifiedPaymentOption } from '../../types'
 
@@ -68,9 +70,34 @@ export function PaymentConfirmDialog({
   const { currency } = useSystemConfig()
   const creemProduct =
     paymentOption?.kind === 'creem' ? paymentOption.product : undefined
-  const hasDiscount = discountRate > 0 && discountRate < 1 && paymentAmount > 0
-  const originalAmount = hasDiscount ? paymentAmount / discountRate : 0
-  const discountAmount = hasDiscount ? originalAmount - paymentAmount : 0
+  const discountBreakdown = getTopupDiscountBreakdown(
+    paymentAmount,
+    discountRate
+  )
+  let formattedPaymentAmount = formatLocalCurrencyAmount(paymentAmount)
+  let formattedOriginalAmount = discountBreakdown
+    ? formatLocalCurrencyAmount(discountBreakdown.originalAmount)
+    : ''
+  let formattedSavingsAmount = discountBreakdown
+    ? formatLocalCurrencyAmount(discountBreakdown.savingsAmount)
+    : ''
+
+  if (creemProduct) {
+    formattedPaymentAmount = formatCreemPrice(
+      paymentAmount,
+      creemProduct.currency
+    )
+    if (discountBreakdown) {
+      formattedOriginalAmount = formatCreemPrice(
+        discountBreakdown.originalAmount,
+        creemProduct.currency
+      )
+      formattedSavingsAmount = formatCreemPrice(
+        discountBreakdown.savingsAmount,
+        creemProduct.currency
+      )
+    }
+  }
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -84,66 +111,77 @@ export function PaymentConfirmDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        <div className='space-y-3 py-3 sm:space-y-4 sm:py-4'>
-          <div className='flex items-center justify-between'>
-            <span className='text-muted-foreground text-sm'>
+        <dl className='space-y-3 py-3 sm:space-y-4 sm:py-4'>
+          <div className='flex items-center justify-between gap-4'>
+            <dt className='text-muted-foreground text-sm'>
               {t('Topup Amount')}
-            </span>
-            <span className='text-lg font-semibold'>
+            </dt>
+            <dd className='text-lg font-semibold'>
               {formatTopupCreditAmount(topupAmount, currency)}
-            </span>
+            </dd>
           </div>
 
-          <div className='flex items-center justify-between'>
-            <span className='text-muted-foreground text-sm'>
-              {t('You Pay')}
-            </span>
+          {discountBreakdown && (
+            <div className='flex items-center justify-between gap-4'>
+              <dt className='text-muted-foreground text-sm'>{t('Discount')}</dt>
+              <dd className='font-semibold text-emerald-600 dark:text-emerald-400'>
+                {formatPercent(discountBreakdown.savingsPercent)}
+              </dd>
+            </div>
+          )}
+
+          {discountBreakdown && (
+            <div className='flex items-center justify-between gap-4'>
+              <dt className='text-muted-foreground text-sm'>
+                {t('Original Price')}
+              </dt>
+              <dd className='text-muted-foreground font-medium line-through'>
+                {formattedOriginalAmount}
+              </dd>
+            </div>
+          )}
+
+          <div className='flex items-center justify-between gap-4'>
+            <dt className='text-muted-foreground text-sm'>{t('You Pay')}</dt>
             {calculating ? (
-              <Skeleton className='h-6 w-24' />
+              <dd>
+                <Skeleton className='h-6 w-24' />
+              </dd>
             ) : (
-              <div className='flex items-baseline gap-2'>
-                <span className='text-2xl font-semibold'>
-                  {creemProduct
-                    ? formatCreemPrice(paymentAmount, creemProduct.currency)
-                    : formatLocalCurrencyAmount(paymentAmount)}
-                </span>
-                {hasDiscount && (
-                  <span className='text-muted-foreground text-sm line-through'>
-                    {formatLocalCurrencyAmount(originalAmount)}
-                  </span>
-                )}
-              </div>
+              <dd className='text-2xl font-semibold'>
+                {formattedPaymentAmount}
+              </dd>
             )}
           </div>
 
-          {hasDiscount && !calculating && (
-            <div className='bg-muted/50 rounded-lg p-3'>
-              <div className='flex items-center justify-between text-sm'>
-                <span className='text-muted-foreground'>{t('You save')}</span>
-                <span className='font-semibold text-green-600'>
-                  {formatLocalCurrencyAmount(discountAmount)}
-                </span>
-              </div>
+          {discountBreakdown && !calculating && (
+            <div className='flex items-center justify-between gap-4'>
+              <dt className='text-muted-foreground text-sm'>{t('You save')}</dt>
+              <dd className='font-semibold text-emerald-600 dark:text-emerald-400'>
+                {formattedSavingsAmount}
+              </dd>
             </div>
           )}
 
           <div className='border-t pt-4'>
-            <div className='flex items-center justify-between'>
-              <span className='text-muted-foreground text-sm'>
+            <div className='flex items-center justify-between gap-4'>
+              <dt className='text-muted-foreground text-sm'>
                 {t('Payment Method')}
-              </span>
-              <div className='flex items-center gap-2'>
+              </dt>
+              <dd className='flex min-w-0 items-center gap-2'>
                 {getPaymentIcon(
                   paymentOption?.type,
                   'h-4 w-4',
                   paymentOption?.icon,
                   paymentOption?.name
                 )}
-                <span className='font-medium'>{paymentOption?.name}</span>
-              </div>
+                <span className='truncate font-medium'>
+                  {paymentOption?.name}
+                </span>
+              </dd>
             </div>
           </div>
-        </div>
+        </dl>
 
         <AlertDialogFooter className='grid grid-cols-2 gap-2 sm:flex'>
           <AlertDialogCancel disabled={processing}>
